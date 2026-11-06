@@ -1,0 +1,20 @@
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taiz_express
+      POSTGRES_USER: taiz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ضع POSTGRES_PASSWORD في ملف .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - taiz_express_db:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taiz -d taiz_express"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  taiz_express_db:
