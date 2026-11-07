@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     
-    <!-- 🔔 [إضافة ضرورية لأندرويد 13 و 14]: صلاحية الإشعارات لضمان ظهور النافذة في موتورلا وبقية الأجهزة -->
+    <!-- 🔔 صلاحية الإشعارات لأندرويد 13 و 14 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- للسماح بنظام أندرويد 11+ بفتح روابط الواتساب والروابط الخارجية -->
@@ -28,6 +28,14 @@
         android:name="${applicationName}"
         android:label="Fast"
         android:usesCleartextTraffic="false">
+
+        <!-- 🔔 تخصيص أيقونة الإشعارات الافتراضية ولونها عند وصولها والتطبيق مغلق -->
+        <meta-data 
+            android:name="com.onesignal.Notification.DEFAULT_ICONS" 
+            android:resource="@mipmap/ic_launcher" />
+        <meta-data 
+            android:name="com.onesignal.Notification.ACCENT_COLOR" 
+            android:value="FFFFC107" />
 
         <activity
             android:name=".MainActivity"
