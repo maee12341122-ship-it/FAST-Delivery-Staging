@@ -1,0 +1,36 @@
+{
+  "project_info": {
+    "project_number": "123456789012",
+    "firebase_url": "https://your-project-default-rtdb.firebaseio.com",
+    "project_id": "taiz-express-project",
+    "storage_bucket": "taiz-express-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+        "android_client_info": {
+          "package_name": "com.example.taiz_express"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_Your_Firebase_API_Key_Here"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
