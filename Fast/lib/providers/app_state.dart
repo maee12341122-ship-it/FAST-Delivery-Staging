@@ -30,6 +30,32 @@ class AppState extends ChangeNotifier {
     listenToStoreSettingsRealtime();
   }
 
+  // --- 🗺️ دالة ترجمة حالات الطلبات إلى اللغة العربية ---
+  String getArabicStatus(String? status) {
+    switch (status?.trim()) {
+      case 'waitingForPricing':
+        return 'بانتظار تحديد السعر من الإدارة ⏳';
+      case 'pricingSentToCustomer':
+        return 'تم تحديد السعر، بانتظار موافقة العميل 💰';
+      case 'approvedByCustomer':
+      case 'waitingCourierApproval':
+        return 'بانتظار موافقة المندوب 🛵';
+      case 'acceptedByCourier':
+        return 'وافق المندوب على التوصيل 🚀';
+      case 'rejectedByCourier':
+        return 'رفض المندوب الطلب ⚠️';
+      case 'arrivedToCustomer':
+      case 'arrived':
+        return 'وصل المندوب إلى موقع العميل 📍';
+      case 'delivered':
+        return 'تم تسليم الطلب بنجاح ✅';
+      case 'cancelled':
+        return 'تم إلغاء الطلب 🚫';
+      default:
+        return status ?? 'قيد المعالجة 🔄';
+    }
+  }
+
   // --- دوال مساعدة لجلب OneSignal Player ID لمختلف الأطراف من قاعدة البيانات ---
   
   Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
@@ -979,8 +1005,9 @@ class AppState extends ChangeNotifier {
     final phone = userProfile?['phone'];
     if (token == null || phone == null) throw Exception('رمز متابعة الطلب غير موجود على هذا الجهاز.');
 
-    String newStatus = action == 'approve' ? 'approvedByCustomer' : 'cancelled';
-    String adminMsg = action == 'approve' ? 'تم تأكيد السعر من قبل العميل ✅' : 'تم إلغاء الطلب من قبل العميل ❌';
+    // 🟢 تعديل الحالة هنا لتتوافق مع شاشة المندوب (waitingCourierApproval)
+    String newStatus = action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
+    String adminMsg = action == 'approve' ? 'تم تأكيد السعر من قبل العميل، بانتظار موافقة المندوب ✅' : 'تم إلغاء الطلب من قبل العميل ❌';
 
     final response = await supabase.from('orders').update({
       'status': newStatus,
