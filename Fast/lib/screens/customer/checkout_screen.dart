@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استيراد سوبابيس للتحقق من الرقم
 import '../../providers/app_state.dart';
 import '../home_screen.dart';
 
@@ -19,8 +18,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressDescriptionController = TextEditingController();
   final _paymentAccountController = TextEditingController();
 
-  // 👈 متغير لتخزين طريقة الدفع المختارة (نقدي افتراضياً)
-  String _selectedPaymentMethod = 'cash'; 
+  // 👈 متغير لتخزين طريقة الدفع المختارة (نقدي افتراضياً أو محافظ إلكترونية)
+  String _selectedPaymentMethod = 'cash'; // cash, al_kuraimi, al_qutaibi, mobile_money
 
   // إحداثيات افتراضية لمدينة تعز (مركز المدينة)
   LatLng _selectedLocation = const LatLng(13.5779, 44.0219);
@@ -188,7 +187,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // قسم اختيار طريقة الدفع
+            // 👈 قسم اختيار طريقة الدفع (نقدي أو محافظ إلكترونية مع رقم الحساب)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -219,6 +218,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       });
                     },
                   ),
+                  if (false && _selectedPaymentMethod != 'cash') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _paymentAccountController,
+                      keyboardType: TextInputType.text,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        labelText: 'رقم الحساب / الجوال المحول منه',
+                        labelStyle: const TextStyle(color: Colors.grey),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -300,7 +314,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // زر إرسال الطلب النهائي مع التحقق من وجود الرقم في قاعدة البيانات
+            // زر إرسال الطلب النهائي
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.amber,
@@ -308,59 +322,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () async {
-                final phone = _phoneController.text.trim();
-                if (_nameController.text.isEmpty || phone.isEmpty || _addressDescriptionController.text.isEmpty) {
+                if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
                   );
                   return;
                 }
 
-                setState(() => _isLoadingLocation = true);
+                if (_selectedPaymentMethod != 'cash' && _paymentAccountController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('الرجاء إدخال رقم الحساب المحول منه للمحفظة الإلكترونية')),
+                  );
+                  return;
+                }
 
+                // دمج الوصف النصي مع الإحداثيات الجغرافية كعنوان متكامل
+                final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: ${_selectedLocation.latitude.toStringAsFixed(4)}, ${_selectedLocation.longitude.toStringAsFixed(4)})';
+
+                // وصف المنتجات في السلة
+                final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
+
+                // حفظ ملف العميل وإرسال الطلب إلى Supabase مباشرة مع تفاصيل الدفع
+                await appState.saveUserProfileDetails(_nameController.text, fullAddress);
                 try {
-                  // 1. فحص ما إذا كان رقم الهاتف مسجلاً في جدول customers في Supabase
-                  final customerCheck = await Supabase.instance.client
-                      .from('customers')
-                      .select()
-                      .eq('phone', phone)
-                      .maybeSingle();
-
-                  if (customerCheck == null) {
-                    setState(() => _isLoadingLocation = false);
-                    
-                    // تنبيه المستخدم بأن الرقم غير مسجل وتوجيهه للواتساب
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('هذا الرقم غير مسجل في قاعدة البيانات. جاري تحويلك للواتساب للتسجيل...')),
-                      );
-                    }
-
-                    // فتح واتساب عبر الدالة الموجودة في AppState
-                    await appState.openFastWhatsApp(
-                      message: 'مرحباً، أريد إنشاء حساب وتسجيل طلب في تطبيق FAST. رقم الهاتف: $phone، الاسم: ${_nameController.text}'
-                    );
-                    return;
-                  }
-
-                  // 2. إذا كان الرقم مسجلاً، نتابع إتمام الطلب بشكل طبيعي
-                  final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: ${_selectedLocation.latitude.toStringAsFixed(4)}, ${_selectedLocation.longitude.toStringAsFixed(4)})';
-                  final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
-
-                  await appState.saveUserProfileDetails(_nameController.text, fullAddress);
-                  
                   await appState.createOrder(
                     customerName: _nameController.text,
-                    phone: phone,
+                    phone: _phoneController.text,
                     address: fullAddress,
                     itemsDesc: itemsDesc,
                     productsTotal: appState.totalAmount,
                     paymentMethod: _selectedPaymentMethod,
                     paymentAccount: 'نقدي',
                   );
-
-                  setState(() => _isLoadingLocation = false);
-
                   if (context.mounted) {
                     final trackingCode = appState.lastOrderTrackingCode ?? '—';
                     Navigator.pushAndRemoveUntil(
@@ -369,16 +362,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       (route) => false,
                     );
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تم استلام الطلب بنجاح. رمز المتابعة: $trackingCode')),
+                      SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: $trackingCode')),
                     );
                   }
                 } catch (e) {
-                  setState(() => _isLoadingLocation = false);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تعذر إرسال الطلب: $e')),
-                    );
-                  }
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
                 }
               },
               child: const Text('تأكيد وإرسال الطلب للمشرف 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
