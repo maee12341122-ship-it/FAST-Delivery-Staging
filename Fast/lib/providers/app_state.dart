@@ -884,7 +884,8 @@ class AppState extends ChangeNotifier {
       throw Exception('الدفع النقدي عند الاستلام هو طريقة الدفع الوحيدة في المرحلة الأولى.');
     }
 
-    final trackingCode = Math.random().toString(36).substring(2, 10);
+    final trackingCode = Random().nextDouble().toString().substring(2, 10);
+
     final normalizedPhone = _normalizePhone(phone);
 
     final response = await supabase.from('orders').insert({
