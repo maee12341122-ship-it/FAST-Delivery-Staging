@@ -392,7 +392,7 @@ class AppState extends ChangeNotifier {
         final row = Map<String, dynamic>.from(response);
         orders.removeWhere((o) => o['id'].toString() == orderId);
         orders.add(row);
-        _sortOrders(); // 👈 فرز تلقائي ليبقى الأحدث في الأعلى
+        _sortOrders();
         notifyListeners();
       }
     } catch (e) {
@@ -545,6 +545,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- إدارة جلسة وتأمين المناديب (جلسة واحدة فقط) ---
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -590,21 +591,39 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
+  // 🔒 دالة تسجيل دخول المندوب المحمية لجلسة واحدة فقط
   Future<bool> loginCourier(String username, String password) async {
     try {
       final email = '${username.trim().toLowerCase()}@courier.fast.local';
       final auth = await supabase.auth.signInWithPassword(email: email, password: password);
+      
       if (auth.user == null || auth.user!.appMetadata['role']?.toString() != 'courier') {
         await supabase.auth.signOut();
         return false;
       }
+
+      // 1. جلب بيانات المندوب من جدول couriers
       final row = await supabase.from('couriers').select().eq('auth_user_id', auth.user!.id).maybeSingle();
+      
       if (row == null || row['status']?.toString() == 'disabled') {
         await supabase.auth.signOut();
         return false;
       }
+
+      // 2. التحقق مما إذا كان الحساب مفتوحاً بالفعل في جهاز آخر
+      if (row['is_logged_in'] == true) {
+        await supabase.auth.signOut();
+        debugPrint('⚠️ الحساب مفتوح حالياً في جهاز آخر.');
+        return false;
+      }
+
+      // 3. قفل الجلسة على هذا الجهاز وقبول تسجيل الدخول
+      await supabase.from('couriers').update({'is_logged_in': true}).eq('id', row['id']);
+
       isAdminLoggedIn = false;
       currentCourier = Map<String, dynamic>.from(row);
+      currentCourier!['is_logged_in'] = true;
+
       listenToOrdersRealtime();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('loggedCourierId', row['id'].toString());
@@ -616,7 +635,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 🔓 دالة تسجيل خروج المندوب وتحرير الجلسة
   Future<void> logoutCourier() async {
+    if (currentCourier != null && currentCourier!['id'] != null) {
+      try {
+        await supabase.from('couriers').update({'is_logged_in': false}).eq('id', currentCourier!['id']);
+      } catch (e) {
+        debugPrint('⚠️ خطأ في تحرير جلسة المندوب: $e');
+      }
+    }
+
     currentCourier = null;
     await supabase.auth.signOut();
     final prefs = await SharedPreferences.getInstance();
@@ -812,13 +840,11 @@ class AppState extends ChangeNotifier {
   // 🔄 **دالة الفرز المركزية لضمان ظهور الطلب الأحدث في الأعلى دائماً**
   void _sortOrders() {
     orders.sort((a, b) {
-      // 1. الترتيب حسب تاريخ الإنشاء (created_at) إن وجد
       final timeA = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
       final timeB = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
       if (timeA != timeB) {
         return timeB.compareTo(timeA); // الأحدث أولاً (تنازلي)
       }
-      // 2. الفرز الاحتياطي حسب المعرف (id) تنازلياً (رقم 29 قبل 28)
       final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
       final idB = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
       return idB.compareTo(idA);
@@ -829,12 +855,12 @@ class AppState extends ChangeNotifier {
     try {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
-      _sortOrders(); // 👈 فرز أولي فوري
+      _sortOrders();
       notifyListeners();
 
       supabase.from('orders').stream(primaryKey: ['id']).listen((data) {
         orders = List.from(data);
-        _sortOrders(); // 👈 فرز تلقائي مع كل تحديث لحظي
+        _sortOrders();
         notifyListeners();
       }, onError: (error) {
         debugPrint('⚠️ خطأ في الاستماع للطلبات: $error');
@@ -896,7 +922,7 @@ class AppState extends ChangeNotifier {
       
       orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
       orders.add(order);
-      _sortOrders(); // 👈 إعادة فرز الطلبات فور إضافة الطلب الجديد ليصعد للقمة فوراً
+      _sortOrders();
       
       _cartItems.clear();
       
