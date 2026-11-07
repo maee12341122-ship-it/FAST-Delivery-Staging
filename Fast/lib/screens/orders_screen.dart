@@ -38,7 +38,8 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                 padding: const EdgeInsets.all(12),
                 itemCount: orders.length,
                 itemBuilder: (context, index) {
-                  final order = orders[index];
+                  final itemsDesc = order['itemsDesc']?.toString() ?? 'لا توجد تفاصيل';
+
                   
                   final orderId = order['id']?.toString() ?? '';
                   final customerName = order['customer_name']?.toString() ?? 'عميل';
