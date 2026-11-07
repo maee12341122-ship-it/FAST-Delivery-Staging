@@ -28,11 +28,6 @@
         android:name="${applicationName}"
         android:label="Fast"
         android:usesCleartextTraffic="false">
-        
-        <!-- 🔑 مفتاح خريطة جوجل الحقيقية -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_API_KEY}" />
 
         <activity
             android:name=".MainActivity"
