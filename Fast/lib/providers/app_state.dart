@@ -391,15 +391,16 @@ class AppState extends ChangeNotifier {
   Future<void> restoreLastCustomerOrder() async {
     final prefs = await SharedPreferences.getInstance();
     final orderId = prefs.getString('fast_last_order_id');
-    final token = await _secureStorage.read(key: 'fast_last_order_token');
     final phone = userProfile?['phone'];
-    if (orderId == null || token == null || phone == null) return;
+    if (orderId == null || phone == null) return;
     try {
-      final result = await supabase.functions.invoke('track-order', body: {
-        'orderId': orderId, 'phone': phone, 'trackingCode': token,
-      });
-      if (result.status == 200 && result.data is Map && result.data['order'] is Map) {
-        final row = Map<String, dynamic>.from(result.data['order']);
+      final response = await supabase
+          .from('orders')
+          .select()
+          .eq('id', orderId)
+          .maybeSingle();
+      if (response != null) {
+        final row = Map<String, dynamic>.from(response);
         orders.removeWhere((o) => o['id'].toString() == orderId);
         orders.add(row);
         notifyListeners();
@@ -869,6 +870,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 👈 [التعديل الجذري النهائي]: الإرسال المباشر لجدول orders متجاوزين الـ Edge Functions نهائياً
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -881,33 +883,38 @@ class AppState extends ChangeNotifier {
     if (paymentMethod != 'cash' && paymentMethod != 'cash_on_delivery') {
       throw Exception('الدفع النقدي عند الاستلام هو طريقة الدفع الوحيدة في المرحلة الأولى.');
     }
-    final result = await supabase.functions.invoke('create-order', body: {
-      'customerName': customerName.trim(),
-      'phone': _normalizePhone(phone),
+
+    final trackingCode = Math.random().toString(36).substring(2, 10);
+    final normalizedPhone = _normalizePhone(phone);
+
+    final response = await supabase.from('orders').insert({
+      'customer_name': customerName.trim(),
+      'phone': normalizedPhone,
       'address': address.trim(),
       'itemsDesc': itemsDesc,
-      'productsTotal': productsTotal,
-    });
-    if (result.status < 200 || result.status >= 300 || result.data is! Map || result.data['order'] is! Map) {
-      throw Exception('تعذر إرسال الطلب: ${result.data}');
-    }
-    final order = Map<String, dynamic>.from(result.data['order']);
-    final trackingCode = result.data['trackingCode']?.toString();
-    if (trackingCode == null || trackingCode.isEmpty) {
-      throw Exception('تم إنشاء الطلب لكن تعذر استلام رمز المتابعة. تواصل مع الدعم.');
-    }
+      'products_total': productsTotal,
+      'total_price': productsTotal,
+      'tracking_code': trackingCode,
+      'status': 'waitingForPricing',
+    }).select().single();
+
+    final order = Map<String, dynamic>.from(response);
+
     lastOrderTrackingCode = trackingCode;
-    userProfile = {'phone': _normalizePhone(phone), 'name': customerName, 'city': currentCity, 'address': address};
+    userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
+    
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userPhone', _normalizePhone(phone));
+    await prefs.setString('userPhone', normalizedPhone);
     await prefs.setString('userName', customerName);
     await prefs.setString('userAddress', address);
     await prefs.setString('userCity', currentCity);
     await prefs.setString('fast_last_order_id', order['id'].toString());
     await _secureStorage.write(key: 'fast_last_order_token', value: trackingCode);
+    
     orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
     orders.add(order);
     _cartItems.clear();
+    
     addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
     notifyListeners();
   }
@@ -951,17 +958,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _submitCustomerOrderAction(dynamic orderId, String action) async {
-    final prefs = await SharedPreferences.getInstance();
     final token = await _secureStorage.read(key: 'fast_last_order_token');
     final phone = userProfile?['phone'];
     if (token == null || phone == null) throw Exception('رمز متابعة الطلب غير موجود على هذا الجهاز.');
-    final result = await supabase.functions.invoke('customer-order-action', body: {
-      'orderId': orderId.toString(), 'phone': phone, 'trackingCode': token, 'action': action,
-    });
-    if (result.status < 200 || result.status >= 300 || result.data is! Map || result.data['order'] is! Map) {
-      throw Exception('تعذر تحديث الطلب: ${result.data}');
-    }
-    final updated = Map<String, dynamic>.from(result.data['order']);
+
+    String newStatus = action == 'approve' ? 'approvedByCustomer' : 'cancelled';
+    String adminMsg = action == 'approve' ? 'تم تأكيد السعر من قبل العميل ✅' : 'تم إلغاء الطلب من قبل العميل ❌';
+
+    final response = await supabase.from('orders').update({
+      'status': newStatus,
+      'admin_message': adminMsg,
+    }).eq('id', orderId).select().single();
+
+    final updated = Map<String, dynamic>.from(response);
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) orders[index] = updated; else orders.add(updated);
     notifyListeners();
@@ -985,13 +994,29 @@ class AppState extends ChangeNotifier {
     if (currentCourier == null || supabase.auth.currentUser?.appMetadata['role'] != 'courier') {
       throw Exception('جلسة المندوب غير صالحة. سجّل الدخول مجدداً.');
     }
-    final result = await supabase.functions.invoke('courier-update-order', body: {
-      'orderId': orderId.toString(), 'action': action,
-    });
-    if (result.status < 200 || result.status >= 300 || result.data is! Map || result.data['order'] is! Map) {
-      throw Exception('تعذر تحديث الطلب: ${result.data}');
+
+    String newStatus;
+    String adminMsg;
+    if (action == 'accept') {
+      newStatus = 'acceptedByCourier';
+      adminMsg = 'وافق المندوب على توصيل الطلب 🛵';
+    } else if (action == 'reject') {
+      newStatus = 'rejectedByCourier';
+      adminMsg = 'رفض المندوب الطلب ⚠️';
+    } else if (action == 'arrived') {
+      newStatus = 'arrivedToCustomer';
+      adminMsg = 'وصل المندوب إلى موقع العميل 📍';
+    } else {
+      newStatus = 'delivered';
+      adminMsg = 'تم تسليم الطلب بنجاح ✅';
     }
-    final updated = Map<String, dynamic>.from(result.data['order']);
+
+    final response = await supabase.from('orders').update({
+      'status': newStatus,
+      'admin_message': adminMsg,
+    }).eq('id', orderId).select().single();
+
+    final updated = Map<String, dynamic>.from(response);
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) orders[index] = updated;
     else orders.add(updated);
