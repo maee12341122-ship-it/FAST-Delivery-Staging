@@ -622,9 +622,89 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          body: IndexedStack(
-            index: _currentIndex,
-            children: pages,
+          body: Stack(
+            children: [
+              IndexedStack(
+                index: _currentIndex,
+                children: pages,
+              ),
+              // 🟢 شريط السلة العائم السفلي (View Cart Bar) مثل التطبيقات العالمية
+              if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _currentIndex = 1); // الانتقال لتبويب السلة
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[700],
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // مصغرات صور المنتجات في السلة
+                          Row(
+                            children: appState.cartItems.take(3).map((item) {
+                              return Container(
+                                width: 32,
+                                height: 32,
+                                margin: const EdgeInsets.only(left: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                                child: ClipOval(
+                                  child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                                      ? Image.network(
+                                          item.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 16, color: Colors.green),
+                                        )
+                                      : const Icon(Icons.shopping_bag, size: 16, color: Colors.green),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${appState.totalCartItemsCount} عناصر في السلة',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              Text(
+                                '${appState.totalAmount} ر.ي',
+                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          const Text(
+                            'عرض السلة 🛒',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
@@ -787,7 +867,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final searchQuery = _searchController.text.trim().toLowerCase();
 
-    // 🟢 المنطق الجديد: المطاعم تعرض كقائمة مطاعم منفصلة، والأقسام الأخرى تعرض منتجاتها مرة واحدة دفعة واحدة
     List<String> uniqueRestaurants = [];
     List<ProductModel> filteredProducts = [];
 
@@ -899,16 +978,22 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ] else ...[
-            // 🟢 عرض المنتجات مباشرة دفعة واحدة (للبقالات، الخضار، وغيرها)
+            // 🟢 عرض المنتجات بشبكة تفاعلية عصرية (Grid View) تشبه تطبيقات التوصيل العالمية
             filteredProducts.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(50.0),
                     child: Center(child: Text('لا توجد منتجات مطابقة للبحث 🔍', style: TextStyle(color: Colors.grey, fontSize: 15))),
                   )
-                : ListView.builder(
+                : GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.72,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                    ),
                     itemCount: filteredProducts.length,
                     itemBuilder: (context, index) {
                       final ProductModel product = filteredProducts[index];
@@ -917,68 +1002,151 @@ class _HomeScreenState extends State<HomeScreen> {
                       final bool isVariable = product.category == 'الخضار والفواكه';
                       int qtyInCart = appState.getProductQuantityInCart(product.id);
 
-                      return Card(
-                        color: cardBg,
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 2,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          title: Text(product.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                          subtitle: Text(
-                            isVariable
-                                ? '${product.restaurantName} - ⚖️ السعر حسب الوزن (${product.unit})'
-                                : '${product.restaurantName} - ${product.price} ر.ي / (${product.category})',
-                            style: const TextStyle(color: Colors.grey, fontSize: 13),
-                          ),
-                          trailing: isVariable
-                              ? ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.amber,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  ),
-                                  icon: const Icon(Icons.scale, color: Colors.black, size: 16),
-                                  onPressed: appState.isStoreOpen
-                                      ? () => _showVariableProductDialog(context, appState, product)
-                                      : null,
-                                  label: const Text('اطلب بالوزن', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                                )
-                              : (qtyInCart == 0
-                                  ? ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.amber,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // صورة المنتج البصرية
+                              Container(
+                                height: 90,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: product.imageUrl.isNotEmpty
+                                      ? Image.network(
+                                          product.imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                                        )
+                                      : const Icon(Icons.fastfood, color: Colors.amber, size: 35),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              // اسم المنتج
+                              Text(
+                                product.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              // الجهة أو الوحدة
+                              Text(
+                                isVariable ? 'وزن (${product.unit})' : product.restaurantName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              ),
+                              const Spacer(),
+                              // السعر وأزرار التفاعل (ADD أو +/-)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      isVariable ? 'حسب الوزن' : '${product.price} ر.ي',
+                                      style: const TextStyle(
+                                        color: Colors.amber,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
                                       ),
-                                      onPressed: appState.isStoreOpen
-                                          ? () {
-                                              appState.addToCart(CartItemModel(
-                                                id: product.id,
-                                                name: product.name,
-                                                price: product.price,
-                                                quantity: 1,
-                                                restaurantId: product.restaurantName,
-                                                imageUrl: product.imageUrl,
-                                              ));
-                                            }
-                                          : null,
-                                      child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                                    )
-                                  : Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
-                                          onPressed: () => appState.updateQuantity(product.id, -1),
-                                        ),
-                                        Text('$qtyInCart', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                                        IconButton(
-                                          icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 22),
-                                          onPressed: () => appState.updateQuantity(product.id, 1),
-                                        ),
-                                      ],
-                                    )),
+                                    ),
+                                  ),
+                                  isVariable
+                                      ? SizedBox(
+                                          height: 32,
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.amber,
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                            onPressed: appState.isStoreOpen
+                                                ? () => _showVariableProductDialog(context, appState, product)
+                                                : null,
+                                            child: const Text('بالوزن', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                          ),
+                                        )
+                                      : (qtyInCart == 0
+                                          ? SizedBox(
+                                              height: 32,
+                                              child: ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.amber,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                ),
+                                                onPressed: appState.isStoreOpen
+                                                    ? () {
+                                                        appState.addToCart(CartItemModel(
+                                                          id: product.id,
+                                                          name: product.name,
+                                                          price: product.price,
+                                                          quantity: 1,
+                                                          restaurantId: product.restaurantName,
+                                                          imageUrl: product.imageUrl,
+                                                        ));
+                                                      }
+                                                    : null,
+                                                child: const Text('ADD', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                              ),
+                                            )
+                                          : Container(
+                                              height: 32,
+                                              decoration: BoxDecoration(
+                                                color: Colors.amber,
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  InkWell(
+                                                    onTap: () => appState.updateQuantity(product.id, -1),
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.symmetric(horizontal: 6),
+                                                      child: Icon(Icons.remove, size: 16, color: Colors.black),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '$qtyInCart',
+                                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                                                  ),
+                                                  InkWell(
+                                                    onTap: () => appState.updateQuantity(product.id, 1),
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.symmetric(horizontal: 6),
+                                                      child: Icon(Icons.add, size: 16, color: Colors.black),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -1008,7 +1176,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onSelected: (val) {
                 setState(() {
                   selectedCategory = cat;
-                  _searchController.clear(); // مسح شريط البحث عند تغيير القسم لتحديث العرض بسلاسة
+                  _searchController.clear();
                 });
               },
             ),
