@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../providers/app_state.dart';
 import '../home_screen.dart';
@@ -23,7 +24,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // إحداثيات افتراضية لمدينة تعز (مركز المدينة)
   LatLng _selectedLocation = const LatLng(13.5779, 44.0219);
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   bool _isLoadingLocation = false;
 
   @override
@@ -45,7 +46,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneController.dispose();
     _addressDescriptionController.dispose();
     _paymentAccountController.dispose();
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -99,12 +99,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _isLoadingLocation = false;
         });
 
-        // تحريك الكاميرا بسلاسة إلى موقع العميل الحالي
-        _mapController?.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: _selectedLocation, zoom: 16.0),
-          ),
-        );
+        // تحريك خريطة OpenStreetMap بسلاسة إلى موقع العميل الحالي
+        _mapController.move(_selectedLocation, 16.0);
       }
     } catch (e) {
       if (mounted) {
@@ -238,7 +234,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // خريطة جوجل الحقيقية التفاعلية لتحديد موقع التوصيل
+            // خريطة OpenStreetMap التفاعلية المجانية لتحديد موقع التوصيل
             const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 8),
             Container(
@@ -251,29 +247,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(
                   children: [
-                    GoogleMap(
-                      initialCameraPosition: CameraPosition(
-                        target: _selectedLocation,
-                        zoom: 15.0,
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _selectedLocation,
+                        initialZoom: 15.0,
+                        onTap: (tapPosition, point) {
+                          setState(() {
+                            _selectedLocation = point;
+                          });
+                        },
                       ),
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: true,
-                      onMapCreated: (controller) {
-                        _mapController = controller;
-                      },
-                      onTap: (point) {
-                        setState(() {
-                          _selectedLocation = point;
-                        });
-                      },
-                      markers: {
-                        Marker(
-                          markerId: const MarkerId('delivery_location'),
-                          position: _selectedLocation,
-                          infoWindow: const InfoWindow(title: 'موقع التوصيل المحدد'),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.fast.taiz',
                         ),
-                      },
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _selectedLocation,
+                              width: 80,
+                              height: 80,
+                              child: const Icon(
+                                Icons.location_pin,
+                                color: Colors.red,
+                                size: 45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     if (_isLoadingLocation)
                       Container(
@@ -342,7 +346,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 // وصف المنتجات في السلة
                 final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
 
-                // حفظ ملف العميل وإرسال الطلب إلى Supabase مباشرة مع تفاصيل الدفع
+                // حفظ ملف العميل وإرسال الطلب إلى Supabase مباشرة مع تفاصيل الدفع وزر itemsDesc الصحيح
                 await appState.saveUserProfileDetails(_nameController.text, fullAddress);
                 try {
                   await appState.createOrder(
