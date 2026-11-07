@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
-import 'package:permission_handler/permission_handler.dart'; // 👈 استيراد مكتبة مدير الأذونات لأندرويد 14
+import 'package:permission_handler/permission_handler.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -34,7 +34,6 @@ class AppState extends ChangeNotifier {
   
   Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
     try {
-      // إذا كان الجدول هو العملاء (customers)، نبحث برقم الهاتف (phone) لضمان الدقة وتجنب null
       if (tableName == 'customers') {
         final response = await supabase
             .from(tableName)
@@ -46,7 +45,6 @@ class AppState extends ChangeNotifier {
           return response['onesignal_player_id'].toString();
         }
       } else {
-        // لبقية الجداول بالـ id التقليدي
         final response = await supabase
             .from(tableName)
             .select('onesignal_player_id')
@@ -183,7 +181,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // WhatsApp contact is customer-initiated. This is NOT phone ownership verification.
   Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التسجيل في تطبيق FAST - تعز.'}) async {
     final uri = Uri.parse('https://wa.me/967775145534?text=${Uri.encodeComponent(message)}');
     if (!await canLaunchUrl(uri)) {
@@ -192,7 +189,6 @@ class AppState extends ChangeNotifier {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // --- مشاركة التطبيق ---
   void shareApp() {
     Share.share(
       'حمل تطبيق FAST - أسرع خدمة توصيل في تعز! 🚀\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
@@ -200,10 +196,8 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  // --- 👈 [التعديل الجذري لأندرويد 14]: طلب الأذونات بمرونة وتوافق تام ---
   Future<void> requestLocationAndNotificationPermissions() async {
     try {
-      // 1. طلب إذن الموقع
       LocationPermission locationPermission = await Geolocator.checkPermission();
       if (locationPermission == LocationPermission.denied) {
         locationPermission = await Geolocator.requestPermission();
@@ -215,7 +209,6 @@ class AppState extends ChangeNotifier {
         debugPrint('📍 تم التعامل مع إذن الموقع بنجاح');
       }
 
-      // 2. طلب إذن الإشعارات عبر permission_handler (متوافق تماماً مع أندرويد 14 وموتورلا)
       PermissionStatus notificationStatus = await Permission.notification.status;
       if (!notificationStatus.isGranted) {
         notificationStatus = await Permission.notification.request();
@@ -224,7 +217,6 @@ class AppState extends ChangeNotifier {
       if (notificationStatus.isGranted) {
         debugPrint('🔔 تم منح إذن الإشعارات بنجاح عبر النظام');
         
-        // تفعيل OneSignal بعد ضمان حصول الإذن
         try {
           await OneSignal.Notifications.requestPermission(true);
         } catch (e) {
@@ -241,7 +233,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- إعدادات المتجر ---
   Future<void> fetchStoreSettings() async {
     try {
       final response = await supabase.from('settings').select().maybeSingle();
@@ -298,7 +289,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- جلسة المشرف ---
   bool isAdminLoggedIn = false;
 
   void _loadAdminSession() async {
@@ -337,7 +327,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- مصادقة العميل والتحقق الذكي وضبط جلسة فريدة برقم واحد ---
   Map<String, String>? userProfile;
   String? generatedDynamicOtp;
   String? lastOrderTrackingCode;
@@ -403,6 +392,7 @@ class AppState extends ChangeNotifier {
         final row = Map<String, dynamic>.from(response);
         orders.removeWhere((o) => o['id'].toString() == orderId);
         orders.add(row);
+        _sortOrders(); // 👈 فرز تلقائي ليبقى الأحدث في الأعلى
         notifyListeners();
       }
     } catch (e) {
@@ -410,14 +400,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 تحسين دالة فحص العميل لتدعم البحث بمختلف الصيغ (مع الصفر وبدونه)
   Future<bool> checkAndLoginCustomer(String phone) async {
     try {
       String cleanPhone = _normalizePhone(phone);
       String fullPhoneWithZero = '0$cleanPhone';
       String fullPhoneWith967 = '967$cleanPhone';
-      
-      debugPrint('🔍 جاري البحث عن العميل برقم: $cleanPhone');
 
       final response = await supabase
           .from('customers')
@@ -444,11 +431,8 @@ class AppState extends ChangeNotifier {
         await prefs.setString('userCity', currentCity);
 
         notifyListeners();
-        debugPrint('✅ تم العثور على العميل بنجاح وتسجيل دخوله: $name');
         return true;
       }
-      
-      debugPrint('⚠️ الرقم غير موجود في قاعدة بيانات العملاء');
       return false;
     } catch (e) {
       debugPrint('❌ خطأ في فحص العميل: $e');
@@ -470,9 +454,7 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  bool verifyOtpAndLogin(String phone, String enteredOtp) {
-    return false;
-  }
+  bool verifyOtpAndLogin(String phone, String enteredOtp) => false;
 
   Future<void> saveUserProfileDetails(String name, String address) async {
     if (userProfile != null) {
@@ -493,7 +475,6 @@ class AppState extends ChangeNotifier {
 
         await requestLocationAndNotificationPermissions();
 
-        // تحديث OneSignal Player ID للعميل فوراً عند حفظ بياناته
         String? playerId = OneSignal.User.pushSubscription.id;
         if (playerId != null && playerId.isNotEmpty) {
           await supabase.from('customers').update({'onesignal_player_id': playerId}).eq('phone', phone);
@@ -531,9 +512,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearUser() {
-    logoutUser();
-  }
+  void clearUser() => logoutUser();
 
   void setUser({required String name, required String phone, required dynamic address}) {
     String cleanPhone = _normalizePhone(phone);
@@ -566,7 +545,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- إدارة المناديب وحالتهم ---
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -646,7 +624,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- سلة المشتريات ---
   final List<CartItemModel> _cartItems = [];
   List<CartItemModel> get cartItems => _cartItems;
 
@@ -764,7 +741,6 @@ class AppState extends ChangeNotifier {
     await fetchProductsFromSupabase();
   }
 
-  // --- المنتجات ---
   List products = [];
 
   Future<void> fetchProductsFromSupabase() async {
@@ -801,7 +777,6 @@ class AppState extends ChangeNotifier {
     await fetchProductsFromSupabase();
   }
 
-  // --- الطلبات ومعالجة طرق الدفع الجديدة ---
   List orders = [];
   List notifications = [];
 
@@ -834,14 +809,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 🔄 **دالة الفرز المركزية لضمان ظهور الطلب الأحدث في الأعلى دائماً**
+  void _sortOrders() {
+    orders.sort((a, b) {
+      // 1. الترتيب حسب تاريخ الإنشاء (created_at) إن وجد
+      final timeA = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final timeB = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      if (timeA != timeB) {
+        return timeB.compareTo(timeA); // الأحدث أولاً (تنازلي)
+      }
+      // 2. الفرز الاحتياطي حسب المعرف (id) تنازلياً (رقم 29 قبل 28)
+      final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
+      final idB = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
+      return idB.compareTo(idA);
+    });
+  }
+
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
+      _sortOrders(); // 👈 فرز أولي فوري
       notifyListeners();
 
       supabase.from('orders').stream(primaryKey: ['id']).listen((data) {
         orders = List.from(data);
+        _sortOrders(); // 👈 فرز تلقائي مع كل تحديث لحظي
         notifyListeners();
       }, onError: (error) {
         debugPrint('⚠️ خطأ في الاستماع للطلبات: $error');
@@ -851,7 +844,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 [الدالة المعدلة والآمنة 100% لإرسال الطلبات بدون أي أخطاء مفاجئة]
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -904,6 +896,8 @@ class AppState extends ChangeNotifier {
       
       orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
       orders.add(order);
+      _sortOrders(); // 👈 إعادة فرز الطلبات فور إضافة الطلب الجديد ليصعد للقمة فوراً
+      
       _cartItems.clear();
       
       addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
@@ -944,6 +938,7 @@ class AppState extends ChangeNotifier {
         orders[orderIndex]['assigned_courier'] = courierName.trim();
         orders[orderIndex]['status'] = 'pricingSentToCustomer';
         orders[orderIndex]['admin_message'] = 'تم تحديد رسوم التوصيل ($fee ر.ي). بانتظار موافقة العميل ⏳';
+        _sortOrders();
       }
 
       addNotification('تم تسعير الطلب #$orderId 💰', 'تم تحديد رسوم التوصيل ($fee ر.ي). يرجى من العميل تأكيد الطلب!');
@@ -969,6 +964,7 @@ class AppState extends ChangeNotifier {
     final updated = Map<String, dynamic>.from(response);
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) orders[index] = updated; else orders.add(updated);
+    _sortOrders();
     notifyListeners();
   }
 
@@ -1016,6 +1012,7 @@ class AppState extends ChangeNotifier {
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) orders[index] = updated;
     else orders.add(updated);
+    _sortOrders();
     notifyListeners();
   }
 
@@ -1031,7 +1028,6 @@ class AppState extends ChangeNotifier {
     await _submitCourierOrderAction(orderId, 'delivered');
     addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
   }
-
 }
 
 class _UserMock {
