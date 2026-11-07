@@ -37,7 +37,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw 'خدمة الموقع (GPS) مغلقة، يرجى تفعيلها.';
+        throw 'خدمة الموقع (GPS) مغلقة، يرجى تفعيلها من إعدادات الهاتف.';
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
@@ -88,7 +88,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         backgroundColor: backgroundColor,
         appBar: AppBar(
           backgroundColor: cardColor,
-          title: const Text('تحديد موقع التوصيل في تعز 📍', style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)),
+          title: const Text(
+            'تحديد موقع التوصيل في تعز 📍', 
+            style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
             onPressed: () => Navigator.pop(context, {
@@ -148,7 +151,11 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                       ),
                       onPressed: _gettingLocation ? null : _useGps,
                       icon: _gettingLocation
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold))
+                          ? const SizedBox(
+                              width: 16, 
+                              height: 16, 
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
+                            )
                           : const Icon(Icons.my_location),
                       label: const Text('موقعي الحالي GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
@@ -164,7 +171,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
             
             const SizedBox(height: 8),
 
-            // خريطة OpenStreetMap التفاعلية المجانية بدلاً من جوجل
+            // خريطة OpenStreetMap التفاعلية
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -177,7 +184,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: widget.initialPoint ?? _taizCenter,
-                    initialZoom: 15,
+                    initialZoom: 15.0,
                     onTap: (tapPosition, point) {
                       setState(() => _selectedPoint = point);
                     },
@@ -186,14 +193,15 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.fast.taiz',
+                      tileProvider: NetworkTileProvider(),
                     ),
                     if (_selectedPoint != null)
                       MarkerLayer(
                         markers: [
                           Marker(
                             point: _selectedPoint!,
-                            width: 80,
-                            height: 80,
+                            width: 50,
+                            height: 50,
                             child: const Icon(
                               Icons.location_pin,
                               color: Colors.red,
