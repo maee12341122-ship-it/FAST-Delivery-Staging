@@ -20,7 +20,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   bool _gettingLocation = false;
   String? _error;
   
-  // 👈 تم جعل الحقل فارغاً تماماً ليقوم المستخدم بكتابة عنوانه بنفسه
+  // حقل إدخال العنوان التفصيلي يدوياً
   final TextEditingController _customAddressController = TextEditingController();
 
   @override
@@ -61,7 +61,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       if (!mounted) return;
       setState(() => _selectedPoint = point);
       
-      // تحريك خريطة OpenStreetMap إلى الموقع الجديد
+      // تحريك الخريطة إلى الموقع الحالي بسلاسة
       _mapController.move(point, 16.0);
     } catch (error) {
       if (mounted) {
@@ -103,7 +103,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         ),
         body: Column(
           children: [
-            // حقل إدخال العنوان التفصيلي
+            // حقل إدخال العنوان التفصيلي يدوياً
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: Container(
@@ -138,7 +138,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               ),
             ),
 
-            // شريط التحكم العلوي (زر الـ GPS)
+            // شريط زر الـ GPS
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0),
               child: Row(
@@ -172,7 +172,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
             
             const SizedBox(height: 8),
 
-            // خريطة OpenStreetMap التفاعلية
+            // الخريطة التفاعلية (تم استبدال المزود بـ Esri المجاني)
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -191,11 +191,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                     },
                   ),
                   children: [
+                    // 🗺️ خرائط Esri المجانية (بدون مفتاح API وبدون مشاكل)
                     TileLayer(
-                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
+                      urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                       userAgentPackageName: 'com.fast.taiz',
-                      tileProvider: NetworkTileProvider(),
                     ),
                     if (_selectedPoint != null)
                       MarkerLayer(
