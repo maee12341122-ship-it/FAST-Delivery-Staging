@@ -19,8 +19,9 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
   String? _error;
-  final TextEditingController _customAddressController = 
-      TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
+  
+  // 👈 تم جعل الحقل فارغاً تماماً ليقوم المستخدم بكتابة عنوانه بنفسه
+  final TextEditingController _customAddressController = TextEditingController();
 
   @override
   void initState() {
@@ -124,7 +125,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                       controller: _customAddressController,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       decoration: InputDecoration(
-                        hintText: 'مثال: تعز - حي الروضة، قرب الشارع العام',
+                        hintText: 'مثال: حي الروضة، بجوار الشارع العام',
                         hintStyle: const TextStyle(color: Colors.grey),
                         filled: true,
                         fillColor: backgroundColor,
@@ -191,7 +192,8 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                      subdomains: const ['a', 'b', 'c', 'd'],
                       userAgentPackageName: 'com.fast.taiz',
                       tileProvider: NetworkTileProvider(),
                     ),
