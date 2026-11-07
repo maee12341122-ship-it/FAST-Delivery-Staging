@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -281,8 +283,6 @@ class AppState extends ChangeNotifier {
         'end_hour': end,
         'delivery_fee': deliveryFee,
       });
-
-
     } catch (e) {
       debugPrint('❌ خطأ في حفظ أوقات الدوام: $e');
     }
@@ -409,36 +409,45 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 👈 [التعديل هنا]: تحسين دالة فحص العميل لتدعم البحث بمختلف الصيغ (مع الصفر وبدونه)
   Future<bool> checkAndLoginCustomer(String phone) async {
     try {
       String cleanPhone = _normalizePhone(phone);
+      String fullPhoneWithZero = '0$cleanPhone';
+      String fullPhoneWith967 = '967$cleanPhone';
       
+      debugPrint('🔍 جاري البحث عن العميل برقم: $cleanPhone');
+
       final response = await supabase
           .from('customers')
           .select()
-          .eq('phone', cleanPhone)
+          .or('phone.eq.$cleanPhone,phone.eq.$fullPhoneWithZero,phone.eq.$fullPhoneWith967')
           .maybeSingle();
 
       if (response != null) {
         String name = response['name']?.toString() ?? '';
         String address = response['address']?.toString() ?? '';
+        String dbPhone = response['phone']?.toString() ?? cleanPhone;
 
         userProfile = {
-          'phone': cleanPhone,
+          'phone': dbPhone,
           'name': name,
           'city': currentCity,
           'address': address,
         };
 
         final prefs = await SharedPreferences.getInstance();
-        prefs.setString('userPhone', cleanPhone);
-        prefs.setString('userName', name);
-        prefs.setString('userAddress', address);
-        prefs.setString('userCity', currentCity);
+        await prefs.setString('userPhone', dbPhone);
+        await prefs.setString('userName', name);
+        await prefs.setString('userAddress', address);
+        await prefs.setString('userCity', currentCity);
 
         notifyListeners();
+        debugPrint('✅ تم العثور على العميل بنجاح وتسجيل دخوله: $name');
         return true;
       }
+      
+      debugPrint('⚠️ الرقم غير موجود في قاعدة بيانات العملاء');
       return false;
     } catch (e) {
       debugPrint('❌ خطأ في فحص العميل: $e');
