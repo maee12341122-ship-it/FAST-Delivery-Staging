@@ -7,6 +7,7 @@ class ProductModel {
   final bool available;
   final String imageUrl;
   final String unit; // كيلو، حبة، صندوق، جرام (مهم للخضار والفواكه)
+  final bool isVariablePrice; // 👈 جديد: لتحديد ما إذا كان المنتج بدون سعر ثابت ويحتاج تسعير وزني
 
   ProductModel({
     required this.id,
@@ -17,6 +18,7 @@ class ProductModel {
     required this.available,
     required this.imageUrl,
     this.unit = 'حبة',
+    this.isVariablePrice = false, // افتراضياً السعر ثابت إلا إذا تم تفعيلها للخضار
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +31,7 @@ class ProductModel {
       'available': available,
       'imageUrl': imageUrl,
       'unit': unit,
+      'is_variable_price': isVariablePrice,
     };
   }
 
@@ -42,6 +45,7 @@ class ProductModel {
       available: map['available'] ?? true,
       imageUrl: map['imageUrl'] ?? '',
       unit: map['unit'] ?? 'حبة',
+      isVariablePrice: map['is_variable_price'] ?? false,
     );
   }
 }
