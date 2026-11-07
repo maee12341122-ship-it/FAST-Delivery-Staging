@@ -212,6 +212,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       final order = myOrders[index];
                       final orderId = order['id'].toString();
                       final String customerAddress = order['address'] ?? '';
+                      final String orderStatus = order['status'] ?? '';
 
                       return Card(
                         color: const Color(0xFF1E1E1E),
@@ -283,11 +284,12 @@ class _CourierScreenState extends State<CourierScreen> {
                               const SizedBox(height: 6),
                               Text('💰 الإجمالي المطلوب: ${order['total_price'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 4),
-                              Text('📌 الحالة: ${order['status'] ?? ''}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                              // 🟢 عرض الحالة باللغة العربية بوضوح
+                              Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
-                              // التسلسل الصحيح لأزرار المندوب بتصميم بارز وواضح:
-                              if (order['status'] == 'waitingCourierApproval') ...[
+                              // 🟢 التسلسل الصحيح لأزرار المندوب (تدعم waitingCourierApproval و approvedByCustomer)
+                              if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
                                 const Text('هل تقبل توصيل هذا الطلب؟', style: TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                                 const SizedBox(height: 10),
                                 Row(
@@ -326,7 +328,7 @@ class _CourierScreenState extends State<CourierScreen> {
                                   ],
                                 ),
                               ]
-                              else if (order['status'] == 'onTheWay') ...[
+                              else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.blueAccent, 
@@ -342,7 +344,7 @@ class _CourierScreenState extends State<CourierScreen> {
                                   label: const Text('هل وصلت إلى العميل؟ (نعم، وصلت)', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ]
-                              else if (order['status'] == 'arrived') ...[
+                              else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green, 
