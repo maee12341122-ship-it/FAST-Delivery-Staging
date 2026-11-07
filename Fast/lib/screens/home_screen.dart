@@ -175,7 +175,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   return;
                 }
                 
-                // إضافة المنتج للسلة مع دمج الوزن/الكمية في اسم المنتج، وبسعر افتراضي 0 ليتم تسعيره من الإدارة
                 appState.addToCart(CartItemModel(
                   id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
                   name: '${product.name} ($note ${product.unit})',
@@ -787,13 +786,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final searchQuery = _searchController.text.trim().toLowerCase();
-    final filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
-      final matchesCategory = selectedCategory == 'الكل' || p.category == selectedCategory;
-      final matchesSearch = searchQuery.isEmpty ||
-          p.name.toLowerCase().contains(searchQuery) ||
-          p.restaurantName.toLowerCase().contains(searchQuery);
-      return matchesCategory && matchesSearch;
-    }).toList();
+
+    // 🟢 المنطق الجديد: المطاعم تعرض كقائمة مطاعم منفصلة، والأقسام الأخرى تعرض منتجاتها مرة واحدة دفعة واحدة
+    List<String> uniqueRestaurants = [];
+    List<ProductModel> filteredProducts = [];
+
+    if (selectedCategory == 'المطاعم') {
+      uniqueRestaurants = (appState.products as List)
+          .map((e) => e as ProductModel)
+          .where((p) => p.category == 'المطاعم')
+          .map((p) => p.restaurantName)
+          .toSet()
+          .toList();
+    } else {
+      filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
+        final matchesCategory = selectedCategory == 'الكل' || p.category == selectedCategory;
+        final matchesSearch = searchQuery.isEmpty ||
+            p.name.toLowerCase().contains(searchQuery) ||
+            p.restaurantName.toLowerCase().contains(searchQuery);
+        return matchesCategory && matchesSearch;
+      }).toList();
+    }
 
     return RefreshIndicator(
       color: Colors.amber,
@@ -834,7 +847,7 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _searchController,
               style: TextStyle(color: textColor),
               decoration: InputDecoration(
-                hintText: 'ابحث عن طعام، هدايا، خضار، أو دواء...',
+                hintText: 'ابحث عن طعام، بقالة، خضار، أو دواء...',
                 hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                 prefixIcon: const Icon(Icons.search, color: Colors.amber),
                 filled: true,
@@ -846,90 +859,131 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _buildCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
-          filteredProducts.isEmpty
-              ? const Padding(
-            padding: EdgeInsets.all(50.0),
-            child: Center(child: Text('لا توجد نتائج مطابقة للبحث 🔍', style: TextStyle(color: Colors.grey, fontSize: 15))),
-          )
-              : ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: filteredProducts.length,
-            itemBuilder: (context, index) {
-              final ProductModel product = filteredProducts[index];
-              if (!product.available) return const SizedBox.shrink();
 
-              // 🟢 التحقق إذا كان المنتج يتبع قسم الخضار والفواكه (سعر متغير بدون سعر ثابت)
-              final bool isVariable = product.category == 'الخضار والفواكه';
-              int qtyInCart = appState.getProductQuantityInCart(product.id);
-
-              return Card(
-                color: cardBg,
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 2,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  title: Text(product.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                  subtitle: Text(
-                    isVariable
-                        ? '${product.restaurantName} - ⚖️ السعر حسب الوزن (${product.unit})'
-                        : '${product.restaurantName} - ${product.price} ر.ي / (${product.category})',
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                  ),
-                  trailing: isVariable
-                      ? ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
+          // 🟢 عرض قائمة المطاعم إذا كانت الفئة المختارة هي "المطاعم"
+          if (selectedCategory == 'المطاعم') ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
+              child: Text('اختر مطعماً لعرض وجباته 🍽️', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+            ),
+            uniqueRestaurants.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(40.0),
+                    child: Center(child: Text('لا توجد مطاعم متاحة حالياً 🍽️', style: TextStyle(color: Colors.grey))),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: uniqueRestaurants.length,
+                    itemBuilder: (context, index) {
+                      final restaurantName = uniqueRestaurants[index];
+                      return Card(
+                        color: cardBg,
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const CircleAvatar(
                             backgroundColor: Colors.amber,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Icon(Icons.restaurant, color: Colors.black),
                           ),
-                          icon: const Icon(Icons.scale, color: Colors.black, size: 16),
-                          onPressed: appState.isStoreOpen
-                              ? () => _showVariableProductDialog(context, appState, product)
-                              : null,
-                          label: const Text('اطلب بالوزن', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                        )
-                      : (qtyInCart == 0
-                          ? ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.amber,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                              ),
-                              onPressed: appState.isStoreOpen
-                                  ? () {
-                                      appState.addToCart(CartItemModel(
-                                        id: product.id,
-                                        name: product.name,
-                                        price: product.price,
-                                        quantity: 1,
-                                        restaurantId: product.restaurantName,
-                                        imageUrl: product.imageUrl,
-                                      ));
-                                    }
-                                  : null,
-                              child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                            )
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
-                                  onPressed: () => appState.updateQuantity(product.id, -1),
-                                ),
-                                Text('$qtyInCart', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 22),
-                                  onPressed: () => appState.updateQuantity(product.id, 1),
-                                ),
-                              ],
-                            )),
-                ),
-              );
-            },
-          ),
+                          title: Text(restaurantName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                          subtitle: const Text('اضغط لعرض الوجبات والقائمة 📋', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
+                          onTap: () {
+                            setState(() {
+                              _searchController.text = restaurantName;
+                            });
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ] else ...[
+            // 🟢 عرض المنتجات مباشرة دفعة واحدة (للبقالات، الخضار، وغيرها)
+            filteredProducts.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(50.0),
+                    child: Center(child: Text('لا توجد منتجات مطابقة للبحث 🔍', style: TextStyle(color: Colors.grey, fontSize: 15))),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      final ProductModel product = filteredProducts[index];
+                      if (!product.available) return const SizedBox.shrink();
+
+                      final bool isVariable = product.category == 'الخضار والفواكه';
+                      int qtyInCart = appState.getProductQuantityInCart(product.id);
+
+                      return Card(
+                        color: cardBg,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 2,
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          title: Text(product.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                          subtitle: Text(
+                            isVariable
+                                ? '${product.restaurantName} - ⚖️ السعر حسب الوزن (${product.unit})'
+                                : '${product.restaurantName} - ${product.price} ر.ي / (${product.category})',
+                            style: const TextStyle(color: Colors.grey, fontSize: 13),
+                          ),
+                          trailing: isVariable
+                              ? ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  ),
+                                  icon: const Icon(Icons.scale, color: Colors.black, size: 16),
+                                  onPressed: appState.isStoreOpen
+                                      ? () => _showVariableProductDialog(context, appState, product)
+                                      : null,
+                                  label: const Text('اطلب بالوزن', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                )
+                              : (qtyInCart == 0
+                                  ? ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.amber,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      ),
+                                      onPressed: appState.isStoreOpen
+                                          ? () {
+                                              appState.addToCart(CartItemModel(
+                                                id: product.id,
+                                                name: product.name,
+                                                price: product.price,
+                                                quantity: 1,
+                                                restaurantId: product.restaurantName,
+                                                imageUrl: product.imageUrl,
+                                              ));
+                                            }
+                                          : null,
+                                      child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
+                                          onPressed: () => appState.updateQuantity(product.id, -1),
+                                        ),
+                                        Text('$qtyInCart', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                                        IconButton(
+                                          icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 22),
+                                          onPressed: () => appState.updateQuantity(product.id, 1),
+                                        ),
+                                      ],
+                                    )),
+                        ),
+                      );
+                    },
+                  ),
+          ],
         ],
       ),
     );
@@ -951,7 +1005,12 @@ class _HomeScreenState extends State<HomeScreen> {
               selectedColor: Colors.amber,
               backgroundColor: cardBg,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              onSelected: (val) => setState(() => selectedCategory = cat),
+              onSelected: (val) {
+                setState(() {
+                  selectedCategory = cat;
+                  _searchController.clear(); // مسح شريط البحث عند تغيير القسم لتحديث العرض بسلاسة
+                });
+              },
             ),
           );
         }).toList(),
