@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../utils/constants.dart';
 
@@ -14,7 +15,7 @@ class MapLocationScreen extends StatefulWidget {
 class _MapLocationScreenState extends State<MapLocationScreen> {
   // إحداثيات مركز مدينة تعز الافتراضية
   static const LatLng _taizCenter = LatLng(13.5795, 44.0209);
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
   String? _error;
@@ -59,11 +60,8 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       if (!mounted) return;
       setState(() => _selectedPoint = point);
       
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: point, zoom: 16),
-        ),
-      );
+      // تحريك خريطة OpenStreetMap إلى الموقع الجديد
+      _mapController.move(point, 16.0);
     } catch (error) {
       if (mounted) {
         setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -76,7 +74,6 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   @override
   void dispose() {
     _customAddressController.dispose();
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -167,7 +164,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
             
             const SizedBox(height: 8),
 
-            // خريطة جوجل التفاعلية الفعلية
+            // خريطة OpenStreetMap التفاعلية المجانية بدلاً من جوجل
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -176,25 +173,36 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   border: Border.all(color: Colors.grey.withOpacity(0.3)),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: widget.initialPoint ?? _taizCenter,
-                    zoom: 15,
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: widget.initialPoint ?? _taizCenter,
+                    initialZoom: 15,
+                    onTap: (tapPosition, point) {
+                      setState(() => _selectedPoint = point);
+                    },
                   ),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: true,
-                  onMapCreated: (controller) => _mapController = controller,
-                  onTap: (point) {
-                    setState(() => _selectedPoint = point);
-                  },
-                  markers: _selectedPoint == null ? {} : {
-                    Marker(
-                      markerId: const MarkerId('selected_location'),
-                      position: _selectedPoint!,
-                      infoWindow: const InfoWindow(title: 'موقع التوصيل المحدد'),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.fast.taiz',
                     ),
-                  },
+                    if (_selectedPoint != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _selectedPoint!,
+                            width: 80,
+                            height: 80,
+                            child: const Icon(
+                              Icons.location_pin,
+                              color: Colors.red,
+                              size: 45,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
               ),
             ),
