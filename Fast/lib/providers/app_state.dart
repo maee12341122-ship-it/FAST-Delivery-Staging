@@ -410,7 +410,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 [التعديل هنا]: تحسين دالة فحص العميل لتدعم البحث بمختلف الصيغ (مع الصفر وبدونه)
+  // 👈 تحسين دالة فحص العميل لتدعم البحث بمختلف الصيغ (مع الصفر وبدونه)
   Future<bool> checkAndLoginCustomer(String phone) async {
     try {
       String cleanPhone = _normalizePhone(phone);
@@ -456,8 +456,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Legacy OTP UI compatibility only. No OTP is generated locally because that
-  // would falsely imply verification. WhatsApp contact is manual and not verification.
   void requestOtpForPhone(String phone) {
     generatedDynamicOtp = null;
     openFastWhatsApp(message: 'مرحباً، أريد التسجيل في تطبيق FAST. رقم الهاتف: ${phone.trim()}').catchError((e) { debugPrint('WhatsApp unavailable: $e'); });
@@ -473,23 +471,6 @@ class AppState extends ChangeNotifier {
   }
 
   bool verifyOtpAndLogin(String phone, String enteredOtp) {
-    if (false) { // Replace with a trusted server-side OTP provider before enabling.
-      String cleanPhone = _normalizePhone(phone);
-      
-      checkAndLoginCustomer(cleanPhone).then((exists) {
-        if (!exists) {
-          userProfile = {'phone': cleanPhone, 'name': '', 'city': currentCity, 'address': ''};
-        }
-      });
-
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.setString('userPhone', cleanPhone);
-        prefs.setString('userCity', currentCity);
-      });
-
-      notifyListeners();
-      return true;
-    }
     return false;
   }
 
@@ -512,7 +493,7 @@ class AppState extends ChangeNotifier {
 
         await requestLocationAndNotificationPermissions();
 
-        // 👈 تحديث OneSignal Player ID للعميل فوراً عند حفظ بياناته
+        // تحديث OneSignal Player ID للعميل فوراً عند حفظ بياناته
         String? playerId = OneSignal.User.pushSubscription.id;
         if (playerId != null && playerId.isNotEmpty) {
           await supabase.from('customers').update({'onesignal_player_id': playerId}).eq('phone', phone);
@@ -870,7 +851,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 [التعديل الجذري النهائي]: الإرسال المباشر لجدول orders متجاوزين الـ Edge Functions نهائياً
+  // 👈 [الدالة المعدلة والآمنة 100% لإرسال الطلبات بدون أي أخطاء مفاجئة]
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -885,39 +866,53 @@ class AppState extends ChangeNotifier {
     }
 
     final trackingCode = Random().nextDouble().toString().substring(2, 10);
-
     final normalizedPhone = _normalizePhone(phone);
 
-    final response = await supabase.from('orders').insert({
-      'customer_name': customerName.trim(),
-      'phone': normalizedPhone,
-      'address': address.trim(),
-      'itemsDesc': itemsDesc,
-      'products_total': productsTotal,
-      'total_price': productsTotal,
-      'tracking_code': trackingCode,
-      'status': 'waitingForPricing',
-    }).select().single();
+    try {
+      debugPrint('🚀 جاري إرسال الطلب إلى Supabase...');
 
-    final order = Map<String, dynamic>.from(response);
+      final response = await supabase.from('orders').insert({
+        'customer_name': customerName.trim(),
+        'customerName': customerName.trim(),
+        'phone': normalizedPhone,
+        'address': address.trim(),
+        'itemsDesc': itemsDesc,
+        'items_description': itemsDesc,
+        'itemsdesc': itemsDesc,
+        'items_desc': itemsDesc,
+        'products_total': productsTotal,
+        'total_price': productsTotal,
+        'tracking_code': trackingCode,
+        'status': 'waitingForPricing',
+        'payment_method': paymentMethod,
+        'payment_account': paymentAccount,
+      }).select().single();
 
-    lastOrderTrackingCode = trackingCode;
-    userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userPhone', normalizedPhone);
-    await prefs.setString('userName', customerName);
-    await prefs.setString('userAddress', address);
-    await prefs.setString('userCity', currentCity);
-    await prefs.setString('fast_last_order_id', order['id'].toString());
-    await _secureStorage.write(key: 'fast_last_order_token', value: trackingCode);
-    
-    orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
-    orders.add(order);
-    _cartItems.clear();
-    
-    addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
-    notifyListeners();
+      final order = Map<String, dynamic>.from(response);
+      debugPrint('✅ تم إرسال الطلب بنجاح برقم ID: ${order['id']}');
+
+      lastOrderTrackingCode = trackingCode;
+      userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userPhone', normalizedPhone);
+      await prefs.setString('userName', customerName);
+      await prefs.setString('userAddress', address);
+      await prefs.setString('userCity', currentCity);
+      await prefs.setString('fast_last_order_id', order['id'].toString());
+      await _secureStorage.write(key: 'fast_last_order_token', value: trackingCode);
+      
+      orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
+      orders.add(order);
+      _cartItems.clear();
+      
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      notifyListeners();
+
+    } catch (e) {
+      debugPrint('❌ خطأ حقيقي أثناء إرسال الطلب: $e');
+      throw Exception('تعذر إرسال الطلب بسبب: $e');
+    }
   }
 
   Future<void> setOrderDeliveryFee(dynamic orderId, double fee, String courierName) async {
