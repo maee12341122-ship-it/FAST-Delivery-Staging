@@ -106,6 +106,98 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ⚖️ نافذة منبثقة لإدخال الوزن أو الكمية المطلوبة للخضروات والفواكه
+  void _showVariableProductDialog(BuildContext context, AppState appState, ProductModel product) {
+    final TextEditingController noteController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.scale, color: Colors.amber),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'طلب ${product.name}',
+                  style: TextStyle(
+                    color: appState.isDarkMode ? Colors.white : Colors.black87,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'هذا المنتج يباع بالوزن/العدد (${product.unit}). يرجى تحديد الكمية المطلوبة بدقة:',
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                autofocus: true,
+                style: TextStyle(color: appState.isDarkMode ? Colors.white : Colors.black87),
+                decoration: InputDecoration(
+                  hintText: 'مثال: كيلو ونصف، 4 حبات، ربطتين...',
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
+                  filled: true,
+                  fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                final note = noteController.text.trim();
+                if (note.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('الرجاء إدخال الكمية أو الوزن المطلوب')),
+                  );
+                  return;
+                }
+                
+                // إضافة المنتج للسلة مع دمج الوزن/الكمية في اسم المنتج، وبسعر افتراضي 0 ليتم تسعيره من الإدارة
+                appState.addToCart(CartItemModel(
+                  id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
+                  name: '${product.name} ($note ${product.unit})',
+                  price: 0.0,
+                  quantity: 1,
+                  restaurantId: product.restaurantName.isNotEmpty ? product.restaurantName : 'قسم الخضار والفواكه',
+                  imageUrl: product.imageUrl,
+                ));
+
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('تمت إضافة ${product.name} ($note) إلى السلة بنجاح 🥬')),
+                );
+              },
+              child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showCheckoutDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile != null) {
       _nameController.text = appState.userProfile?['name'] ?? '';
@@ -181,30 +273,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                       ),
                       items: const [
-                      DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام فقط')),
-                    ],
+                        DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام فقط')),
+                      ],
                       onChanged: (val) {
                         setDialogState(() {
                           _selectedPaymentMethod = val!;
                         });
                       },
                     ),
-                    if (false && _selectedPaymentMethod != 'cash') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _paymentAccountController,
-                        keyboardType: TextInputType.text,
-                        style: TextStyle(color: textColor),
-                        decoration: InputDecoration(
-                          labelText: 'رقم الحساب المحول منه ($_selectedPaymentMethod)',
-                          labelStyle: const TextStyle(color: Colors.amberAccent),
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
-                        ),
-                        validator: (v) => _selectedPaymentMethod != 'cash' && (v == null || v.isEmpty) ? 'يرجى إدخال رقم الحساب' : null,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -551,7 +627,6 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _currentIndex,
             children: pages,
           ),
-          // تم ضبط شريط التنقل السفلي هنا ليكون حصرياً ووحيداً بالأسفل دون أي تكرار
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) {
@@ -785,6 +860,8 @@ class _HomeScreenState extends State<HomeScreen> {
               final ProductModel product = filteredProducts[index];
               if (!product.available) return const SizedBox.shrink();
 
+              // 🟢 التحقق إذا كان المنتج يتبع قسم الخضار والفواكه (سعر متغير بدون سعر ثابت)
+              final bool isVariable = product.category == 'الخضار والفواكه';
               int qtyInCart = appState.getProductQuantityInCart(product.id);
 
               return Card(
@@ -796,44 +873,59 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   title: Text(product.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
                   subtitle: Text(
-                    '${product.restaurantName} - ${product.price} ر.ي / (${product.category})',
+                    isVariable
+                        ? '${product.restaurantName} - ⚖️ السعر حسب الوزن (${product.unit})'
+                        : '${product.restaurantName} - ${product.price} ر.ي / (${product.category})',
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
-                  trailing: qtyInCart == 0
-                      ? ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    onPressed: appState.isStoreOpen
-                        ? () {
-                      appState.addToCart(CartItemModel(
-                        id: product.id,
-                        name: product.name,
-                        price: product.price,
-                        quantity: 1,
-                        restaurantId: product.restaurantName,
-                        imageUrl: product.imageUrl,
-                      ));
-                    }
-                        : null,
-                    child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                  )
-                      : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
-                        onPressed: () => appState.updateQuantity(product.id, -1),
-                      ),
-                      Text('$qtyInCart', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 22),
-                        onPressed: () => appState.updateQuantity(product.id, 1),
-                      ),
-                    ],
-                  ),
+                  trailing: isVariable
+                      ? ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          icon: const Icon(Icons.scale, color: Colors.black, size: 16),
+                          onPressed: appState.isStoreOpen
+                              ? () => _showVariableProductDialog(context, appState, product)
+                              : null,
+                          label: const Text('اطلب بالوزن', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                        )
+                      : (qtyInCart == 0
+                          ? ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                              ),
+                              onPressed: appState.isStoreOpen
+                                  ? () {
+                                      appState.addToCart(CartItemModel(
+                                        id: product.id,
+                                        name: product.name,
+                                        price: product.price,
+                                        quantity: 1,
+                                        restaurantId: product.restaurantName,
+                                        imageUrl: product.imageUrl,
+                                      ));
+                                    }
+                                  : null,
+                              child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
+                                  onPressed: () => appState.updateQuantity(product.id, -1),
+                                ),
+                                Text('$qtyInCart', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, color: Colors.greenAccent, size: 22),
+                                  onPressed: () => appState.updateQuantity(product.id, 1),
+                                ),
+                              ],
+                            )),
                 ),
               );
             },
