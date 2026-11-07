@@ -183,7 +183,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 👈 قسم اختيار طريقة الدفع (نقدي أو محافظ إلكترونية مع رقم الحساب)
+            // 👈 قسم اختيار طريقة الدفع
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -214,27 +214,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       });
                     },
                   ),
-                  if (false && _selectedPaymentMethod != 'cash') ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _paymentAccountController,
-                      keyboardType: TextInputType.text,
-                      style: TextStyle(color: textColor),
-                      decoration: InputDecoration(
-                        labelText: 'رقم الحساب / الجوال المحول منه',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // خريطة OpenStreetMap التفاعلية المجانية لتحديد موقع التوصيل
+            // خريطة التوصيل التفاعلية (تم تحديث المزود لضمان ظهور المناطق والمباني بوضوح)
             const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 8),
             Container(
@@ -259,9 +244,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         },
                       ),
                       children: [
+                        // 🛠️ التعديل الجذري هنا لضمان عمل الخريطة وعدم توقفها
                         TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                          subdomains: const ['a', 'b', 'c', 'd'],
                           userAgentPackageName: 'com.fast.taiz',
+                          tileProvider: NetworkTileProvider(),
                         ),
                         MarkerLayer(
                           markers: [
@@ -333,20 +321,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   return;
                 }
 
-                if (_selectedPaymentMethod != 'cash' && _paymentAccountController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إدخال رقم الحساب المحول منه للمحفظة الإلكترونية')),
-                  );
-                  return;
-                }
-
                 // دمج الوصف النصي مع الإحداثيات الجغرافية كعنوان متكامل
                 final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: ${_selectedLocation.latitude.toStringAsFixed(4)}, ${_selectedLocation.longitude.toStringAsFixed(4)})';
 
                 // وصف المنتجات في السلة
                 final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
 
-                // حفظ ملف العميل وإرسال الطلب إلى Supabase مباشرة مع تفاصيل الدفع وزر itemsDesc الصحيح
+                // حفظ ملف العميل وإرسال الطلب إلى Supabase
                 await appState.saveUserProfileDetails(_nameController.text, fullAddress);
                 try {
                   await appState.createOrder(
