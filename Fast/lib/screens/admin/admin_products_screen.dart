@@ -20,7 +20,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     String selectedCategory = product?.category ?? 'المطاعم';
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
-    String unit = product?.unit ?? 'حبة';
+    
+    // 👈 وحدة القياس للمنتجات المتغيرة (مثل: كيلو، حبة، ربطة)
+    String selectedUnit = product?.unit ?? 'كيلو';
 
     showDialog(
       context: context,
@@ -41,7 +43,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                   TextField(
                     controller: nameController,
                     style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(labelText: 'اسم المنتج', labelStyle: TextStyle(color: Colors.grey)),
+                    decoration: const InputDecoration(labelText: 'اسم المنتج *', labelStyle: TextStyle(color: Colors.grey)),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -54,7 +56,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     controller: priceController,
                     keyboardType: TextInputType.number,
                     style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(labelText: 'السعر (ر.ي)', labelStyle: TextStyle(color: Colors.grey)),
+                    decoration: InputDecoration(
+                      labelText: isVariablePrice ? 'السعر التقريبي أو الافتراضي لكل وحدة (ر.ي) *' : 'السعر الثابت (ر.ي) *', 
+                      labelStyle: const TextStyle(color: Colors.grey),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -81,11 +86,26 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     onChanged: (val) => setDialogState(() => isAvailable = val),
                   ),
                   SwitchListTile(
-                    title: const Text('سعر متغير (بالوزن/العدد)؟', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    title: const Text('سعر متغير (بالوزن/العدد)؟', style: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                     value: isVariablePrice,
                     activeColor: Colors.amber,
                     onChanged: (val) => setDialogState(() => isVariablePrice = val),
                   ),
+                  
+                  // 👈 تظهر وحدات القياس إجبارياً إذا كان المنتج بسعر متغير (وزن)
+                  if (isVariablePrice) ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: selectedUnit,
+                      dropdownColor: const Color(0xFF1E1E1E),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'وحدة القياس الإجبارية *', labelStyle: TextStyle(color: Colors.amber)),
+                      items: ['كيلو', 'جرام', 'حبة', 'ربطة', 'لتر', 'باكت'].map((u) {
+                        return DropdownMenuItem(value: u, child: Text(u));
+                      }).toList(),
+                      onChanged: (val) => setDialogState(() => selectedUnit = val!),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -97,31 +117,45 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  if (nameController.text.isNotEmpty) {
-                    final newProduct = ProductModel(
-                      id: isEditing ? product.id : DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameController.text.trim(),
-                      restaurantName: restaurantController.text.trim(),
-                      price: double.tryParse(priceController.text) ?? 0.0,
-                      category: selectedCategory,
-                      available: isAvailable,
-                      imageUrl: imageController.text.trim(),
-                      unit: unit,
-                      isVariablePrice: isVariablePrice,
+                  // 🛡️ التحقق الإجباري الصارم للأسماء والأسعار والوزن
+                  if (nameController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('⚠️ يرجى إدخال اسم المنتج بشكل إجباري!')),
                     );
+                    return;
+                  }
 
-                    try {
-                      await appState.upsertProduct(newProduct);
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('تم حفظ المنتج بنجاح ✅')),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('خطأ في الحفظ: $e')),
-                      );
-                    }
+                  final double parsedPrice = double.tryParse(priceController.text.trim()) ?? 0.0;
+                  if (parsedPrice <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('⚠️ يجب إدخال سعر صحيح أكبر من الصفر بشكل إجباري!')),
+                    );
+                    return;
+                  }
+
+                  final newProduct = ProductModel(
+                    id: isEditing ? product.id : DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: nameController.text.trim(),
+                    restaurantName: restaurantController.text.trim(),
+                    price: parsedPrice,
+                    category: selectedCategory,
+                    available: isAvailable,
+                    imageUrl: imageController.text.trim(),
+                    unit: isVariablePrice ? selectedUnit : 'حبة',
+                    isVariablePrice: isVariablePrice,
+                  );
+
+                  try {
+                    await appState.upsertProduct(newProduct);
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم حفظ المنتج والتحقق من البيانات بنجاح ✅')),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('خطأ في الحفظ: $e')),
+                    );
                   }
                 },
                 child: const Text('حفظ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -169,7 +203,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             : const Icon(Icons.fastfood, color: Colors.amber),
                       ),
                       title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text('${product.restaurantName} | ${product.price} ر.ي\nالحالة: ${product.available ? "متوفر ✅" : "غير متوفر ❌"}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      subtitle: Text(
+                        '${product.restaurantName} | ${product.price} ر.ي ${product.isVariablePrice ? "(بـ ${product.unit})" : ""}\nالحالة: ${product.available ? "متوفر ✅" : "غير متوفر ❌"}',
+                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
                       isThreeLine: true,
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
