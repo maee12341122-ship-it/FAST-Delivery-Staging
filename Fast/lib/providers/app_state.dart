@@ -867,11 +867,14 @@ class AppState extends ChangeNotifier {
     await supabase.from('products').upsert({
       'id': product.id,
       'name': product.name.trim(),
+      'description': product.description.trim(), // 👈 إرسال الوصف لقاعدة البيانات
       'restaurant_name': product.restaurantName.trim(),
       'price': product.price,
       'category': product.category,
       'available': product.available,
       'image_url': product.imageUrl,
+      'unit': product.unit,
+      'is_variable_price': product.isVariablePrice,
     }, onConflict: 'id');
     await fetchProductsFromSupabase();
     notifyListeners();
@@ -885,11 +888,14 @@ class AppState extends ChangeNotifier {
       products = response.map((p) => ProductModel(
         id: p['id'].toString(),
         name: p['name'] ?? '',
+        description: p['description'] ?? '', // 👈 تمرير الوصف الإلزامي بنجاح لتصحيح خطأ البناء
         restaurantName: p['restaurant_name'] ?? 'متجر عام',
         price: double.tryParse(p['price'].toString()) ?? 0.0,
         category: p['category'] ?? 'المطاعم',
         available: p['available'] ?? true,
         imageUrl: p['image_url'] ?? '',
+        unit: p['unit'] ?? 'حبة',
+        isVariablePrice: p['is_variable_price'] ?? false,
       )).toList();
       notifyListeners();
     } catch (e) {
@@ -904,11 +910,14 @@ class AppState extends ChangeNotifier {
     await supabase.from('products').insert({
       'id': product.id,
       'name': product.name.trim(),
+      'description': product.description.trim(), // 👈 إرسال الوصف الإلزامي
       'restaurant_name': product.restaurantName.trim(),
       'price': product.price,
       'category': product.category,
       'available': product.available,
       'image_url': product.imageUrl,
+      'unit': product.unit,
+      'is_variable_price': product.isVariablePrice,
     });
     await fetchProductsFromSupabase();
   }
@@ -1033,7 +1042,7 @@ class AppState extends ChangeNotifier {
       
       _cartItems.clear();
       
-      addNotification('تم استلاستيلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
