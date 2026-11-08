@@ -24,6 +24,7 @@ class AppState extends ChangeNotifier {
     _loadAdminSession();
     _loadCourierSession();
     _loadUserSession();
+    _loadUserAddressesFromPrefs(); // 📍 تحميل العناوين المتعددة المحفوظة عند الإقلاع
     fetchStoreSettings();
     fetchProductsFromSupabase();
     fetchCouriersFromSupabase();
@@ -85,20 +86,63 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة) ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة مع الحفظ التلقائي) ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
+
+  Future<void> _loadUserAddressesFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? addressesJson = prefs.getString('user_saved_addresses_json');
+      if (addressesJson != null && addressesJson.isNotEmpty) {
+        final List<dynamic> decodedList = jsonDecode(addressesJson);
+        _userAddresses.clear();
+        for (var item in decodedList) {
+          if (item is Map<String, dynamic>) {
+            _userAddresses.add(AddressModel(
+              id: item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+              title: item['title']?.toString() ?? '',
+              area: item['area']?.toString() ?? '',
+              details: item['details']?.toString() ?? '',
+              instructions: item['instructions']?.toString() ?? '',
+            ));
+          }
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في تحميل العناوين المحفوظة: $e');
+    }
+  }
+
+  Future<void> _saveUserAddressesToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List> listToEncode = _userAddresses.map((a) => {
+        'id': a.id,
+        'title': a.title,
+        'area': a.area,
+        'details': a.details,
+        'instructions': a.instructions,
+      }).toList();
+      await prefs.setString('user_saved_addresses_json', jsonEncode(listToEncode));
+    } catch (e) {
+      debugPrint('⚠️ خطأ في حفظ العناوين المحفوظة: $e');
+    }
+  }
 
   void addUserAddress(AddressModel address) {
     _userAddresses.add(address);
     if (_userAddresses.length == 1) {
       selectDefaultAddress(address);
     }
+    _saveUserAddressesToPrefs();
     notifyListeners();
   }
 
   void removeUserAddress(String id) {
     _userAddresses.removeWhere((a) => a.id == id);
+    _saveUserAddressesToPrefs();
     notifyListeners();
   }
 
@@ -787,7 +831,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // دعم إضافة المنتجات والكميات بحرية تامة دون قيود وزنية معقدة
   void addCustomItem({required String name, required int price, required int quantity, required String notes}) {
     _cartItems.add(CartItemModel(
       id: 'custom-${DateTime.now().millisecondsSinceEpoch}',
@@ -846,7 +889,6 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
   }
 
-  // --- إدارة المنتجات للمشرف ---
   Future<void> removeProduct(String id) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('صلاحية المشرف مطلوبة.');
