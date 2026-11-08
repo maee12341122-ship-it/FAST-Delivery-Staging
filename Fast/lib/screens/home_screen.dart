@@ -6,12 +6,12 @@ import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
-import '../utils/constants.dart';
 import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
 import 'courier_screen.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
+import 'customer/favorites_screen.dart'; // 👈 استيراد شاشة المفضلة
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -1020,24 +1020,61 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // صورة المنتج البصرية
-                              Container(
-                                height: 90,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: product.imageUrl.isNotEmpty
-                                      ? Image.network(
-                                          product.imageUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
-                                        )
-                                      : const Icon(Icons.fastfood, color: Colors.amber, size: 35),
-                                ),
+                              // صورة المنتج البصرية مع زر المفضلة العائم ❤️
+                              Stack(
+                                children: [
+                                  Container(
+                                    height: 90,
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: product.imageUrl.isNotEmpty
+                                          ? Image.network(
+                                              product.imageUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                                            )
+                                          : const Icon(Icons.fastfood, color: Colors.amber, size: 35),
+                                    ),
+                                  ),
+                                  // 🟢 زر المفضلة العائم
+                                  Positioned(
+                                    top: 6,
+                                    left: 6,
+                                    child: Consumer<AppState>(
+                                      builder: (context, state, child) {
+                                        final bool isFav = state.isProductFavorite(product.id);
+                                        return InkWell(
+                                          onTap: () {
+                                            state.toggleFavorite(product.id);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(isFav ? 'تمت الإزالة من المفضلة 💔' : 'تمت الإضافة للمفضلة ❤️'),
+                                                duration: const Duration(seconds: 1),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.black54,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              isFav ? Icons.favorite : Icons.favorite_border,
+                                              color: Colors.redAccent,
+                                              size: 18,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                               // اسم المنتج
@@ -1549,6 +1586,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+          );
+        }),
+
+        // 🟢 زر الانتقال إلى شاشة المفضلة
+        _buildProfileItem(Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const FavoritesScreen()),
           );
         }),
 
