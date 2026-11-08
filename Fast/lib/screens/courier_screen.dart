@@ -328,39 +328,8 @@ class _CourierScreenState extends State<CourierScreen> {
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
-                              if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                                        onPressed: () => appState.courierRespondToOrder(orderId, true),
-                                        child: const Text('قبول الطلب ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                        onPressed: () => appState.courierRespondToOrder(orderId, false),
-                                        child: const Text('رفض الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.courierUpdateArrival(orderId), // 👈 تم التصحيح هنا
-                                  child: const Text('تحديث الحالة (تم الوصول للموقع) 📍', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderDelivered(orderId),
-                                  child: const Text('تأكيد تسليم الطلب وتحصيل المبلغ ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ],
+                              // استدعاء الأزرار بطريقة نظيفة وآمنة
+                              _buildOrderActions(appState, orderId, orderStatus),
                             ],
                           ),
                         ),
@@ -371,5 +340,43 @@ class _CourierScreenState extends State<CourierScreen> {
         ],
       ),
     );
+  }
+
+  // دالة مخصصة لإرجاع أزرار التحكم بالحالة بناءً على حالة الطلب
+  Widget _buildOrderActions(AppState appState, String orderId, String orderStatus) {
+    if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+              onPressed: () => appState.courierRespondToOrder(orderId, true),
+              child: const Text('قبول الطلب ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+              onPressed: () => appState.courierRespondToOrder(orderId, false),
+              child: const Text('رفض الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      );
+    } else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') {
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
+        onPressed: () => appState.courierUpdateArrival(orderId),
+        child: const Text('تحديث الحالة (تم الوصول للموقع) 📍', style: TextStyle(fontWeight: FontWeight.bold)),
+      );
+    } else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') {
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
+        onPressed: () => appState.markOrderDelivered(orderId),
+        child: const Text('تأكيد تسليم الطلب وتحصيل المبلغ ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
