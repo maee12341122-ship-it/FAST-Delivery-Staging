@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart'; // 👈 لاستخدام زر �
 import 'package:onesignal_flutter/onesignal_flutter.dart'; // 👈 استيراد مكتبة OneSignal لتحديث الـ Player ID
 import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استيراد سوبابيس لحفظ المعرّف
 import '../providers/app_state.dart';
-import 'package:fast/screens/chat_screen.dart';
+import 'chat_screen.dart';
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -124,7 +124,6 @@ class _CourierScreenState extends State<CourierScreen> {
                           onPressed: () async {
                             bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
                             if (success) {
-                              // 👈 [تحديث OneSignal Player ID للمندوب تلقائياً عند تسجيل الدخول الناجح]
                               try {
                                 String? playerId = OneSignal.User.pushSubscription.id;
                                 if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
@@ -161,7 +160,6 @@ class _CourierScreenState extends State<CourierScreen> {
   }
 
   Widget _buildCourierOrdersList(AppState appState, Map<String, dynamic> courier) {
-    // 🟢 فلترة ذكية لا تتأثر بحالة الأحرف (Capital/Small) أو المسافات الزائدة
     final String courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
     final String courierId = (courier['id'] ?? '').toString().trim();
 
@@ -340,10 +338,10 @@ class _CourierScreenState extends State<CourierScreen> {
                                   ),
                                   icon: const Icon(Icons.navigation),
                                   onPressed: () {
-                                    appState.courierUpdateArrival(orderId);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال إشعار الوصول للعميل والمشرف! 📍')));
+                                    appState.markOrderDelivered(orderId); // أو تحديث الوصول
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حالة الطلب بنجاح! 📍')));
                                   },
-                                  label: const Text('هل وصلت إلى العميل؟ (نعم، وصلت)', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  label: const Text('تحديث الحالة (تم الوصول)', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ]
                               else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
