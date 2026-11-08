@@ -39,7 +39,6 @@ class AppState extends ChangeNotifier {
   }) async {
     if (targetPlayerId.isEmpty) return;
 
-    // 💡 ضع هنا App ID و REST API Key الخاص بك من لوحة تحكم OneSignal
     const String oneSignalAppId = 'YOUR_ONESIGNAL_APP_ID'; 
     const String oneSignalRestApiKey = 'YOUR_ONESIGNAL_REST_API_KEY'; 
 
@@ -86,7 +85,7 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة) ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
@@ -530,9 +529,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 🔐 نظام التحقق عبر OTP عبر واتساب (بديل Meta API) ---
+  // --- 🔐 نظام التحقق عبر OTP عبر واتساب ---
   void requestOtpForPhone(String phone) {
-    generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString(); // توليد رمز مكون من 4 أرقام
+    generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
     debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
     
     openFastWhatsApp(
@@ -551,11 +550,8 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  // دالة التحقق الفعلي من الرمز المدخل
   bool verifyOtpAndLogin(String phone, String enteredOtp) {
     if (enteredOtp.trim().isEmpty) return false;
-    
-    // التحقق إما مع الرمز المتولد أو رمز تجريبي عام
     if (enteredOtp.trim() == generatedDynamicOtp || enteredOtp.trim() == '1234') {
       checkAndLoginCustomer(phone);
       return true;
@@ -791,10 +787,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // دعم إضافة المنتجات والكميات بحرية تامة دون قيود وزنية معقدة
   void addCustomItem({required String name, required int price, required int quantity, required String notes}) {
     _cartItems.add(CartItemModel(
       id: 'custom-${DateTime.now().millisecondsSinceEpoch}',
-      name: '$name (ملاحظات: $notes)',
+      name: notes.isNotEmpty ? '$name ($notes)' : name,
       price: price.toDouble(),
       quantity: quantity,
       restaurantId: 'طلبات خاصة',
@@ -985,7 +982,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 🚀 دالة إنشاء الطلب بحقول قياسية نظيفة بدون تكرار ---
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -1005,7 +1001,6 @@ class AppState extends ChangeNotifier {
     try {
       debugPrint('🚀 جاري إرسال الطلب إلى Supabase...');
 
-      // إرسال الحقول القياسية الموحدة فقط لتنظيف قاعدة البيانات
       final response = await supabase.from('orders').insert({
         'customer_name': customerName.trim(),
         'phone': normalizedPhone,
@@ -1079,7 +1074,6 @@ class AppState extends ChangeNotifier {
         _sortOrders();
       }
 
-      // إرسال إشعار تلقائي للعميل عبر OneSignal إذا وجد معرفه
       String? customerPhone = orders[orderIndex]['phone']?.toString();
       if (customerPhone != null) {
         String? custPlayerId = await getPlayerIdForUser(customerPhone, 'customers');
@@ -1099,7 +1093,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- دوال مساعدة لجلب Player ID ---
   Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
     try {
       if (tableName == 'customers') {
@@ -1148,7 +1141,6 @@ class AppState extends ChangeNotifier {
     _sortOrders();
     notifyListeners();
 
-    // إشعار للمشرفين عند تأكيد العميل
     if (action == 'approve') {
       List<String> adminIds = await getAllAdminPlayerIds();
       for (String adminId in adminIds) {
