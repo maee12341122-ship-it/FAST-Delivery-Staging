@@ -6,6 +6,7 @@ import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import 'delivery_login_screen.dart';
 import 'customer/edit_profile_screen.dart';
+import 'customer/addresses_screen.dart'; // 👈 استيراد شاشة عناويني المحفوظة
 
 class AppDrawer extends StatelessWidget {
   final ValueChanged<int> onNavigate;
@@ -33,7 +34,6 @@ class AppDrawer extends StatelessWidget {
               user?.phone ?? 'لم يتم تسجيل رقم هاتف',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
-            // 💡 التصحيح هنا: استخدام currentAccountPicture بدلاً من accountPicture
             currentAccountPicture: const CircleAvatar(
               backgroundColor: AppConstants.gold,
               child: Icon(Icons.person, color: Colors.black, size: 36),
@@ -41,6 +41,16 @@ class AppDrawer extends StatelessWidget {
           ),
           
           _item(context, Icons.person_outline, 'حسابي', () => onNavigate(3)),
+          
+          // 📍 زر الانتقال إلى عناويني المحفوظة
+          _item(context, Icons.location_on, 'عناويني المحفوظة 📍', () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const AddressesScreen()),
+            );
+          }),
+
           _item(context, Icons.edit_location_alt, 'تعديل الحساب والموقع', () {
             Navigator.pop(context);
             Navigator.push(
