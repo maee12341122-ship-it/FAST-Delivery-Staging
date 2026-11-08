@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../providers/app_state.dart';
 import '../../models/product_model.dart';
 
@@ -11,6 +13,8 @@ class AdminProductsScreen extends StatefulWidget {
 }
 
 class _AdminProductsScreenState extends State<AdminProductsScreen> {
+  final ImagePicker _picker = ImagePicker();
+
   void _showProductDialog(BuildContext context, AppState appState, {ProductModel? product}) {
     final isEditing = product != null;
     final nameController = TextEditingController(text: product?.name ?? '');
@@ -20,8 +24,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     String selectedCategory = product?.category ?? 'المطاعم';
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
-    
-    // 👈 وحدة القياس للمنتجات المتغيرة (مثل: كيلو، حبة، ربطة)
     String selectedUnit = product?.unit ?? 'كيلو';
 
     showDialog(
@@ -57,17 +59,40 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     keyboardType: TextInputType.number,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      labelText: isVariablePrice ? 'السعر التقريبي أو الافتراضي لكل وحدة (ر.ي) *' : 'السعر الثابت (ر.ي) *', 
+                      labelText: isVariablePrice ? 'السعر التقريبي لكل وحدة (ر.ي) *' : 'السعر الثابت (ر.ي) *',
                       labelStyle: const TextStyle(color: Colors.grey),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: imageController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(labelText: 'رابط الصورة (Image URL)', labelStyle: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  
+                  // 🖼️ قسم اختيار الصورة من المعرض
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: imageController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'رابط الصورة (Image URL)', labelStyle: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () async {
+                          final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+                          if (image != null) {
+                            setDialogState(() {
+                              // مؤقتاً نضع مسار الصورة المحلي أو يمكن رفعه لـ Supabase Storage
+                              imageController.text = image.path;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.add_photo_alternate, color: Colors.amber, size: 28),
+                        tooltip: 'اختيار صورة من المعرض',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
+
                   DropdownButtonFormField<String>(
                     value: selectedCategory,
                     dropdownColor: const Color(0xFF1E1E1E),
@@ -91,8 +116,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     activeColor: Colors.amber,
                     onChanged: (val) => setDialogState(() => isVariablePrice = val),
                   ),
-                  
-                  // 👈 تظهر وحدات القياس إجبارياً إذا كان المنتج بسعر متغير (وزن)
                   if (isVariablePrice) ...[
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
@@ -117,7 +140,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  // 🛡️ التحقق الإجباري الصارم للأسماء والأسعار والوزن
                   if (nameController.text.trim().isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('⚠️ يرجى إدخال اسم المنتج بشكل إجباري!')),
@@ -150,7 +172,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     if (!context.mounted) return;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم حفظ المنتج والتحقق من البيانات بنجاح ✅')),
+                      const SnackBar(content: Text('تم حفظ المنتج وتحديث الصورة بنجاح ✅')),
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -199,7 +221,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: product.imageUrl.isNotEmpty
-                            ? Image.network(product.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber))
+                            ? (product.imageUrl.startsWith('http')
+                                ? Image.network(product.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber))
+                                : Image.file(File(product.imageUrl), width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber)))
                             : const Icon(Icons.fastfood, color: Colors.amber),
                       ),
                       title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
