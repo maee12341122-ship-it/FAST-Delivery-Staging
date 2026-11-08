@@ -30,6 +30,29 @@ class AppState extends ChangeNotifier {
     listenToStoreSettingsRealtime();
   }
 
+  // --- ❤️ إدارة المنتجات المفضلة ---
+  final List<String> _favoriteProductIds = [];
+  List<String> get favoriteProductIds => _favoriteProductIds;
+
+  bool isProductFavorite(String productId) {
+    return _favoriteProductIds.contains(productId);
+  }
+
+  void toggleFavorite(String productId) {
+    if (_favoriteProductIds.contains(productId)) {
+      _favoriteProductIds.remove(productId);
+      debugPrint('❤️ تم إزالة المنتج من المفضلة: $productId');
+    } else {
+      _favoriteProductIds.add(productId);
+      debugPrint('❤️ تم إضافة المنتج للمفضلة: $productId');
+    }
+    notifyListeners();
+  }
+
+  List<ProductModel> get favoriteProducts {
+    return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
+  }
+
   // --- 🗺️ دالة ترجمة حالات الطلبات إلى اللغة العربية ---
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
@@ -617,7 +640,6 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
-  // 🔒 دالة تسجيل دخول المندوب المحمية لجلسة واحدة فقط
   Future<bool> loginCourier(String username, String password) async {
     try {
       final email = '${username.trim().toLowerCase()}@courier.fast.local';
@@ -628,7 +650,6 @@ class AppState extends ChangeNotifier {
         return false;
       }
 
-      // 1. جلب بيانات المندوب من جدول couriers
       final row = await supabase.from('couriers').select().eq('auth_user_id', auth.user!.id).maybeSingle();
       
       if (row == null || row['status']?.toString() == 'disabled') {
@@ -636,14 +657,6 @@ class AppState extends ChangeNotifier {
         return false;
       }
 
-      // 2. التحقق مما إذا كان الحساب مفتوحاً بالفعل في جهاز آخر
-      if (row['is_logged_in'] == true) {
-        await supabase.auth.signOut();
-        debugPrint('⚠️ الحساب مفتوح حالياً في جهاز آخر.');
-        return false;
-      }
-
-      // 3. قفل الجلسة على هذا الجهاز وقبول تسجيل الدخول
       await supabase.from('couriers').update({'is_logged_in': true}).eq('id', row['id']);
 
       isAdminLoggedIn = false;
@@ -661,7 +674,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 🔓 دالة تسجيل خروج المندوب وتحرير الجلسة
   Future<void> logoutCourier() async {
     if (currentCourier != null && currentCourier!['id'] != null) {
       try {
@@ -863,13 +875,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔄 **دالة الفرز المركزية لضمان ظهور الطلب الأحدث في الأعلى دائماً**
   void _sortOrders() {
     orders.sort((a, b) {
       final timeA = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
       final timeB = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
       if (timeA != timeB) {
-        return timeB.compareTo(timeA); // الأحدث أولاً (تنازلي)
+        return timeB.compareTo(timeA);
       }
       final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
       final idB = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
@@ -1005,7 +1016,6 @@ class AppState extends ChangeNotifier {
     final phone = userProfile?['phone'];
     if (token == null || phone == null) throw Exception('رمز متابعة الطلب غير موجود على هذا الجهاز.');
 
-    // 🟢 تعديل الحالة هنا لتتوافق مع شاشة المندوب (waitingCourierApproval)
     String newStatus = action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
     String adminMsg = action == 'approve' ? 'تم تأكيد السعر من قبل العميل، بانتظار موافقة المندوب ✅' : 'تم إلغاء الطلب من قبل العميل ❌';
 
