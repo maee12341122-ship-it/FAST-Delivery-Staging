@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_state.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final Map<String, dynamic> order;
@@ -7,11 +9,14 @@ class OrderTrackingScreen extends StatelessWidget {
 
   // تحديد رقم المرحلة بناءً على حالة الطلب القادمة من قاعدة البيانات
   int _getCurrentStep(String status) {
-    switch (status) {
+    switch (status?.trim()) {
       case 'waitingForPricing': return 0;
       case 'pricingSentToCustomer': return 1;
-      case 'waitingCourierApproval': return 2;
+      case 'waitingCourierApproval':
+      case 'approvedByCustomer': return 2;
+      case 'acceptedByCourier':
       case 'onTheWay': return 3;
+      case 'arrivedToCustomer':
       case 'arrived': return 4;
       case 'delivered': return 5;
       default: return 0;
@@ -20,6 +25,8 @@ class OrderTrackingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppState>(context);
+    final String orderId = order['id']?.toString() ?? '';
     final String status = order['status'] ?? 'waitingForPricing';
     final int currentStep = _getCurrentStep(status);
 
@@ -38,7 +45,7 @@ class OrderTrackingScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: Text('تتبع الطلب #${order['id']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('تتبع الطلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
         body: Padding(
@@ -59,13 +66,78 @@ class OrderTrackingScreen extends StatelessWidget {
                   children: [
                     Text('🛒 المنتجات: ${order['items_description'] ?? 'لا توجد تفاصيل'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(height: 6),
-                    Text('💰 إجمالي السعر: ${order['products_total'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                    Text('💰 إجمالي السعر: ${order['total_price'] ?? order['products_total'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                   ],
                 ),
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 15),
+
+              // 💰 أزرار موافقة أو إلغاء العميل للسعر (تظهر تلقائياً عندما تكون الحالة بانتظار الموافقة)
+              if (status == 'pricingSentToCustomer') ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.amber.withOpacity(0.5), width: 1.5),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'تم تحديد رسوم التوصيل، يرجى الموافقة للمتابعة 🚀',
+                        style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () async {
+                                await appState.customerApprovePricing(orderId);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('تم تأكيد السعر بنجاح وجاري إرساله للمندوب ✅')),
+                                  );
+                                }
+                              },
+                              child: const Text('موافقة على السعر ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () async {
+                                await appState.customerCancelOrder(orderId);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('تم إلغاء الطلب ❌')),
+                                  );
+                                }
+                              },
+                              child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 15),
+              ],
+
               const Text('حالة خط سير الطلب 🚀', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 15),
               
