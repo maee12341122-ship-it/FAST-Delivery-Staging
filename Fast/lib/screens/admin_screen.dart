@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'admin/admin_products_screen.dart';
+import 'admin/admin_reports_screen.dart'; // 👈 استيراد شاشة تقارير الأرباح والمبيعات
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -455,8 +456,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
         children: [
           const Text('إعدادات أوقات الدوام الرسمي للمتجر', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
@@ -474,6 +474,28 @@ class _AdminScreenState extends State<AdminScreen> {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث أوقات الدوام وحفظها سحابياً بنجاح! ✅')));
             },
             child: const Text('حفظ وتحديث أوقات الدوام', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 30),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 15),
+          const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
+          // 👈 زر عرض تقارير الأرباح والمبيعات الشاملة
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminReportsScreen()),
+              );
+            },
+            icon: const Icon(Icons.analytics, size: 22),
+            label: const Text('عرض تقارير الأرباح والمبيعات الشاملة 📈', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ],
       ),
