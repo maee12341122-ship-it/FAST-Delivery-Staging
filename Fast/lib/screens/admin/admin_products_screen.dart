@@ -15,9 +15,8 @@ class AdminProductsScreen extends StatefulWidget {
 
 class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
-  bool _isUploadingImage = false; // مؤشر تحميل أثناء رفع الصورة
+  bool _isUploadingImage = false;
 
-  // ☁️ دالة رفع الصورة إلى سحاب Supabase Storage وإرجاع الرابط العام
   Future<String?> _uploadImageToSupabase(File imageFile, StateSetter setDialogState) async {
     try {
       setDialogState(() => _isUploadingImage = true);
@@ -25,12 +24,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final storagePath = 'products/$fileName';
 
-      // رفع الصورة إلى سلة (Bucket) باسم 'products' في Supabase Storage
       await Supabase.instance.client.storage
           .from('products')
           .upload(storagePath, imageFile);
 
-      // جلب الرابط العام العام (Public URL) للصورة المرفوعة
       final String publicUrl = Supabase.instance.client.storage
           .from('products')
           .getPublicUrl(storagePath);
@@ -50,6 +47,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     final restaurantController = TextEditingController(text: product?.restaurantName ?? '');
     final priceController = TextEditingController(text: product != null ? product.price.toString() : '');
     final imageController = TextEditingController(text: product?.imageUrl ?? '');
+    final descriptionController = TextEditingController(text: product?.description ?? ''); // 👈 متحكم حقل الوصف
     String selectedCategory = product?.category ?? 'المطاعم';
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
@@ -92,9 +90,19 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       labelStyle: const TextStyle(color: Colors.grey),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  // 🟢 حقل وصف المنتج الجديد
+                  TextField(
+                    controller: descriptionController,
+                    maxLines: 2,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'وصف المنتج أو تفاصيله (اختياري)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   
-                  // 🖼️ اختيار الصورة ورفعها مباشرة لـ Supabase Storage
                   Row(
                     children: [
                       Expanded(
@@ -114,7 +122,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                               onPressed: () async {
                                 final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
                                 if (image != null) {
-                                  // رفع الصورة تلقائياً وجلب الرابط العام
                                   final uploadedUrl = await _uploadImageToSupabase(File(image.path), setDialogState);
                                   if (uploadedUrl != null) {
                                     setDialogState(() {
@@ -128,7 +135,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                   } else {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('تعذر رفع الصورة، تأكد من إعدادات Supabase Storage ❌')),
+                                        const SnackBar(content: Text('تعذر رفع الصورة ❌')),
                                       );
                                     }
                                   }
@@ -211,6 +218,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     category: selectedCategory,
                     available: isAvailable,
                     imageUrl: imageController.text.trim(),
+                    description: descriptionController.text.trim(), // 👈 تمرير الوصف
                     unit: isVariablePrice ? selectedUnit : 'حبة',
                     isVariablePrice: isVariablePrice,
                   );
@@ -220,7 +228,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     if (!context.mounted) return;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم حفظ المنتج وربط الصورة بنجاح ✅')),
+                      const SnackBar(content: Text('تم حفظ المنتج مع الوصف بنجاح ✅')),
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -280,7 +288,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       ),
                       title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       subtitle: Text(
-                        '${product.restaurantName} | ${product.price} ر.ي ${product.isVariablePrice ? "(بـ ${product.unit})" : ""}\nالحالة: ${product.available ? "متوفر ✅" : "غير متوفر ❌"}',
+                        '${product.restaurantName} | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                       isThreeLine: true,
