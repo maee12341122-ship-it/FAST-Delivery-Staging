@@ -990,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text('(مثل: غاز، قات، طلبات خاصة من السوق...)', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Text('(مثل: غاز، ، طلبات خاصة من السوق...)', style: TextStyle(color: Colors.grey, fontSize: 13)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _customItemNameController,
@@ -1107,7 +1107,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 Text(
                   appState.isStoreOpen
-                      ? '🟢 نحن مفتوحون الآن (الدوام من ${appState.startHour}:00 ص إلى ${appState.endHour}:00 م)'
+                      ? '🟢  مفتوح الآن (الدوام من ${appState.startHour}:00 ص إلى ${appState.endHour}:00 م)'
                       : '🔴 التطبيق مغلق حالياً (يبدأ الدوام الساعة ${appState.startHour}:00 صباحاً)',
                   style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
