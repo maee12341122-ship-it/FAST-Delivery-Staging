@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,7 +11,7 @@ import 'auth/phone_auth_screen.dart';
 import 'courier_screen.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
-import 'customer/favorites_screen.dart'; // 👈 استيراد شاشة المفضلة
+import 'customer/favorites_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -28,7 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _customItemNameController = TextEditingController();
   final TextEditingController _customItemPriceController = TextEditingController();
 
-  // متحكمات حوار إتمام الطلب من السلة مباشرة
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -106,7 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ⚖️ نافذة منبثقة لإدخال الوزن أو الكمية المطلوبة للخضروات والفواكه
   void _showVariableProductDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController noteController = TextEditingController();
 
@@ -287,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -380,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     labelText: 'ملاحظاتك أو شكر للمندوب (اختياري)',
                     labelStyle: const TextStyle(color: Colors.grey),
                     filled: true,
-                    fillColor: const Color(0xFF121212),
+                    fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -411,8 +409,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 🟢 تعديل مهم هنا: منع ظهور تسعيرة المشرف مطلقاً لدى المندوب وجعلها للعميل فقط
   void _checkAndShowPricingDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
-    if (appState.userProfile == null || appState.isAdminLoggedIn) return;
+    if (appState.userProfile == null || appState.isAdminLoggedIn || appState.currentCourier != null) return;
 
     final customerOrders = appState.customerOrders;
     for (var order in customerOrders) {
@@ -489,7 +488,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
 
-    final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF5F5F5);
+    // 🟢 ضبط ألوان الوضع الفاتح والداكن لضمان تباين مريح ووضوح كامل
+    final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
 
@@ -628,7 +628,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _currentIndex,
                 children: pages,
               ),
-              // 🟢 شريط السلة العائم السفلي (View Cart Bar) مثل التطبيقات العالمية
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -636,7 +635,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   bottom: 16,
                   child: GestureDetector(
                     onTap: () {
-                      setState(() => _currentIndex = 1); // الانتقال لتبويب السلة
+                      setState(() => _currentIndex = 1);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -653,7 +652,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-                          // مصغرات صور المنتجات في السلة
                           Row(
                             children: appState.cartItems.take(3).map((item) {
                               return Container(
@@ -781,7 +779,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4)),
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4)),
                 ],
               ),
               child: Column(
@@ -931,7 +929,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 prefixIcon: const Icon(Icons.search, color: Colors.amber),
                 filled: true,
                 fillColor: cardBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
               ),
               onChanged: (val) => setState(() {}),
             ),
@@ -939,11 +937,10 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          // 🟢 عرض قائمة المطاعم إذا كانت الفئة المختارة هي "المطاعم"
           if (selectedCategory == 'المطاعم') ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-              child: Text('اختر مطعماً لعرض وجباته 🍽️', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+              child: Text('اختر مطعماً لعرض وجباته 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
             ),
             uniqueRestaurants.isEmpty
                 ? const Padding(
@@ -978,7 +975,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ] else ...[
-            // 🟢 عرض المنتجات بشبكة تفاعلية عصرية (Grid View) تشبه تطبيقات التوصيل العالمية
             filteredProducts.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(50.0),
@@ -990,7 +986,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.72,
+                      childAspectRatio: 0.70, // تظبيط الأبعاد لمنع أي تداخل
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
                     ),
@@ -1006,10 +1002,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: BoxDecoration(
                           color: cardBg,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.05)),
+                          border: Border.all(color: Colors.grey.withOpacity(0.2)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
+                              color: Colors.black.withOpacity(0.08),
                               blurRadius: 6,
                               offset: const Offset(0, 3),
                             ),
@@ -1020,14 +1016,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // صورة المنتج البصرية مع زر المفضلة العائم ❤️
                               Stack(
                                 children: [
                                   Container(
-                                    height: 90,
+                                    height: 85,
                                     width: double.infinity,
                                     decoration: BoxDecoration(
-                                      color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[100],
+                                      color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[200],
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: ClipRRect(
@@ -1041,7 +1036,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                           : const Icon(Icons.fastfood, color: Colors.amber, size: 35),
                                     ),
                                   ),
-                                  // 🟢 زر المفضلة العائم
                                   Positioned(
                                     top: 6,
                                     left: 6,
@@ -1077,7 +1071,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              // اسم المنتج
+                              // 🟢 اسم المنتج بوضوح
                               Text(
                                 product.name,
                                 maxLines: 2,
@@ -1088,16 +1082,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontSize: 13,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              // الجهة أو الوحدة
+                              const SizedBox(height: 3),
+                              // 🟢 تفاصيل حجم المنتج أو الجهة لتظهر بوضوح مع اسم الحليب/المنتج
                               Text(
-                                isVariable ? 'وزن (${product.unit})' : product.restaurantName,
+                                isVariable ? 'وزن (${product.unit})' : (product.restaurantName.isNotEmpty ? product.restaurantName : 'متجر عام'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.grey, fontSize: 11),
                               ),
                               const Spacer(),
-                              // السعر وأزرار التفاعل (ADD أو +/-)
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -1107,32 +1100,32 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: const TextStyle(
                                         color: Colors.amber,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 13,
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ),
                                   isVariable
                                       ? SizedBox(
-                                          height: 32,
+                                          height: 30,
                                           child: ElevatedButton(
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: Colors.amber,
-                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              padding: const EdgeInsets.symmetric(horizontal: 6),
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                             ),
                                             onPressed: appState.isStoreOpen
                                                 ? () => _showVariableProductDialog(context, appState, product)
                                                 : null,
-                                            child: const Text('بالوزن', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                            child: const Text('بالوزن', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
                                           ),
                                         )
                                       : (qtyInCart == 0
                                           ? SizedBox(
-                                              height: 32,
+                                              height: 30,
                                               child: ElevatedButton(
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: Colors.amber,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10),
                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                                 ),
                                                 onPressed: appState.isStoreOpen
@@ -1147,11 +1140,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         ));
                                                       }
                                                     : null,
-                                                child: const Text('ADD', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                                child: const Text('ADD', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
                                               ),
                                             )
                                           : Container(
-                                              height: 32,
+                                              height: 30,
                                               decoration: BoxDecoration(
                                                 color: Colors.amber,
                                                 borderRadius: BorderRadius.circular(8),
@@ -1162,19 +1155,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   InkWell(
                                                     onTap: () => appState.updateQuantity(product.id, -1),
                                                     child: const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 6),
-                                                      child: Icon(Icons.remove, size: 16, color: Colors.black),
+                                                      padding: EdgeInsets.symmetric(horizontal: 5),
+                                                      child: Icon(Icons.remove, size: 14, color: Colors.black),
                                                     ),
                                                   ),
                                                   Text(
                                                     '$qtyInCart',
-                                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                                                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
                                                   ),
                                                   InkWell(
                                                     onTap: () => appState.updateQuantity(product.id, 1),
                                                     child: const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 6),
-                                                      child: Icon(Icons.add, size: 16, color: Colors.black),
+                                                      padding: EdgeInsets.symmetric(horizontal: 5),
+                                                      child: Icon(Icons.add, size: 14, color: Colors.black),
                                                     ),
                                                   ),
                                                 ],
@@ -1209,7 +1202,10 @@ class _HomeScreenState extends State<HomeScreen> {
               selected: isSelected,
               selectedColor: Colors.amber,
               backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+              ),
               onSelected: (val) {
                 setState(() {
                   selectedCategory = cat;
@@ -1290,7 +1286,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           if (appState.cartItems.isNotEmpty) ...[
-            const Divider(color: Colors.white12, height: 20),
+            const Divider(color: Colors.grey, height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1363,7 +1359,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return Card(
           color: cardBg,
           margin: const EdgeInsets.symmetric(vertical: 8),
-          elevation: 4,
+          elevation: 3,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: Colors.amber.withOpacity(0.3)),
@@ -1380,7 +1376,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Row(
                       children: [
                         IconButton(
-                          style: IconButton.styleFrom(backgroundColor: Colors.black26),
+                          style: IconButton.styleFrom(backgroundColor: Colors.black12),
                           icon: const Icon(Icons.share, color: Colors.amber, size: 18),
                           tooltip: 'مشاركة الفاتورة',
                           onPressed: () {
@@ -1396,7 +1392,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 6),
                         IconButton(
-                          style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
+                          style: IconButton.styleFrom(backgroundColor: Colors.blueGrey.withOpacity(0.2)),
                           icon: const Icon(Icons.chat, color: Colors.amber, size: 18),
                           tooltip: 'مراسلة الإدارة ودعم الطلب',
                           onPressed: () {
@@ -1428,14 +1424,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildStepIndicator(4, 'التوصيل', currentStep >= 4),
                   ],
                 ),
-                const Divider(color: Colors.white12, height: 20),
-                Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                const Divider(color: Colors.grey, height: 20),
+                Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 6),
                 Text('العنوان: ${order['address']}', style: TextStyle(color: textColor, fontSize: 13)),
                 Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
                 Text('سعر المنتجات: ${order['products_total']} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
-                Text('رسوم التوصيل: ${order['delivery_fee']} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                const Divider(color: Colors.white12, height: 16),
+                Text('رسوم التوصيل: ${order['delivery_fee']} ر.ي', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
+                const Divider(color: Colors.grey, height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1478,7 +1474,7 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 28,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isCompleted ? Colors.amber : Colors.grey[800],
+            color: isCompleted ? Colors.amber : Colors.grey[400],
           ),
           child: Center(
             child: Text(
@@ -1488,7 +1484,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(title, style: TextStyle(color: isCompleted ? Colors.amber : Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(title, style: TextStyle(color: isCompleted ? Colors.amber[800] : Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -1497,7 +1493,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Expanded(
       child: Container(
         height: 2,
-        color: isActive ? Colors.amber : Colors.grey[800],
+        color: isActive ? Colors.amber : Colors.grey[300],
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
       ),
     );
@@ -1589,7 +1585,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }),
 
-        // 🟢 زر الانتقال إلى شاشة المفضلة
         _buildProfileItem(Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, () {
           Navigator.push(
             context,
@@ -1635,7 +1630,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
       ),
       child: ListTile(
         leading: Icon(icon, color: Colors.amber),
