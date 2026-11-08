@@ -43,7 +43,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
-          title: Text('تعديل الحساب الشخصي ⚙️', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold)),
+          title: Text('تعديل الحساب الشخصي ⚙️', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
           backgroundColor: const Color(0xFF1E1E1E),
           iconTheme: IconThemeData(color: AppConstants.gold),
         ),
@@ -52,7 +52,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // حقل الاسم الشخصي
+              // 👤 حقل الاسم الشخصي
               TextField(
                 controller: _nameController,
                 style: const TextStyle(color: Colors.white),
@@ -67,7 +67,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 15),
 
-              // حقل رقم الهاتف
+              // 📞 حقل رقم الهاتف
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
@@ -83,7 +83,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 15),
 
-              // حقل العنوان التفصيلي
+              // 🏠 حقل العنوان التفصيلي
               TextField(
                 controller: _addressController,
                 style: const TextStyle(color: Colors.white),
@@ -98,7 +98,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // قسم الخريطة التفاعلية لتحديد الموقع بدقة
+              // 🗺️ قسم الخريطة التفاعلية لتحديد الموقع بدقة
               Text(
                 'تحديد الموقع الجغرافي على الخريطة 🗺️',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppConstants.gold),
@@ -113,13 +113,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // 👈 عنصر خريطة تفاعلي ينقل المستخدم إلى MapLocationScreen عند النقر
               GestureDetector(
                 onTap: () async {
-                  // الانتقال إلى شاشة خريطة جوجل واستقبال خريطة البيانات (العنوان + الإحداثيات) عند العودة
                   final result = await Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (context) => const MapLocationScreen(),
-  ),
-);
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MapLocationScreen(),
+                    ),
+                  );
 
                   if (result != null) {
                     final address = result['address'] as String?;
@@ -127,7 +126,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     setState(() {
                       if (address != null && address.isNotEmpty) {
-                        // دمج العنوان النصي مع الإحداثيات إن وجدت
                         if (latLng != null) {
                           _addressController.text = '$address (الإحداثيات: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)})';
                         } else {
@@ -186,7 +184,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              // زر الحفظ بتصميم جذاب
+              // 🚀 زر الحفظ ومزامنة البيانات في سوبابيس
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -197,24 +195,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
-                    // حفظ البيانات في الـ AppState وقاعدة البيانات سوبابيس
-                    await context.read<AppState>().saveUserProfileDetails(
+                    final appState = context.read<AppState>();
+                    
+                    // 1. حفظ تفاصيل الملف الشخصي
+                    await appState.saveUserProfileDetails(
                       _nameController.text.trim(),
                       _addressController.text.trim(),
                     );
                     
-                    // تحديث الهاتف أيضاً إذا تم تغييره
-                    await context.read<AppState>().updateUser(
+                    // 2. تحديث الاسم ورقم الهاتف في الجلسة المحلية
+                    await appState.updateUser(
                       name: _nameController.text.trim(),
                       phone: _phoneController.text.trim(),
                     );
 
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('تم حفظ وتحديث بيانات الحساب بنجاح! ✅')),
-                      );
-                    }
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم حفظ وتحديث بيانات الحساب بنجاح! ✅')),
+                    );
                   },
                   child: const Text(
                     'حفظ التعديلات 🚀',
