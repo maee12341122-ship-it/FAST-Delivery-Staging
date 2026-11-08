@@ -12,6 +12,8 @@ import 'courier_screen.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
+import 'customer/addresses_screen.dart'; // 📍 تم إضافة استيراد شاشة العناوين المحفوظة هنا
+import 'map_location_screen.dart'; 
 
 // 🟢 شاشة تتبع الطلب المدمجة مباشرة لتعمل بسلاسة تامة
 class OrderTrackingScreen extends StatelessWidget {
@@ -340,7 +342,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  // 🛑 شرط إلزامي صارم: لا يقبل الحفظ نهائياً إلا إذا أدخل المستخدم رقماً صحيحاً أكبر من الصفر
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'إدخال السعر إلزامي لإتمام الطلب!';
@@ -366,11 +367,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () {
-                // التحقق الإلزامي من صحة إدخال السعر
                 if (formKey.currentState!.validate()) {
                   final double enteredPrice = double.parse(priceController.text.trim());
 
-                  // تمرير المنتج بالسعر المحدد حصرياً للسلة
                   appState.addToCart(CartItemModel(
                     id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
                     name: '${product.name} (بسعر محدد)',
@@ -444,17 +443,44 @@ class _HomeScreenState extends State<HomeScreen> {
                       validator: (v) => v == null || v.length < 9 ? 'يرجى إدخال رقم صحيح' : null,
                     ),
                     const SizedBox(height: 12),
+                    
+                    // 🗺️ زر فتح الخريطة لتحديد الموقع وتعبئة العنوان تلقائياً
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.amber,
+                          side: const BorderSide(color: Colors.amber),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const MapLocationScreen()),
+                          );
+                          if (result != null && result is Map) {
+                            setDialogState(() {
+                              _addressDescriptionController.text = result['address'] ?? '';
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.map, color: Colors.amber),
+                        label: const Text('تحديد الموقع عبر الخريطة والـ GPS 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
                     TextFormField(
                       controller: _addressDescriptionController,
                       style: TextStyle(color: textColor),
                       decoration: InputDecoration(
-                        labelText: 'العنوان التفصيلي (تعز)',
+                        labelText: 'العنوان التفصيلي (تعز)*',
                         labelStyle: const TextStyle(color: Colors.grey),
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                       ),
-                      validator: (v) => v == null || v.isEmpty ? 'يرجى إدخال العنوان' : null,
+                      validator: (v) => v == null || v.isEmpty ? 'يرجى إدخال العنوان أو تحديده من الخريطة' : null,
                     ),
                     const SizedBox(height: 16),
                     const Text('اختر طريقة الدفع:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
@@ -990,7 +1016,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text('(مثل: غاز، ، طلبات خاصة من السوق...)', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Text('(مثل: غاز، قات، طلبات خاصة من السوق...)', style: TextStyle(color: Colors.grey, fontSize: 13)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _customItemNameController,
@@ -1788,6 +1814,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+          );
+        }),
+
+        // 📍 زر إدارة العناوين المحفوظة في تبويب حسابي
+        _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddressesScreen()),
           );
         }),
 
