@@ -351,7 +351,7 @@ class _CourierScreenState extends State<CourierScreen> {
                               ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderArrived(orderId),
+                                  onPressed: () => appState.courierUpdateArrival(orderId), // 👈 تم التصحيح هنا
                                   child: const Text('تحديث الحالة (تم الوصول للموقع) 📍', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
