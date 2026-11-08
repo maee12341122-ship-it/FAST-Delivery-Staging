@@ -7,10 +7,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.example.taiz_express"
     cache:
-      cache_paths:
-        - ~/.pub-cache
-        - ~/.gradle/caches
-        - ~/.gradle/wrapper
+      cache_paths: []
     scripts:
       - name: Check Flutter environment
         script: |
@@ -49,6 +46,7 @@ workflows:
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       - flutter_drive.log
+
   fast-taiz-google-play-aab:
     name: FAST Delivery - Google Play AAB (signed)
     max_build_duration: 90
@@ -57,10 +55,7 @@ workflows:
       vars:
         PACKAGE_NAME: "com.example.taiz_express"
     cache:
-      cache_paths:
-        - ~/.pub-cache
-        - ~/.gradle/caches
-        - ~/.gradle/wrapper
+      cache_paths: []
     scripts:
       - name: Check signing secrets
         script: |
