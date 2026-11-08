@@ -32,7 +32,7 @@ class AppState extends ChangeNotifier {
     listenToStoreSettingsRealtime();
   }
 
-  // --- 🔔 إرسال الإشعارات التلقائية الفورية عبر OneSignal REST API ---
+      // --- 🔔 إرسال الإشعارات التلقائية الفورية عبر OneSignal REST API ---
   Future<void> sendAutoNotification({
     required String targetPlayerId,
     required String title,
@@ -40,8 +40,8 @@ class AppState extends ChangeNotifier {
   }) async {
     if (targetPlayerId.isEmpty) return;
 
-    const String oneSignalAppId = 'YOUR_ONESIGNAL_APP_ID'; 
-    const String oneSignalRestApiKey = 'YOUR_ONESIGNAL_REST_API_KEY'; 
+    const String oneSignalAppId = '60850bed-4af8-4df1-a2f5-77411630f447'; 
+    const String oneSignalRestApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 تم وضع مفتاحك الحقيقي هنا
 
     try {
       await http.post(
@@ -62,6 +62,8 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في إرسال الإشعار التلقائي: $e');
     }
   }
+
+
 
   // --- ❤️ إدارة المنتجات المفضلة ---
   final List<String> _favoriteProductIds = [];
