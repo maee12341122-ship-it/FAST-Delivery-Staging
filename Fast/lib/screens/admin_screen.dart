@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart'; // 👈 استيراد مكتبة OneSignal
-import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استيراد سوبابيس لتحديث الـ Player ID
+import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
-import '../models/product_model.dart';
 import 'package:fast/screens/chat_screen.dart';
-
+import 'admin/admin_products_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -17,12 +16,6 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   int _selectedNavIndex = 0;
 
-  final TextEditingController _productNameController = TextEditingController();
-  final TextEditingController _restaurantNameController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _imageUrlController = TextEditingController(); // 👈 حقل رابط صورة المنتج الجديد
-  String _selectedCategory = 'المطاعم';
-
   final TextEditingController _courierNameController = TextEditingController();
   final TextEditingController _courierPhoneController = TextEditingController();
   final TextEditingController _courierUsernameController = TextEditingController();
@@ -32,10 +25,6 @@ class _AdminScreenState extends State<AdminScreen> {
 
   @override
   void dispose() {
-    _productNameController.dispose();
-    _restaurantNameController.dispose();
-    _priceController.dispose();
-    _imageUrlController.dispose(); // 👈 تنظيف وحدة التحكم للصورة
     _courierNameController.dispose();
     _courierPhoneController.dispose();
     _courierUsernameController.dispose();
@@ -123,7 +112,6 @@ class _AdminScreenState extends State<AdminScreen> {
         final arabicStatus = _getArabicStatus(rawStatus);
         final assignedCourier = order['assigned_courier']?.toString() ?? 'لم يتم التعيين';
 
-        // 👈 جلب بيانات طريقة الدفع ورقم الحساب لعرضها للمشرف
         final paymentMethod = order['payment_method'] ?? 'cash';
         final paymentAccount = order['payment_account'] ?? '';
         final paymentDisplay = (paymentMethod == 'cash' || paymentMethod == 'cash_on_delivery')
@@ -173,7 +161,6 @@ class _AdminScreenState extends State<AdminScreen> {
                 const SizedBox(height: 4),
                 Text('💰 سعر المنتجات: ${order['products_total']} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 4),
-                // 👈 عرض طريقة الدفع للمشرف بوضوح
                 Container(
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   padding: const EdgeInsets.all(6),
@@ -307,55 +294,39 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildProductsManagement(AppState appState) {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: ListView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('إضافة منتج جديد مع صورة للمتجر', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 15),
-          TextField(controller: _productNameController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'اسم المنتج', labelStyle: TextStyle(color: Colors.grey), filled: true, fillColor: Color(0xFF1E1E1E), border: OutlineInputBorder())),
-          const SizedBox(height: 12),
-          TextField(controller: _restaurantNameController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'اسم المتجر أو المطعم', labelStyle: TextStyle(color: Colors.grey), filled: true, fillColor: Color(0xFF1E1E1E), border: OutlineInputBorder())),
-          const SizedBox(height: 12),
-          TextField(controller: _priceController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'السعر (ر.ي)', labelStyle: TextStyle(color: Colors.grey), filled: true, fillColor: Color(0xFF1E1E1E), border: OutlineInputBorder())),
-          const SizedBox(height: 12),
-          // 👈 حقل رابط صورة المنتج الجديد
-          TextField(controller: _imageUrlController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: 'رابط صورة المنتج (Image URL)', labelStyle: TextStyle(color: Colors.grey), filled: true, fillColor: Color(0xFF1E1E1E), border: OutlineInputBorder())),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            dropdownColor: const Color(0xFF1E1E1E),
-            style: const TextStyle(color: Colors.white),
-            value: _selectedCategory,
-            decoration: const InputDecoration(labelText: 'القسم', labelStyle: TextStyle(color: Colors.grey), filled: true, fillColor: Color(0xFF1E1E1E), border: OutlineInputBorder()),
-            items: ['المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات'].map((cat) {
-              return DropdownMenuItem(value: cat, child: Text(cat, style: const TextStyle(color: Colors.white)));
-            }).toList(),
-            onChanged: (val) => setState(() => _selectedCategory = val!),
+          const Icon(Icons.restaurant_menu, size: 75, color: Colors.amber),
+          const SizedBox(height: 16),
+          const Text(
+            'إدارة وتعديل منتجات وأصناف المتجر 🍔',
+            style: TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 45), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          const SizedBox(height: 10),
+          const Text(
+            'تحكم كامل بقائمة الطعام والسلع: تعديل الأسعار، تبديل حالة التوفر (متوفر/غير متوفر)، حذف أو إضافة منتجات جديدة بكل سهولة.',
+            style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 35),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: () {
-              if (_productNameController.text.isNotEmpty && _priceController.text.isNotEmpty) {
-                final newProduct = ProductModel(
-                  id: 'P-${DateTime.now().millisecondsSinceEpoch}',
-                  name: _productNameController.text,
-                  restaurantName: _restaurantNameController.text.isEmpty ? 'متجر عام' : _restaurantNameController.text,
-                  price: double.tryParse(_priceController.text) ?? 0.0,
-                  category: _selectedCategory,
-                  available: true,
-                  imageUrl: _imageUrlController.text.trim(), // 👈 حفظ رابط الصورة
-                );
-                appState.addProduct(newProduct).then((_) {
-                if (!mounted) return;
-                _productNameController.clear();
-                _restaurantNameController.clear();
-                _priceController.clear();
-                _imageUrlController.clear(); // 👈 مسح حقل الصورة بعد الحفظ
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة المنتج مع الصورة بنجاح! ✅')));
-                }).catchError((error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل حفظ المنتج: $error'))); });
-              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminProductsScreen()),
+              );
             },
-            child: const Text('حفظ وإضافة المنتج', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            icon: const Icon(Icons.edit_note, size: 22),
+            label: const Text('فتح لوحة إدارة المنتجات والأصناف 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           ),
         ],
       ),
@@ -404,7 +375,6 @@ class _AdminScreenState extends State<AdminScreen> {
                                 decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
                                 child: Text('العمولة: ${adminCommission.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
                               ),
-                              // 👈 زر سريع لتحديث OneSignal Player ID للمندوب
                               IconButton(
                                 icon: const Icon(Icons.notifications_active, color: Colors.amberAccent, size: 20),
                                 tooltip: 'ربط وتحديث OneSignal Player ID للمندوب',
