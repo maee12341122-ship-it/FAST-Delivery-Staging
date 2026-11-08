@@ -2,7 +2,7 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
   build:
@@ -20,20 +20,20 @@ jobs:
     - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.x' # أو النسخة التي تستخدمها في مشروعك
+        flutter-version: '3.19.x'
         channel: 'stable'
 
     - name: Install Dependencies
       run: flutter pub get
-
-    - name: Generate Launcher Icons (إذا كنت تستخدم الحزمة)
-      run: flutter pub run flutter_launcher_icons
+      # إذا كان مشروع الفلاتر داخل مجلد فرعي باسم Fast، أزل علامة التعليق عن السطر التالي:
+      # working-directory: ./Fast
 
     - name: Build APK Release
       run: flutter build apk --release
+      # working-directory: ./Fast
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
+        path: '**/build/app/outputs/flutter-apk/app-release.apk'
