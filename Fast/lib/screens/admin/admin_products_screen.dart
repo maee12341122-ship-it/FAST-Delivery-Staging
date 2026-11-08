@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import '../../providers/app_state.dart';
 import '../../models/product_model.dart';
@@ -14,6 +15,34 @@ class AdminProductsScreen extends StatefulWidget {
 
 class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
+  bool _isUploadingImage = false; // مؤشر تحميل أثناء رفع الصورة
+
+  // ☁️ دالة رفع الصورة إلى سحاب Supabase Storage وإرجاع الرابط العام
+  Future<String?> _uploadImageToSupabase(File imageFile, StateSetter setDialogState) async {
+    try {
+      setDialogState(() => _isUploadingImage = true);
+      
+      final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storagePath = 'products/$fileName';
+
+      // رفع الصورة إلى سلة (Bucket) باسم 'products' في Supabase Storage
+      await Supabase.instance.client.storage
+          .from('products')
+          .upload(storagePath, imageFile);
+
+      // جلب الرابط العام العام (Public URL) للصورة المرفوعة
+      final String publicUrl = Supabase.instance.client.storage
+          .from('products')
+          .getPublicUrl(storagePath);
+
+      setDialogState(() => _isUploadingImage = false);
+      return publicUrl;
+    } catch (e) {
+      setDialogState(() => _isUploadingImage = false);
+      debugPrint('❌ خطأ في رفع الصورة: $e');
+      return null;
+    }
+  }
 
   void _showProductDialog(BuildContext context, AppState appState, {ProductModel? product}) {
     final isEditing = product != null;
@@ -65,7 +94,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // 🖼️ قسم اختيار الصورة من المعرض
+                  // 🖼️ اختيار الصورة ورفعها مباشرة لـ Supabase Storage
                   Row(
                     children: [
                       Expanded(
@@ -76,19 +105,38 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () async {
-                          final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-                          if (image != null) {
-                            setDialogState(() {
-                              // مؤقتاً نضع مسار الصورة المحلي أو يمكن رفعه لـ Supabase Storage
-                              imageController.text = image.path;
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.add_photo_alternate, color: Colors.amber, size: 28),
-                        tooltip: 'اختيار صورة من المعرض',
-                      ),
+                      _isUploadingImage
+                          ? const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)),
+                            )
+                          : IconButton(
+                              onPressed: () async {
+                                final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+                                if (image != null) {
+                                  // رفع الصورة تلقائياً وجلب الرابط العام
+                                  final uploadedUrl = await _uploadImageToSupabase(File(image.path), setDialogState);
+                                  if (uploadedUrl != null) {
+                                    setDialogState(() {
+                                      imageController.text = uploadedUrl;
+                                    });
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('تم رفع الصورة بنجاح إلى السحاب ☁️')),
+                                      );
+                                    }
+                                  } else {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('تعذر رفع الصورة، تأكد من إعدادات Supabase Storage ❌')),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.add_photo_alternate, color: Colors.amber, size: 28),
+                              tooltip: 'اختيار ورفع صورة من المعرض',
+                            ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -172,7 +220,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     if (!context.mounted) return;
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم حفظ المنتج وتحديث الصورة بنجاح ✅')),
+                      const SnackBar(content: Text('تم حفظ المنتج وربط الصورة بنجاح ✅')),
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -221,9 +269,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: product.imageUrl.isNotEmpty
-                            ? (product.imageUrl.startsWith('http')
-                                ? Image.network(product.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber))
-                                : Image.file(File(product.imageUrl), width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber)))
+                            ? Image.network(
+                                product.imageUrl,
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber),
+                              )
                             : const Icon(Icons.fastfood, color: Colors.amber),
                       ),
                       title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
