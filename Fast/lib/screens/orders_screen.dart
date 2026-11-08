@@ -14,14 +14,14 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
-    // جلب الطلبات ومراقبتها لحظياً ومراقبة التغييرات
-    final orders = List>.from(context.watch<AppState>().orders);
+    final appState = Provider.of<AppState>(context);
+    final orders = List>.from(appState.orders);
 
     // 🔄 ترتيب الطلبات بحيث يكون الطلب الأخير (الأحدث/الأكبر في الـ ID) في الأعلى دائماً
     orders.sort((a, b) {
       final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
       final idB = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
-      return idB.compareTo(idA); // تنازلي: الأحدث فوق
+      return idB.compareTo(idA);
     });
 
     return Directionality(
@@ -49,7 +49,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   final itemsDesc = order['items_description']?.toString() ?? order['itemsDesc']?.toString() ?? 'لا توجد تفاصيل';
                   final productsTotal = double.tryParse(order['products_total']?.toString() ?? '0') ?? 0.0;
                   final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-                  final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
+                  final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
                   
                   return Card(
                     color: const Color(0xFF1E1E1E),
@@ -126,6 +126,70 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ),
                           const SizedBox(height: 14),
 
+                          // 💰 أزرار موافقة العميل على السعر (تظهر مباشرة إذا كانت الحالة بانتظار الموافقة)
+                          if (status == 'pricingSentToCustomer') ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppConstants.gold.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppConstants.gold.withOpacity(0.5)),
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'يرجى مراجعة رسوم التوصيل والموافقة للمتابعة 🚀',
+                                    style: TextStyle(color: AppConstants.gold, fontSize: 12, fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                          onPressed: () async {
+                                            await appState.customerApprovePricing(orderId);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('تم تأكيد السعر بنجاح وجاري إرساله للمندوب ✅')),
+                                              );
+                                            }
+                                          },
+                                          child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                          onPressed: () async {
+                                            await appState.customerCancelOrder(orderId);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('تم إلغاء الطلب ❌')),
+                                              );
+                                            }
+                                          },
+                                          child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
                           // 🔍 زر التفاصيل الاحتياطي المرتبط بالنافذة المنبثقة للعميل
                           SizedBox(
                             width: double.infinity,
@@ -151,7 +215,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  // نافذة منبثقة تفاعلية للعميل لعرض التفاصيل كإجراء احتياطي
+  // نافذة منبثقة تفاعلية للعميل لعرض التفاصيل
   void _showClientOrderDetailsDialog(BuildContext context, Map<String, dynamic> order) {
     showDialog(
       context: context,
