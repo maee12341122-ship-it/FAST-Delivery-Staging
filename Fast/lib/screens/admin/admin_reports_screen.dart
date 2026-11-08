@@ -34,7 +34,7 @@ class AdminReportsScreen extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
           title: const Text('تقارير الأرباح والمبيعات 📈', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
-          iconTheme: const Icon(Icons.amber),
+          iconTheme: const IconThemeData(color: Colors.amber),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -53,7 +53,7 @@ class AdminReportsScreen extends StatelessWidget {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics,
+                physics: const NeverScrollableScrollPhysics(),
                 childAspectRatio: 1.5,
                 children: [
                   _buildStatCard('إجمالي المبيعات', '${totalProductsSales.toStringAsFixed(0)} ر.ي', Icons.shopping_cart, Colors.blueAccent),
