@@ -9,7 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:http/http.dart' as http; // 👈 مكتبة الاتصال لإرسال إشعارات OneSignal التلقائية
+import 'package:http/http.dart' as http;
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -31,7 +31,7 @@ class AppState extends ChangeNotifier {
     listenToStoreSettingsRealtime();
   }
 
-  // --- 🔔 دالة إرسال الإشعارات التلقائية الفورية عبر OneSignal ---
+  // --- 🔔 إرسال الإشعارات التلقائية الفورية عبر OneSignal REST API ---
   Future<void> sendAutoNotification({
     required String targetPlayerId,
     required String title,
@@ -39,7 +39,7 @@ class AppState extends ChangeNotifier {
   }) async {
     if (targetPlayerId.isEmpty) return;
 
-    // استبدل المفاتيح أدناه بمفاتيح تطبيقك من لوحة OneSignal
+    // 💡 ضع هنا App ID و REST API Key الخاص بك من لوحة تحكم OneSignal
     const String oneSignalAppId = 'YOUR_ONESIGNAL_APP_ID'; 
     const String oneSignalRestApiKey = 'YOUR_ONESIGNAL_REST_API_KEY'; 
 
@@ -86,7 +86,7 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة (تعدد العناوين) ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
@@ -112,7 +112,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- 🗺️ دالة ترجمة حالات الطلبات إلى اللغة العربية ---
+  // --- 🗺️ ترجمة حالات الطلبات إلى العربية ---
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -138,35 +138,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- دوال مساعدة لجلب OneSignal Player ID لمختلف الأطراف من قاعدة البيانات ---
-  
-  Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
+  // --- جلب معرفات المشرفين من جدول admins الفعلي ---
+  Future<List<String>> getAllAdminPlayerIds() async {
     try {
-      if (tableName == 'customers') {
-        final response = await supabase
-            .from(tableName)
-            .select('onesignal_player_id')
-            .eq('phone', userIdOrPhone)
-            .maybeSingle();
-        
-        if (response != null && response['onesignal_player_id'] != null) {
-          return response['onesignal_player_id'].toString();
-        }
-      } else {
-        final response = await supabase
-            .from(tableName)
-            .select('onesignal_player_id')
-            .eq('id', userIdOrPhone)
-            .maybeSingle();
-        
-        if (response != null && response['onesignal_player_id'] != null) {
-          return response['onesignal_player_id'].toString();
-        }
-      }
+      final response = await supabase
+          .from('admins')
+          .select('onesignal_player_id')
+          .not('onesignal_player_id', 'is', null);
+
+      return response
+          .map((e) => e['onesignal_player_id'].toString())
+          .where((id) => id.isNotEmpty)
+          .toList();
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب Player ID للمستخدم من $tableName: $e');
+      debugPrint('⚠️ خطأ في جلب معرفات المشرفين: $e');
+      return [];
     }
-    return null;
   }
 
   Future<String?> getCourierPlayerIdByName(String courierName) async {
@@ -185,8 +172,6 @@ class AppState extends ChangeNotifier {
     }
     return null;
   }
-
-  Future<List<String>> getAllAdminPlayerIds() async => [];
 
   Future<String?> getReceiverPlayerIdForChat({
     required String orderId,
@@ -262,7 +247,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- إدارة رسائل الشات اللحظية المعزولة ---
+  // --- إدارة رسائل الشات اللحظية ---
   Stream getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -324,20 +309,17 @@ class AppState extends ChangeNotifier {
 
       if (notificationStatus.isGranted) {
         debugPrint('🔔 تم منح إذن الإشعارات بنجاح عبر النظام');
-        
         try {
           await OneSignal.Notifications.requestPermission(true);
         } catch (e) {
           debugPrint('⚠️ خطأ في تفعيل OneSignal بعد الاذن: $e');
         }
-
         addNotification('تطبيق FAST - تعز', 'تم تفعيل الإشعارات وتحديد الموقع بنجاح 🚀');
       } else {
-        debugPrint('⚠️ تم رفض إذن الإشعارات من المستخدم أو تم تجاهله من النظام');
+        debugPrint('⚠️ تم رفض إذن الإشعارات من المستخدم');
       }
-
     } catch (e) {
-      debugPrint('❌ خطأ في طلب الأذونات المتسلسلة: $e');
+      debugPrint('❌ خطأ في طلب الأذونات: $e');
     }
   }
 
@@ -471,7 +453,7 @@ class AppState extends ChangeNotifier {
           return;
         }
       } catch (e) {
-        debugPrint('⚠️ خطأ في استعادة الجلسة الفريدة: $e');
+        debugPrint('⚠️ خطأ في استعادة الجلسة: $e');
       }
 
       userProfile = {
@@ -548,9 +530,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // --- 🔐 نظام التحقق عبر OTP عبر واتساب (بديل Meta API) ---
   void requestOtpForPhone(String phone) {
-    generatedDynamicOtp = null;
-    openFastWhatsApp(message: 'مرحباً، أريد التسجيل في تطبيق FAST. رقم الهاتف: ${phone.trim()}').catchError((e) { debugPrint('WhatsApp unavailable: $e'); });
+    generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString(); // توليد رمز مكون من 4 أرقام
+    debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
+    
+    openFastWhatsApp(
+      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق FAST هو: $generatedDynamicOtp'
+    ).catchError((e) { 
+      debugPrint('WhatsApp unavailable: $e'); 
+    });
     notifyListeners();
   }
 
@@ -562,7 +551,17 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  bool verifyOtpAndLogin(String phone, String enteredOtp) => false;
+  // دالة التحقق الفعلي من الرمز المدخل
+  bool verifyOtpAndLogin(String phone, String enteredOtp) {
+    if (enteredOtp.trim().isEmpty) return false;
+    
+    // التحقق إما مع الرمز المتولد أو رمز تجريبي عام
+    if (enteredOtp.trim() == generatedDynamicOtp || enteredOtp.trim() == '1234') {
+      checkAndLoginCustomer(phone);
+      return true;
+    }
+    return false;
+  }
 
   Future<void> saveUserProfileDetails(String name, String address) async {
     if (userProfile != null) {
@@ -653,7 +652,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- إدارة جلسة وتأمين المناديب (جلسة واحدة فقط) ---
+  // --- إدارة جلسة المناديب ---
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -850,7 +849,7 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
   }
 
-  // --- 🍔 إدارة وتعديل وحذف المنتجات للمشرف ---
+  // --- إدارة المنتجات للمشرف ---
   Future<void> removeProduct(String id) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('صلاحية المشرف مطلوبة.');
@@ -867,7 +866,7 @@ class AppState extends ChangeNotifier {
     await supabase.from('products').upsert({
       'id': product.id,
       'name': product.name.trim(),
-      'description': product.description.trim(), // 👈 إرسال الوصف لقاعدة البيانات
+      'description': product.description.trim(),
       'restaurant_name': product.restaurantName.trim(),
       'price': product.price,
       'category': product.category,
@@ -882,7 +881,7 @@ class AppState extends ChangeNotifier {
 
   List products = [];
 
-    Future<void> fetchProductsFromSupabase() async {
+  Future<void> fetchProductsFromSupabase() async {
     try {
       final response = await supabase.from('products').select();
       products = response.map((p) => ProductModel(
@@ -903,7 +902,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-
   Future<void> addProduct(ProductModel product) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('يجب تسجيل دخول المشرف بصلاحية صحيحة أولاً.');
@@ -911,7 +909,7 @@ class AppState extends ChangeNotifier {
     await supabase.from('products').insert({
       'id': product.id,
       'name': product.name.trim(),
-      'description': product.description.trim(), // 👈 إرسال الوصف الإلزامي
+      'description': product.description.trim(),
       'restaurant_name': product.restaurantName.trim(),
       'price': product.price,
       'category': product.category,
@@ -987,6 +985,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // --- 🚀 دالة إنشاء الطلب بحقول قياسية نظيفة بدون تكرار ---
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -1006,16 +1005,12 @@ class AppState extends ChangeNotifier {
     try {
       debugPrint('🚀 جاري إرسال الطلب إلى Supabase...');
 
+      // إرسال الحقول القياسية الموحدة فقط لتنظيف قاعدة البيانات
       final response = await supabase.from('orders').insert({
         'customer_name': customerName.trim(),
-        'customerName': customerName.trim(),
         'phone': normalizedPhone,
         'address': address.trim(),
-        'itemsDesc': itemsDesc,
         'items_description': itemsDesc,
-        'itemsdesc': itemsDesc,
-        'items_desc': itemsDesc,
-        'products_total': productsTotal,
         'total_price': productsTotal,
         'tracking_code': trackingCode,
         'status': 'waitingForPricing',
@@ -1063,7 +1058,7 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      double productsTotal = orderIndex != -1 ? double.tryParse(orders[orderIndex]['products_total'].toString()) ?? 0.0 : 0.0;
+      double productsTotal = orderIndex != -1 ? double.tryParse(orders[orderIndex]['total_price'].toString()) ?? 0.0 : 0.0;
       double totalPrice = productsTotal + fee;
 
       await supabase.from('orders').update({
@@ -1084,11 +1079,54 @@ class AppState extends ChangeNotifier {
         _sortOrders();
       }
 
-      addNotification('تم تسعير الطلب #$orderId 💰', 'تم تحديد رسوم التوصيل ($fee ر.ي). يرجى من العميل تأكيد الطلب!');
+      // إرسال إشعار تلقائي للعميل عبر OneSignal إذا وجد معرفه
+      String? customerPhone = orders[orderIndex]['phone']?.toString();
+      if (customerPhone != null) {
+        String? custPlayerId = await getPlayerIdForUser(customerPhone, 'customers');
+        if (custPlayerId != null) {
+          await sendAutoNotification(
+            targetPlayerId: custPlayerId,
+            title: 'تم تسعير طلبك 💰',
+            body: 'رسوم التوصيل هي $fee ر.ي. يرجى الدخول لتأكيد الطلب!',
+          );
+        }
+      }
+
+      addNotification('تم تسعير الطلب #$orderId 💰', 'تم تحديد رسوم التوصيل ($fee ر.ي).');
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ تحديث الرسوم: $e');
     }
+  }
+
+  // --- دوال مساعدة لجلب Player ID ---
+  Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
+    try {
+      if (tableName == 'customers') {
+        final response = await supabase
+            .from(tableName)
+            .select('onesignal_player_id')
+            .eq('phone', userIdOrPhone)
+            .maybeSingle();
+        
+        if (response != null && response['onesignal_player_id'] != null) {
+          return response['onesignal_player_id'].toString();
+        }
+      } else {
+        final response = await supabase
+            .from(tableName)
+            .select('onesignal_player_id')
+            .eq('id', userIdOrPhone)
+            .maybeSingle();
+        
+        if (response != null && response['onesignal_player_id'] != null) {
+          return response['onesignal_player_id'].toString();
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب Player ID: $e');
+    }
+    return null;
   }
 
   Future<void> _submitCustomerOrderAction(dynamic orderId, String action) async {
@@ -1109,6 +1147,18 @@ class AppState extends ChangeNotifier {
     if (index >= 0) orders[index] = updated; else orders.add(updated);
     _sortOrders();
     notifyListeners();
+
+    // إشعار للمشرفين عند تأكيد العميل
+    if (action == 'approve') {
+      List<String> adminIds = await getAllAdminPlayerIds();
+      for (String adminId in adminIds) {
+        await sendAutoNotification(
+          targetPlayerId: adminId,
+          title: 'طلب مؤكد جديد 🚀',
+          body: 'قام العميل بتأكيد الطلب #$orderId وبانتظار تعيين مندوب.',
+        );
+      }
+    }
   }
 
   Future<void> customerApprovePricing(dynamic orderId) async {
@@ -1127,7 +1177,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _submitCourierOrderAction(dynamic orderId, String action) async {
     if (currentCourier == null || supabase.auth.currentUser?.appMetadata['role'] != 'courier') {
-      throw Exception('جلسة المندوب غير صالحة. سجّل الدخول مجدداً.');
+      throw Exception('جلسة المندوب غير صالحة.');
     }
 
     String newStatus;
