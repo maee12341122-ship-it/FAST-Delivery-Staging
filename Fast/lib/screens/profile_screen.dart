@@ -9,6 +9,7 @@ import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'location_picker_screen.dart';
 import 'register_screen.dart';
+import 'addresses_screen.dart'; // 👈 شاشة العناوين المستقلة
 
 class ProfileScreen extends StatelessWidget {
   final VoidCallback? onOpenDrawer;
@@ -140,7 +141,7 @@ class ProfileScreen extends StatelessWidget {
                                     await state.openFastWhatsApp(message: 'مرحباً، أريد تعديل بيانات حسابي. رقم الهاتف: ${user.phone}');
                                   },
                                   icon: const Icon(Icons.message, size: 16),
-                                  label: const Text('التواصل مع FAST عبر واتساب'),
+                                  label: const Text('التواصل مع FAST'),
                                 ),
                               ),
                             ],
@@ -150,24 +151,33 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  
+                  // 📍 قسم عناويني المحفوظة مع زر فتح شاشة الإدارة الكاملة
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('العناوين المحفوظة 📍', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppConstants.gold)),
+                      const Text('عناويني المحفوظة 📍', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppConstants.gold)),
                       TextButton.icon(
                         style: TextButton.styleFrom(foregroundColor: AppConstants.gold),
-                        onPressed: () => _addAddress(context), 
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const AddressesScreen()),
+                          );
+                        }, 
                         icon: const Icon(Icons.add), 
-                        label: const Text('إضافة عنوان', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('إدارة العناوين', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
-                  if (user.addresses.isEmpty)
+                  
+                  if (state.userAddresses.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 20),
                       child: Center(child: Text('لا توجد عناوين محفوظة حالياً 📍', style: TextStyle(color: Colors.grey))),
                     ),
-                  ...user.addresses.map((address) => Card(
+                    
+                  ...state.userAddresses.map((address) => Card(
                     color: const Color(0xFF1E1E1E),
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     shape: RoundedRectangleBorder(
@@ -177,19 +187,20 @@ class ProfileScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.location_on, color: AppConstants.gold),
                       title: Text(address.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text('${address.area}\n${address.details}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      subtitle: Text('${address.area} - ${address.details}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                       isThreeLine: true,
-                      trailing: user.defaultAddress?.id == address.id
-                          ? const Chip(
-                              backgroundColor: Colors.green,
-                              label: Text('الافتراضي', style: TextStyle(color: Colors.white, fontSize: 11)),
-                            )
-                          : TextButton(
-                              onPressed: () => context.read<AppState>().setDefaultAddress(address.id), 
-                              child: const Text('تعيين كافتراضي', style: TextStyle(color: AppConstants.gold)),
-                            ),
+                      trailing: TextButton(
+                        onPressed: () {
+                          state.selectDefaultAddress(address);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('تم تعيين "${address.title}" عنواناً للطلب 🎯')),
+                          );
+                        }, 
+                        child: const Text('اختيار', style: TextStyle(color: AppConstants.gold)),
+                      ),
                     ),
                   )),
+
                   const SizedBox(height: 30),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
@@ -220,7 +231,7 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ) ?? false;
                       if (confirm && context.mounted) {
-                        context.read<AppState>().clearUser();
+                        state.clearUser();
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (_) => const RegisterScreen()),
                           (route) => false,
