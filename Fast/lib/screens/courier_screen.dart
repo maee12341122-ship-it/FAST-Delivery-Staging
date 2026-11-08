@@ -328,7 +328,6 @@ class _CourierScreenState extends State<CourierScreen> {
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
-                              // استدعاء الأزرار بطريقة نظيفة وآمنة
                               _buildOrderActions(appState, orderId, orderStatus),
                             ],
                           ),
@@ -342,7 +341,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  // دالة مخصصة لإرجاع أزرار التحكم بالحالة بناءً على حالة الطلب
   Widget _buildOrderActions(AppState appState, String orderId, String orderStatus) {
     if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') {
       return Row(
