@@ -161,8 +161,13 @@ class _CourierScreenState extends State<CourierScreen> {
   }
 
   Widget _buildCourierOrdersList(AppState appState, Map<String, dynamic> courier) {
+    // 🟢 فلترة ذكية لا تتأثر بحالة الأحرف (Capital/Small) أو المسافات الزائدة
+    final String courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
+    final String courierId = (courier['id'] ?? '').toString().trim();
+
     final myOrders = appState.orders.where((o) {
-      return o['assigned_courier'] == courier['name'];
+      final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
+      return assigned == courierName || assigned == courierId || assigned.contains(courierName);
     }).toList();
 
     return Padding(
@@ -259,7 +264,6 @@ class _CourierScreenState extends State<CourierScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              // 👈 زر فتح الموقع في خرائط جوجل بضغطة واحدة وبدون أي مشاكل أندرويد
                               SizedBox(
                                 width: double.infinity,
                                 height: 36,
@@ -278,17 +282,15 @@ class _CourierScreenState extends State<CourierScreen> {
                                 children: [
                                   const Icon(Icons.shopping_bag, size: 16, color: Colors.amberAccent),
                                   const SizedBox(width: 6),
-                                  Expanded(child: Text('المنتجات: ${order['items_description'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                                  Expanded(child: Text('المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('💰 الإجمالي المطلوب: ${order['total_price'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text('💰 الإجمالي المطلوب: ${order['total_price'] ?? order['total_amount'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 4),
-                              // 🟢 عرض الحالة باللغة العربية بوضوح
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
-                              // 🟢 التسلسل الصحيح لأزرار المندوب (تدعم waitingCourierApproval و approvedByCustomer)
                               if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
                                 const Text('هل تقبل توصيل هذا الطلب؟', style: TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                                 const SizedBox(height: 10),
@@ -376,7 +378,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       );
                     },
                   ),
-          ),
+          ],
         ],
       ),
     );
