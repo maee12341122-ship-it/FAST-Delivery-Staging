@@ -86,9 +86,97 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة مع الحفظ التلقائي) ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة مع الربط السحابي بـ Supabase) ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
+
+  // 1. جلب العناوين من Supabase برقم هاتف العميل
+  Future<void> fetchUserAddressesFromSupabase() async {
+    if (userProfile == null || userProfile!['phone'] == null || userProfile!['phone']!.isEmpty) {
+      _loadUserAddressesFromPrefs(); 
+      return;
+    }
+
+    try {
+      final cleanPhone = _normalizePhone(userProfile!['phone']!);
+      final response = await supabase
+          .from('customer_addresses')
+          .select()
+          .eq('phone', cleanPhone);
+
+      if (response != null) {
+        _userAddresses.clear();
+        for (var row in response) {
+          _userAddresses.add(AddressModel(
+            id: row['id'].toString(),
+            title: row['title']?.toString() ?? 'عنوان',
+            area: row['area']?.toString() ?? '',
+            details: row['details']?.toString() ?? '',
+            instructions: row['instructions']?.toString() ?? '',
+          ));
+        }
+        _saveUserAddressesToPrefs(); 
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب العناوين من Supabase: $e');
+      _loadUserAddressesFromPrefs(); 
+    }
+  }
+
+  // 2. إضافة عنوان جديد وإرساله إلى Supabase
+  Future<void> addUserAddress(AddressModel address) async {
+    _userAddresses.add(address);
+    if (_userAddresses.length == 1) {
+      selectDefaultAddress(address);
+    }
+    _saveUserAddressesToPrefs();
+    notifyListeners();
+
+    if (userProfile != null && userProfile!['phone'] != null) {
+      try {
+        final cleanPhone = _normalizePhone(userProfile!['phone']!);
+        await supabase.from('customer_addresses').insert({
+          'phone': cleanPhone,
+          'title': address.title.trim(),
+          'area': address.area.trim(),
+          'details': address.details.trim(),
+          'instructions': address.instructions.trim(),
+        });
+        debugPrint('✅ تم حفظ العنوان في Supabase بنجاح');
+      } catch (e) {
+        debugPrint('❌ خطأ في حفظ العنوان سحابياً: $e');
+      }
+    }
+  }
+
+  // 3. حذف عنوان من الهاتف وSupabase
+  Future<void> removeUserAddress(String id) async {
+    _userAddresses.removeWhere((a) => a.id == id);
+    _saveUserAddressesToPrefs();
+    notifyListeners();
+
+    try {
+      final intId = int.tryParse(id);
+      if (intId != null) {
+        await supabase.from('customer_addresses').delete().eq('id', intId);
+      } else {
+        await supabase.from('customer_addresses').delete().eq('id', id);
+      }
+      debugPrint('✅ تم حذف العنوان من Supabase');
+    } catch (e) {
+      debugPrint('❌ خطأ في حذف العنوان من Supabase: $e');
+    }
+  }
+
+  void selectDefaultAddress(AddressModel address) {
+    String formattedAddress = '${address.title}: ${address.area} - ${address.details}';
+    if (address.instructions.isNotEmpty) {
+      formattedAddress += ' (تعليمات: ${address.instructions})';
+    }
+    addOrUpdateAddress(formattedAddress);
+    notifyListeners();
+  }
 
   Future<void> _loadUserAddressesFromPrefs() async {
     try {
@@ -111,7 +199,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في تحميل العناوين المحفوظة: $e');
+      debugPrint('⚠️ خطأ في تحميل العناوين المحفوظة محلياً: $e');
     }
   }
 
@@ -127,32 +215,8 @@ class AppState extends ChangeNotifier {
       }).toList();
       await prefs.setString('user_saved_addresses_json', jsonEncode(listToEncode));
     } catch (e) {
-      debugPrint('⚠️ خطأ في حفظ العناوين المحفوظة: $e');
+      debugPrint('⚠️ خطأ في حفظ العناوين محلياً: $e');
     }
-  }
-
-  void addUserAddress(AddressModel address) {
-    _userAddresses.add(address);
-    if (_userAddresses.length == 1) {
-      selectDefaultAddress(address);
-    }
-    _saveUserAddressesToPrefs();
-    notifyListeners();
-  }
-
-  void removeUserAddress(String id) {
-    _userAddresses.removeWhere((a) => a.id == id);
-    _saveUserAddressesToPrefs();
-    notifyListeners();
-  }
-
-  void selectDefaultAddress(AddressModel address) {
-    String formattedAddress = '${address.title}: ${address.area} - ${address.details}';
-    if (address.instructions.isNotEmpty) {
-      formattedAddress += ' (تعليمات: ${address.instructions})';
-    }
-    addOrUpdateAddress(formattedAddress);
-    notifyListeners();
   }
 
   // --- 🗺️ ترجمة حالات الطلبات إلى العربية ---
@@ -491,6 +555,7 @@ class AppState extends ChangeNotifier {
             'city': city,
             'address': response['address']?.toString() ?? address ?? '',
           };
+          fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً فور استعادة الجلسة
           notifyListeners();
           await restoreLastCustomerOrder();
           return;
@@ -505,6 +570,7 @@ class AppState extends ChangeNotifier {
         'city': city,
         'address': address ?? '',
       };
+      fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً
       notifyListeners();
       await restoreLastCustomerOrder();
     }
@@ -557,6 +623,8 @@ class AppState extends ChangeNotifier {
           'address': address,
         };
 
+        fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً عند تسجيل الدخول الناجح
+
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userPhone', dbPhone);
         await prefs.setString('userName', name);
@@ -590,6 +658,7 @@ class AppState extends ChangeNotifier {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.length < 9) return false;
     userProfile = {'phone': cleanPhone, 'name': '', 'city': currentCity, 'address': ''};
+    fetchUserAddressesFromSupabase();
     notifyListeners();
     return true;
   }
@@ -672,6 +741,8 @@ class AppState extends ChangeNotifier {
       'address': addressDetails,
     };
 
+    fetchUserAddressesFromSupabase();
+
     SharedPreferences.getInstance().then((prefs) {
       prefs.setString('userPhone', cleanPhone);
       prefs.setString('userName', name);
@@ -685,10 +756,12 @@ class AppState extends ChangeNotifier {
 
   void logoutUser() async {
     userProfile = null;
+    _userAddresses.clear();
     final prefs = await SharedPreferences.getInstance();
     prefs.remove('userPhone');
     prefs.remove('userName');
     prefs.remove('userAddress');
+    prefs.remove('user_saved_addresses_json');
     notifyListeners();
   }
 
