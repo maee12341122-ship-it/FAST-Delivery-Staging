@@ -284,8 +284,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showVariableProductDialog(BuildContext context, AppState appState, ProductModel product) {
-    final TextEditingController noteController = TextEditingController();
+  // 🛑 نافذة إدخال السعر الإلزامي فقط (بدون وزن أو تعقيد)
+  void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
+    final TextEditingController priceController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
@@ -293,14 +295,17 @@ class _HomeScreenState extends State<HomeScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+          ),
           title: Row(
             children: [
-              const Icon(Icons.scale, color: Colors.amber),
+              const Icon(Icons.monetization_on, color: Colors.amber),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'طلب ${product.name}',
+                  'تحديد السعر لـ ${product.name}',
                   style: TextStyle(
                     color: appState.isDarkMode ? Colors.white : Colors.black87,
                     fontSize: 16,
@@ -310,28 +315,45 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'هذا المنتج يباع بالوزن/العدد (${product.unit}). يرجى تحديد الكمية المطلوبة بدقة:',
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteController,
-                autofocus: true,
-                style: TextStyle(color: appState.isDarkMode ? Colors.white : Colors.black87),
-                decoration: InputDecoration(
-                  hintText: 'مثال: كيلو ونصف، 4 حبات، ربطتين...',
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
-                  filled: true,
-                  fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'الرجاء إدخال السعر المطلوب (ر.ي) بشكل إلزامي للمتابعة:',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  style: TextStyle(color: appState.isDarkMode ? Colors.white : Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'السعر الإلزامي (ر.ي)*',
+                    labelStyle: const TextStyle(color: Colors.amber),
+                    hintText: 'اكتب السعر هنا...',
+                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
+                    filled: true,
+                    fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  // 🛑 شرط إلزامي صارم: لا يقبل الحفظ نهائياً إلا إذا أدخل المستخدم رقماً صحيحاً أكبر من الصفر
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'إدخال السعر إلزامي لإتمام الطلب!';
+                    }
+                    final double? parsedPrice = double.tryParse(value.trim());
+                    if (parsedPrice == null || parsedPrice <= 0) {
+                      return 'الرجاء إدخال سعر صحيح أكبر من الصفر!';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -344,27 +366,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () {
-                final note = noteController.text.trim();
-                if (note.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إدخال الكمية أو الوزن المطلوب')),
-                  );
-                  return;
-                }
-                
-                appState.addToCart(CartItemModel(
-                  id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
-                  name: '${product.name} ($note ${product.unit})',
-                  price: 0.0,
-                  quantity: 1,
-                  restaurantId: product.restaurantName.isNotEmpty ? product.restaurantName : 'قسم الخضار والفواكه',
-                  imageUrl: product.imageUrl,
-                ));
+                // التحقق الإلزامي من صحة إدخال السعر
+                if (formKey.currentState!.validate()) {
+                  final double enteredPrice = double.parse(priceController.text.trim());
 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('تمت إضافة ${product.name} ($note) إلى السلة بنجاح 🥬')),
-                );
+                  // تمرير المنتج بالسعر المحدد حصرياً للسلة
+                  appState.addToCart(CartItemModel(
+                    id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
+                    name: '${product.name} (بسعر محدد)',
+                    price: enteredPrice,
+                    quantity: 1,
+                    restaurantId: product.restaurantName.isNotEmpty ? product.restaurantName : 'قسم الخضار والفواكه',
+                    imageUrl: product.imageUrl,
+                  ));
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تمت إضافة ${product.name} بسعر $enteredPrice ر.ي إلى السلة بنجاح ✅')),
+                  );
+                }
               },
               child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
@@ -1260,7 +1280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                isVariable ? 'وزن (${product.unit})' : (product.restaurantName.isNotEmpty ? product.restaurantName : 'متجر عام'),
+                                isVariable ? 'حدد السعر' : (product.restaurantName.isNotEmpty ? product.restaurantName : 'متجر عام'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.grey, fontSize: 11),
@@ -1271,7 +1291,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      isVariable ? 'حسب الوزن' : '${product.price} ر.ي',
+                                      isVariable ? 'إدخال يدوي' : '${product.price} ر.ي',
                                       style: const TextStyle(
                                         color: Colors.amber,
                                         fontWeight: FontWeight.bold,
@@ -1289,9 +1309,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                             ),
                                             onPressed: appState.isStoreOpen
-                                                ? () => _showVariableProductDialog(context, appState, product)
+                                                ? () => _showEnterPriceDialog(context, appState, product)
                                                 : null,
-                                            child: const Text('بالوزن', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                                            child: const Text('أدخل السعر', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
                                           ),
                                         )
                                       : (qtyInCart == 0
