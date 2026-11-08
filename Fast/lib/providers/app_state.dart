@@ -53,6 +53,32 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
+  // --- 🏠 قائمة وعناوين العميل المحفوظة (تعدد العناوين) ---
+  final List<AddressModel> _userAddresses = [];
+  List<AddressModel> get userAddresses => _userAddresses;
+
+  void addUserAddress(AddressModel address) {
+    _userAddresses.add(address);
+    if (_userAddresses.length == 1) {
+      selectDefaultAddress(address);
+    }
+    notifyListeners();
+  }
+
+  void removeUserAddress(String id) {
+    _userAddresses.removeWhere((a) => a.id == id);
+    notifyListeners();
+  }
+
+  void selectDefaultAddress(AddressModel address) {
+    String formattedAddress = '${address.title}: ${address.area} - ${address.details}';
+    if (address.instructions.isNotEmpty) {
+      formattedAddress += ' (تعليمات: ${address.instructions})';
+    }
+    addOrUpdateAddress(formattedAddress);
+    notifyListeners();
+  }
+
   // --- 🗺️ دالة ترجمة حالات الطلبات إلى اللغة العربية ---
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
