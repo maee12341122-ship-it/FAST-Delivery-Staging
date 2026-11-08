@@ -888,7 +888,7 @@ class AppState extends ChangeNotifier {
       products = response.map((p) => ProductModel(
         id: p['id'].toString(),
         name: p['name'] ?? '',
-        description: p['description'] ?? '', // 👈 تمرير الوصف الإلزامي بنجاح لتصحيح خطأ البناء
+        description: p['description'] ?? '', // 👈 تمرير الوصف الإلزامي بشكل صحيح كامل
         restaurantName: p['restaurant_name'] ?? 'متجر عام',
         price: double.tryParse(p['price'].toString()) ?? 0.0,
         category: p['category'] ?? 'المطاعم',
