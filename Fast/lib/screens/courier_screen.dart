@@ -33,7 +33,7 @@ class _CourierScreenState extends State<CourierScreen> {
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر فتح الخريطة حالياً')),
+          const SnackBar(content: Text('تعذر فتح الخريطة حالياً ❌')),
         );
       }
     }
@@ -140,7 +140,7 @@ class _CourierScreenState extends State<CourierScreen> {
                             } else {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة!')),
+                                  const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
                                 );
                               }
                             }
@@ -165,6 +165,16 @@ class _CourierScreenState extends State<CourierScreen> {
       final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
       return assigned == courierName || assigned == courierId || assigned.contains(courierName);
     }).toList();
+
+    // 🟢 حساب أرباح المندوب وعدد الطلبات المكتملة بناءً على رسوم التوصيل
+    double totalEarnings = 0.0;
+    int completedCount = 0;
+    for (var order in myOrders) {
+      if (order['status'] == 'delivered') {
+        completedCount++;
+        totalEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+      }
+    }
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
@@ -203,7 +213,39 @@ class _CourierScreenState extends State<CourierScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 10),
+          
+          // 🟢 بطاقة عرض أرباح وعمولات المندوب وتفاصيل الإنجاز
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.green.withOpacity(0.4), width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Column(
+                  children: [
+                    const Text('الطلبات المكتملة ✅', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text('$completedCount', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Container(width: 1, height: 30, color: Colors.white24),
+                Column(
+                  children: [
+                    const Text('إجمالي أرباح التوصيل 💰', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text('${totalEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 15),
+
           Expanded(
             child: myOrders.isEmpty
                 ? const Center(child: Text('لا توجد طلبات مسندة لك حالياً 📦', style: TextStyle(color: Colors.grey, fontSize: 15)))
@@ -286,6 +328,7 @@ class _CourierScreenState extends State<CourierScreen> {
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
+                              // 🟢 أزرار تفاعلية لتغيير حالة الطلب خطوة بخطوة للمندوب
                               if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
                                 Row(
                                   children: [
@@ -293,7 +336,7 @@ class _CourierScreenState extends State<CourierScreen> {
                                       child: ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                                         onPressed: () => appState.courierRespondToOrder(orderId, true),
-                                        child: const Text('قبول الطلب'),
+                                        child: const Text('قبول الطلب ✅', style: TextStyle(fontWeight: FontWeight.bold)),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -301,7 +344,7 @@ class _CourierScreenState extends State<CourierScreen> {
                                       child: ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                                         onPressed: () => appState.courierRespondToOrder(orderId, false),
-                                        child: const Text('رفض الطلب'),
+                                        child: const Text('رفض الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
                                       ),
                                     ),
                                   ],
@@ -309,14 +352,14 @@ class _CourierScreenState extends State<CourierScreen> {
                               ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderDelivered(orderId),
-                                  child: const Text('تحديث الحالة (تم الوصول)'),
+                                  onPressed: () => appState.markOrderArrived(orderId), // تحديث الحالة إلى وصل للموقع
+                                  child: const Text('تحديث الحالة (تم الوصول للموقع) 📍', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderDelivered(orderId),
-                                  child: const Text('تم التسليم ✅'),
+                                  onPressed: () => appState.markOrderDelivered(orderId), // تأكيد التسليم النهائي وتحصيل الأرباح
+                                  child: const Text('تأكيد تسليم الطلب وتحصيل المبلغ ✅', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             ],
@@ -325,7 +368,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       );
                     },
                   ),
-          ),
+          ],
         ],
       ),
     );
