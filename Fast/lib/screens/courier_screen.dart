@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart'; // 👈 لاستخدام زر فتح الخرائط بسلاسة
-import 'package:onesignal_flutter/onesignal_flutter.dart'; // 👈 استيراد مكتبة OneSignal لتحديث الـ Player ID
-import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استيراد سوبابيس لحفظ المعرّف
+import 'package:url_launcher/url_launcher.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 
@@ -24,7 +24,6 @@ class _CourierScreenState extends State<CourierScreen> {
     super.dispose();
   }
 
-  // 🗺️ دالة لفتح خرائط جوجل باستخدام العنوان النصي أو رابط البحث
   Future<void> _openMap(String address) async {
     final query = Uri.encodeComponent(address.isNotEmpty ? address : 'Taiz, Yemen');
     final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
@@ -133,16 +132,15 @@ class _CourierScreenState extends State<CourierScreen> {
                                         .from('couriers')
                                         .update({'onesignal_player_id': playerId})
                                         .eq('id', courierId);
-                                    debugPrint('✅ تم تحديث OneSignal Player ID للمندوب بنجاح: $playerId');
                                   }
                                 }
                               } catch (e) {
-                                debugPrint('⚠️ خطأ في تحديث Player ID للمندوب: $e');
+                                debugPrint('⚠️ خطأ: $e');
                               }
                             } else {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('فشل الدخول: إما بيانات غير صحيحة أو أن الحساب مفتوح في جلسة أخرى حالياً!')),
+                                  const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة!')),
                                 );
                               }
                             }
@@ -237,7 +235,6 @@ class _CourierScreenState extends State<CourierScreen> {
                                   IconButton(
                                     style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
                                     icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
-                                    tooltip: 'مراسلة المشرف',
                                     onPressed: () {
                                       Navigator.push(
                                         context,
@@ -284,90 +281,42 @@ class _CourierScreenState extends State<CourierScreen> {
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('💰 الإجمالي المطلوب: ${order['total_price'] ?? order['total_amount'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text('💰 الإجمالي: ${order['total_price'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 4),
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
                               if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
-                                const Text('هل تقبل توصيل هذا الطلب؟', style: TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 10),
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.green, 
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        ),
-                                        icon: const Icon(Icons.check, size: 18),
-                                        onPressed: () {
-                                          appState.courierRespondToOrder(orderId, true);
-                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قَبِلت الطلب بنجاح 🟢')));
-                                        },
-                                        label: const Text('قبول الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                                        onPressed: () => appState.courierRespondToOrder(orderId, true),
+                                        child: const Text('قبول الطلب'),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
-                                      child: ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red, 
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        ),
-                                        icon: const Icon(Icons.close, size: 18),
-                                        onPressed: () {
-                                          appState.courierRespondToOrder(orderId, false);
-                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب وإعادته للإدارة 🔴')));
-                                        },
-                                        label: const Text('رفض الطلب', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                        onPressed: () => appState.courierRespondToOrder(orderId, false),
+                                        child: const Text('رفض الطلب'),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ]
-                              else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blueAccent, 
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size(double.infinity, 44),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  icon: const Icon(Icons.navigation),
-                                  onPressed: () {
-                                    appState.markOrderDelivered(orderId); // أو تحديث الوصول
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حالة الطلب بنجاح! 📍')));
-                                  },
-                                  label: const Text('تحديث الحالة (تم الوصول)', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
+                                  onPressed: () => appState.markOrderDelivered(orderId),
+                                  child: const Text('تحديث الحالة (تم الوصول)'),
                                 ),
-                              ]
-                              else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green, 
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size(double.infinity, 44),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  icon: const Icon(Icons.task_alt),
-                                  onPressed: () {
-                                    appState.markOrderDelivered(orderId);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد تسليم الطلب بنجاح! ✅')));
-                                  },
-                                  label: const Text('تم التسليم ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ]
-                              else ...[
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text('ملاحظة: ${order['admin_message'] ?? ''}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                              ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
+                                  onPressed: () => appState.markOrderDelivered(orderId),
+                                  child: const Text('تم التسليم ✅'),
                                 ),
                               ],
                             ],
@@ -376,7 +325,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       );
                     },
                   ),
-          ],
+          ),
         ],
       ),
     );
