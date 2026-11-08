@@ -70,84 +70,86 @@ class _CourierScreenState extends State<CourierScreen> {
                 child: Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 400),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                            ),
+                            child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
                           ),
-                          child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        const SizedBox(height: 30),
-                        TextField(
-                          controller: _usernameController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'اسم المستخدم',
-                            labelStyle: TextStyle(color: Colors.grey),
-                            filled: true,
-                            fillColor: Color(0xFF1E1E1E),
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
+                          const SizedBox(height: 24),
+                          const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          const SizedBox(height: 30),
+                          TextField(
+                            controller: _usernameController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'اسم المستخدم',
+                              labelStyle: TextStyle(color: Colors.grey),
+                              filled: true,
+                              fillColor: Color(0xFF1E1E1E),
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'كلمة السر',
-                            labelStyle: TextStyle(color: Colors.grey),
-                            filled: true,
-                            fillColor: Color(0xFF1E1E1E),
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'كلمة السر',
+                              labelStyle: TextStyle(color: Colors.grey),
+                              filled: true,
+                              fillColor: Color(0xFF1E1E1E),
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber, 
-                            minimumSize: const Size(double.infinity, 48),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: () async {
-                            bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
-                            if (success) {
-                              try {
-                                String? playerId = OneSignal.User.pushSubscription.id;
-                                if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
-                                  String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
-                                  if (courierId.isNotEmpty) {
-                                    await Supabase.instance.client
-                                        .from('couriers')
-                                        .update({'onesignal_player_id': playerId})
-                                        .eq('id', courierId);
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.amber, 
+                              minimumSize: const Size(double.infinity, 48),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () async {
+                              bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
+                              if (success) {
+                                try {
+                                  String? playerId = OneSignal.User.pushSubscription.id;
+                                  if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
+                                    String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
+                                    if (courierId.isNotEmpty) {
+                                      await Supabase.instance.client
+                                          .from('couriers')
+                                          .update({'onesignal_player_id': playerId})
+                                          .eq('id', courierId);
+                                    }
                                   }
+                                } catch (e) {
+                                  debugPrint('⚠️ خطأ: $e');
                                 }
-                              } catch (e) {
-                                debugPrint('⚠️ خطأ: $e');
+                              } else {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
+                                  );
+                                }
                               }
-                            } else {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
-                                );
-                              }
-                            }
-                          },
-                          child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                        ),
-                      ],
+                            },
+                            child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -166,7 +168,6 @@ class _CourierScreenState extends State<CourierScreen> {
       return assigned == courierName || assigned == courierId || assigned.contains(courierName);
     }).toList();
 
-    // 🟢 حساب أرباح المندوب وعدد الطلبات المكتملة بناءً على رسوم التوصيل
     double totalEarnings = 0.0;
     int completedCount = 0;
     for (var order in myOrders) {
@@ -215,7 +216,6 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           const SizedBox(height: 10),
           
-          // 🟢 بطاقة عرض أرباح وعمولات المندوب وتفاصيل الإنجاز
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -328,7 +328,6 @@ class _CourierScreenState extends State<CourierScreen> {
                               Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                               const Divider(color: Colors.white12, height: 20),
 
-                              // 🟢 أزرار تفاعلية لتغيير حالة الطلب خطوة بخطوة للمندوب
                               if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
                                 Row(
                                   children: [
@@ -352,13 +351,13 @@ class _CourierScreenState extends State<CourierScreen> {
                               ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'onTheWay') ...[
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderArrived(orderId), // تحديث الحالة إلى وصل للموقع
+                                  onPressed: () => appState.markOrderArrived(orderId),
                                   child: const Text('تحديث الحالة (تم الوصول للموقع) 📍', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 40)),
-                                  onPressed: () => appState.markOrderDelivered(orderId), // تأكيد التسليم النهائي وتحصيل الأرباح
+                                  onPressed: () => appState.markOrderDelivered(orderId),
                                   child: const Text('تأكيد تسليم الطلب وتحصيل المبلغ ✅', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ],
