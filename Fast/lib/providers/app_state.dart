@@ -882,13 +882,13 @@ class AppState extends ChangeNotifier {
 
   List products = [];
 
-  Future<void> fetchProductsFromSupabase() async {
+    Future<void> fetchProductsFromSupabase() async {
     try {
       final response = await supabase.from('products').select();
       products = response.map((p) => ProductModel(
         id: p['id'].toString(),
         name: p['name'] ?? '',
-        description: p['description'] ?? '', // 👈 تمرير الوصف الإلزامي بشكل صحيح كامل
+        description: p['description'] ?? '',
         restaurantName: p['restaurant_name'] ?? 'متجر عام',
         price: double.tryParse(p['price'].toString()) ?? 0.0,
         category: p['category'] ?? 'المطاعم',
@@ -902,6 +902,7 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في جلب المنتجات: $e');
     }
   }
+
 
   Future<void> addProduct(ProductModel product) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
