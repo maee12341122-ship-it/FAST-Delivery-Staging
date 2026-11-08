@@ -8,15 +8,23 @@ class NotificationService {
   /// 1. تهيئة الاستماع للإشعارات والنقر عليها
   static Future<void> initialize() async {
     try {
+      // طلب إذن الإشعارات من المستخدم نظامياً
+      await OneSignal.Notifications.requestPermission(true);
+
       // الاستماع للنقر على الإشعار من المستخدم
       OneSignal.Notifications.addClickListener((event) {
         debugPrint('🚀 [النقر على الإشعار]: ${event.notification.title}');
         // يمكنك هنا توجيه المستخدم للشاشة المناسبة بناءً على البيانات المرسلة
       });
 
-      // طباعة معرف الجهاز الحالي للتأكد
+      // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
+      OneSignal.User.pushSubscription.addObserver((state) {
+        debugPrint('📱 [OneSignal Player ID الجديد]: ${state.current.id}');
+      });
+
+      // طباعة معرف الجهاز الحالي للتأكد إذا كان متوفراً
       String? playerId = OneSignal.User.pushSubscription.id;
-      debugPrint('📱 [OneSignal Player ID]: $playerId');
+      debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
 
       debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal) بنجاح');
     } catch (e) {
@@ -27,14 +35,22 @@ class NotificationService {
   /// 2. حفظ معرف الجهاز الحالي في جدول Supabase للمستخدم المسجل (عميل، مندوب، مشرف)
   static Future<void> saveUserPlayerId(String userId, String tableName) async {
     try {
+      // محاولة جلب الـ Player ID عدة مرات إذا لم يكن جاهزاً فوراً
       String? playerId = OneSignal.User.pushSubscription.id;
       
-      if (playerId != null) {
+      if (playerId == null || playerId.isEmpty) {
+        await Future.delayed(const Duration(seconds: 2));
+        playerId = OneSignal.User.pushSubscription.id;
+      }
+
+      if (playerId != null && playerId.isNotEmpty) {
         await Supabase.instance.client
-            .from(tableName) // مثل جدول profiles, drivers, customers
+            .from(tableName) // مثل جدول customers, couriers
             .update({'onesignal_player_id': playerId})
             .eq('id', userId);
-        debugPrint("✅ تم حفظ OneSignal Player ID في جدول $tableName بنجاح");
+        debugPrint("✅ تم حفظ OneSignal Player ID ($playerId) في جدول $tableName بنجاح");
+      } else {
+        debugPrint("⚠️ لم يتم العثور على Player ID للجهاز بعد، يرجى التحقق من الاتصال.");
       }
     } catch (e) {
       debugPrint("⚠️ خطأ في حفظ Player ID في Supabase: $e");
