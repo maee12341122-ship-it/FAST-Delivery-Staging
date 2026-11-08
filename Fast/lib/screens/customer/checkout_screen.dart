@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/app_state.dart';
 import '../home_screen.dart';
 
@@ -19,8 +20,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressDescriptionController = TextEditingController();
   final _paymentAccountController = TextEditingController();
 
-  // 👈 متغير لتخزين طريقة الدفع المختارة (نقدي افتراضياً أو محافظ إلكترونية)
-  String _selectedPaymentMethod = 'cash'; // cash, al_kuraimi, al_qutaibi, mobile_money
+  String _selectedPaymentMethod = 'cash'; // cash
 
   // إحداثيات افتراضية لمدينة تعز (مركز المدينة)
   LatLng _selectedLocation = const LatLng(13.5779, 44.0219);
@@ -36,7 +36,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _phoneController.text = appState.userProfile!['phone'] ?? '';
       _addressDescriptionController.text = appState.userProfile!['address'] ?? '';
     }
-    // طلب أذونات الموقع وفحصها فور فتح شاشة إتمام الطلب
     _determinePosition();
   }
 
@@ -49,18 +48,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.dispose();
   }
 
-  // --- دالة طلب أذونات الموقع وجلب الإحداثيات الحالية ---
   Future<void> _determinePosition() async {
     setState(() => _isLoadingLocation = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('الرجاء تفعيل خدمة الموقع (GPS) في جهازك')),
-          );
-        }
-        setState(() => _isLoadingLocation = false);
+        if (mounted) setState(() => _isLoadingLocation = false);
         return;
       }
 
@@ -68,27 +61,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم رفض إذن الوصول إلى الموقع')),
-            );
-          }
-          setState(() => _isLoadingLocation = false);
+          if (mounted) setState(() => _isLoadingLocation = false);
           return;
         }
       }
 
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('إذن الموقع مرفوض بشكل دائم، يرجى تفعيله من الإعدادات')),
-          );
-        }
-        setState(() => _isLoadingLocation = false);
-        return;
-      }
-
-      // جلب الموقع الحالي بدقة عالية
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -98,16 +75,157 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _selectedLocation = LatLng(position.latitude, position.longitude);
           _isLoadingLocation = false;
         });
-
-        // تحريك خريطة OpenStreetMap بسلاسة إلى موقع العميل الحالي
         _mapController.move(_selectedLocation, 16.0);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingLocation = false);
-      }
-      debugPrint('❌ خطأ في تحديد الموقع: $e');
+      if (mounted) setState(() => _isLoadingLocation = false);
     }
+  }
+
+  // 📍 نافذة اختيار العنوان من العناوين المحفوظة أو إضافة عنوان جديد
+  void _showAddressBookBottomSheet(BuildContext context, Color cardBg, Color textColor) {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('عناويني المحفوظة 📍', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(foregroundColor: Colors.amber),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('إضافة عنوان جديد'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showAddNewAddressDialog(context);
+                      },
+                    ),
+                  ],
+                ),
+                const Divider(color: Colors.white24),
+                SizedBox(
+                  height: 250,
+                  child: FutureBuilder<List>>(
+                    future: Supabase.instance.client
+                        .from('user_addresses')
+                        .select()
+                        .eq('user_id', userId ?? ''),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Text('لا توجد عناوين محفوظة. أضف عنوانك الأول!', style: TextStyle(color: Colors.grey)),
+                        );
+                      }
+
+                      final addresses = snapshot.data!;
+                      return ListView.builder(
+                        itemCount: addresses.length,
+                        itemBuilder: (context, index) {
+                          final addr = addresses[index];
+                          return Card(
+                            color: const Color(0xFF2A2A2A),
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            child: ListTile(
+                              leading: const Icon(Icons.location_on, color: Colors.amber),
+                              title: Text(addr['title'] ?? 'عنوان', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              subtitle: Text(addr['address_text'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              trailing: const Icon(Icons.check_circle_outline, color: Colors.amber),
+                              onTap: () {
+                                setState(() {
+                                  _addressDescriptionController.text = "${addr['title']}: ${addr['address_text']}";
+                                });
+                                Navigator.pop(context);
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // نافذة منبثقة لإضافة عنوان جديد مباشرة وحفظه في سوبابيس
+  void _showAddNewAddressDialog(BuildContext context) {
+    final titleController = TextEditingController();
+    final textController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Text('إضافة عنوان توصيل جديد 🏠', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'تسمية العنوان (مثل: المنزل، العمل)', labelStyle: TextStyle(color: Colors.grey)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: textController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'تفاصيل العنوان (الشارع، المعلم القريب)', labelStyle: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                onPressed: () async {
+                  if (titleController.text.isNotEmpty && textController.text.isNotEmpty) {
+                    final userId = Supabase.instance.client.auth.currentUser?.id;
+                    await Supabase.instance.client.from('user_addresses').insert({
+                      'user_id': userId,
+                      'title': titleController.text.trim(),
+                      'address_text': textController.text.trim(),
+                    });
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      _addressDescriptionController.text = "${titleController.text}: ${textController.text}";
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة وحفظ العنوان بنجاح ✅')));
+                    }
+                  }
+                },
+                child: const Text('حفظ واختيار', style: TextStyle(color: Colors.black)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -129,7 +247,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // حقول البيانات الشخصية
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -140,7 +257,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('بيانات المستلم', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('بيانات المستلم', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                      // 📍 زر اختيار من العناوين المحفوظة
+                      TextButton.icon(
+                        style: TextButton.styleFrom(foregroundColor: Colors.amber),
+                        icon: const Icon(Icons.bookmarks, size: 16),
+                        label: const Text('عناويني المحفوظة', style: TextStyle(fontSize: 12)),
+                        onPressed: () => _showAddressBookBottomSheet(context, cardBg, textColor),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _nameController,
@@ -171,7 +300,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     controller: _addressDescriptionController,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      labelText: 'تفاصيل العنوان (مثلاً: شارع جمال، بجوار...)',
+                      labelText: 'تفاصيل العنوان (شارع، معلم قريب...)',
                       labelStyle: const TextStyle(color: Colors.grey),
                       filled: true,
                       fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
@@ -183,7 +312,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 👈 قسم اختيار طريقة الدفع
+            // طريقة الدفع
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -206,7 +335,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام فقط')),
+                      DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام')),
                     ],
                     onChanged: (val) {
                       setState(() {
@@ -219,7 +348,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 20),
 
-            // خريطة التوصيل التفاعلية (تم تحديث المزود لضمان ظهور المناطق والمباني بوضوح)
+            // الخريطة التفاعلية
             const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 8),
             Container(
@@ -244,7 +373,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         },
                       ),
                       children: [
-                        // 🛠️ التعديل الجذري هنا لضمان عمل الخريطة وعدم توقفها
                         TileLayer(
                           urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                           subdomains: const ['a', 'b', 'c', 'd'],
@@ -257,11 +385,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               point: _selectedLocation,
                               width: 80,
                               height: 80,
-                              child: const Icon(
-                                Icons.location_pin,
-                                color: Colors.red,
-                                size: 45,
-                              ),
+                              child: const Icon(Icons.location_pin, color: Colors.red, size: 45),
                             ),
                           ],
                         ),
@@ -270,9 +394,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     if (_isLoadingLocation)
                       Container(
                         color: Colors.black54,
-                        child: const Center(
-                          child: CircularProgressIndicator(color: Colors.amber),
-                        ),
+                        child: const Center(child: CircularProgressIndicator(color: Colors.amber)),
                       ),
                     Positioned(
                       bottom: 10,
@@ -321,13 +443,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   return;
                 }
 
-                // دمج الوصف النصي مع الإحداثيات الجغرافية كعنوان متكامل
                 final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: ${_selectedLocation.latitude.toStringAsFixed(4)}, ${_selectedLocation.longitude.toStringAsFixed(4)})';
-
-                // وصف المنتجات في السلة
                 final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
 
-                // حفظ ملف العميل وإرسال الطلب إلى Supabase
                 await appState.saveUserProfileDetails(_nameController.text, fullAddress);
                 try {
                   await appState.createOrder(
