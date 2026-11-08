@@ -817,20 +817,31 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
   }
 
+  // --- 🍔 إدارة وتعديل وحذف المنتجات للمشرف ---
   Future<void> removeProduct(String id) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
+    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
+      throw Exception('صلاحية المشرف مطلوبة.');
+    }
     await supabase.from('products').delete().eq('id', id);
     await fetchProductsFromSupabase();
+    notifyListeners();
   }
 
   Future<void> upsertProduct(ProductModel product) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') throw Exception('صلاحية المشرف مطلوبة.');
+    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
+      throw Exception('صلاحية المشرف مطلوبة.');
+    }
     await supabase.from('products').upsert({
-      'id': product.id, 'name': product.name.trim(),
-      'restaurant_name': product.restaurantName.trim(), 'price': product.price,
-      'category': product.category, 'available': product.available, 'image_url': product.imageUrl,
+      'id': product.id,
+      'name': product.name.trim(),
+      'restaurant_name': product.restaurantName.trim(),
+      'price': product.price,
+      'category': product.category,
+      'available': product.available,
+      'image_url': product.imageUrl,
     }, onConflict: 'id');
     await fetchProductsFromSupabase();
+    notifyListeners();
   }
 
   List products = [];
