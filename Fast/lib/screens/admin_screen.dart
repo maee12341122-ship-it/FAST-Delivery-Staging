@@ -270,15 +270,35 @@ class _AdminScreenState extends State<AdminScreen> {
                     minimumSize: const Size(double.infinity, 44),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: isLocked ? null : () {
+                  onPressed: isLocked ? null : () async {
                     final fee = double.tryParse(_feeControllers[orderId]?.text ?? '0') ?? 0.0;
                     final courierName = order['assigned_courier'] ?? 'لم يتم التعيين';
                     if (courierName == 'لم يتم التعيين') {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار مندوب أولاً')));
                       return;
                     }
+                    
+                    // تحديث الرسوم في قاعدة البيانات والـ AppState
                     appState.setOrderDeliveryFee(orderId, fee, courierName);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديد الرسوم وإسناد الطلب بنجاح! ✅')));
+
+                    // إرسال إشعار تلقائي للعميل عبر OneSignal
+                    try {
+                      final customerPhone = order['phone']?.toString() ?? '';
+                      if (customerPhone.isNotEmpty) {
+                        String? customerPlayerId = await appState.getPlayerIdForUser(customerPhone, 'customers');
+                        if (customerPlayerId != null && customerPlayerId.isNotEmpty) {
+                          await appState.sendAutoNotification(
+                            targetPlayerId: customerPlayerId,
+                            title: 'تم تحديث طلبك #$orderId 💰',
+                            body: 'تم تحديد رسوم التوصيل ($fee ر.ي). يرجى تأكيد الطلب للمتابعة!',
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint('⚠️ خطأ في إرسال الإشعار التلقائي للعميل: $e');
+                    }
+
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديد الرسوم وإرسال الإشعار للعميل بنجاح! ✅')));
                   },
                   child: Text(
                     isLocked ? 'الطلب مؤكد ومقفل 🔒' : 'إرسال التسعيرة وإسناد الطلب للمندوب 🚀',
