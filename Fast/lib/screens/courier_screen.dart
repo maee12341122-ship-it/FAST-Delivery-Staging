@@ -335,7 +335,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       );
                     },
                   ),
-          ],
+          ),
         ],
       ),
     );
