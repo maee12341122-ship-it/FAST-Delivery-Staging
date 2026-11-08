@@ -177,6 +177,10 @@ class _CourierScreenState extends State<CourierScreen> {
       }
     }
 
+    // حساب نسبة الإدارة (20%) وصافي أرباح المندوب (80%)
+    double adminCommission = totalEarnings * 0.20;
+    double courierNetEarnings = totalEarnings - adminCommission;
+
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -216,6 +220,7 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           const SizedBox(height: 10),
           
+          // 📊 بطاقة تفصيل الأرباح والعمولات للمندوب
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -223,22 +228,34 @@ class _CourierScreenState extends State<CourierScreen> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.green.withOpacity(0.4), width: 1.5),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Column(
               children: [
-                Column(
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    const Text('الطلبات المكتملة ✅', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text('$completedCount', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Column(
+                      children: [
+                        const Text('الطلبات المكتملة ✅', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('$completedCount', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Container(width: 1, height: 30, color: Colors.white24),
+                    Column(
+                      children: [
+                        const Text('إجمالي التوصيل 💰', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text('${totalEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ],
                 ),
-                Container(width: 1, height: 30, color: Colors.white24),
-                Column(
+                const Divider(color: Colors.white12, height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('إجمالي أرباح التوصيل 💰', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text('${totalEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text('عمولة الإدارة (20%): ${adminCommission.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+                    Text('صافيك (80%): ${courierNetEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
                   ],
                 ),
               ],
