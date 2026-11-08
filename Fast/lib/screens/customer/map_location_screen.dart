@@ -29,6 +29,38 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     _selectedPoint = widget.initialPoint ?? _taizCenter;
   }
 
+  // دالة تحقق واشتراط إدخال العنوان والموقع قبل العودة
+  void _saveAndReturn() {
+    final addressText = _customAddressController.text.trim();
+
+    // ⛔ الشرط الإجباري: يلزم وجود عنوان نصي وموقع محدد على الخريطة
+    if (addressText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى كتابة عنوانك التفصيلي أولاً! ⚠️'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedPoint == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى تحديد موقعك على الخريطة أو عبر GPS! 📍'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    // إذا تحققت الشروط يتم حفظ وإرسال البيانات
+    Navigator.pop(context, {
+      'address': addressText,
+      'latLng': _selectedPoint,
+    });
+  }
+
   // دالة لجلب الموقع الحالي عبر الـ GPS وتحديث الخريطة
   Future<void> _useGps() async {
     setState(() {
@@ -95,10 +127,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
-            onPressed: () => Navigator.pop(context, {
-              'address': _customAddressController.text.trim(),
-              'latLng': _selectedPoint,
-            }),
+            onPressed: _saveAndReturn,
           ),
         ),
         body: Column(
@@ -117,7 +146,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'أكتب عنوانك التفصيلي بدقة:',
+                      'أكتب عنوانك التفصيلي بدقة (مطلوب): *',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     const SizedBox(height: 8),
@@ -172,7 +201,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
             
             const SizedBox(height: 8),
 
-            // الخريطة التفاعلية (تم استبدال المزود بـ Esri المجاني)
+            // الخريطة التفاعلية
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -191,7 +220,6 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                     },
                   ),
                   children: [
-                    // 🗺️ خرائط Esri المجانية (بدون مفتاح API وبدون مشاكل)
                     TileLayer(
                       urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                       userAgentPackageName: 'com.fast.taiz',
@@ -228,12 +256,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: () {
-                  Navigator.pop(context, {
-                    'address': _customAddressController.text.trim(),
-                    'latLng': _selectedPoint,
-                  });
-                },
+                onPressed: _saveAndReturn,
                 child: const Text('تثبيت الموقع والعنوان والعودة ✅', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
