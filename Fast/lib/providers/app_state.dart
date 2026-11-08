@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http; // 👈 مكتبة الاتصال لإرسال إشعارات OneSignal التلقائية
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -28,6 +29,38 @@ class AppState extends ChangeNotifier {
     fetchCouriersFromSupabase();
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
+  }
+
+  // --- 🔔 دالة إرسال الإشعارات التلقائية الفورية عبر OneSignal ---
+  Future<void> sendAutoNotification({
+    required String targetPlayerId,
+    required String title,
+    required String body,
+  }) async {
+    if (targetPlayerId.isEmpty) return;
+
+    // استبدل المفاتيح أدناه بمفاتيح تطبيقك من لوحة OneSignal
+    const String oneSignalAppId = 'YOUR_ONESIGNAL_APP_ID'; 
+    const String oneSignalRestApiKey = 'YOUR_ONESIGNAL_REST_API_KEY'; 
+
+    try {
+      await http.post(
+        Uri.parse('https://onesignal.com/api/v1/notifications'),
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Basic $oneSignalRestApiKey',
+        },
+        body: jsonEncode({
+          'app_id': oneSignalAppId,
+          'include_player_ids': [targetPlayerId],
+          'headings': {'en': title, 'ar': title},
+          'contents': {'en': body, 'ar': body},
+        }),
+      );
+      debugPrint('✅ تم إرسال الإشعار التلقائي بنجاح عبر OneSignal');
+    } catch (e) {
+      debugPrint('❌ خطأ في إرسال الإشعار التلقائي: $e');
+    }
   }
 
   // --- ❤️ إدارة المنتجات المفضلة ---
@@ -1000,7 +1033,7 @@ class AppState extends ChangeNotifier {
       
       _cartItems.clear();
       
-      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلاستيلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
