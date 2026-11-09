@@ -18,7 +18,6 @@ class _AddressesScreenState extends State<AddressesScreen> {
   final _detailsController = TextEditingController();
   final _instructionsController = TextEditingController();
   
-  // حفظ الإحداثيات إذا أردت استخدامها لاحقاً مع المندوب
   LatLng? _selectedLatLng;
 
   @override
@@ -30,7 +29,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
     super.dispose();
   }
 
-  void _showAddAddressDialog(BuildContext context, AppState appState) {
+  void _showAddAddressDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
     _titleController.text = 'المنزل 🏠';
     _areaController.clear();
     _detailsController.clear();
@@ -43,27 +42,30 @@ class _AddressesScreenState extends State<AddressesScreen> {
         builder: (context, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('إضافة عنوان جديد 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+            backgroundColor: cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+            ),
+            title: const Text('إضافة عنوان جديد 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: _titleController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'تسمية العنوان (مثل: البيت، العمل، بيت الأهل)',
-                      labelStyle: TextStyle(color: Colors.grey),
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      labelText: 'تسمية العنوان (مثل: البيت، العمل)',
+                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
-                      fillColor: Color(0xFF121212),
-                      border: OutlineInputBorder(),
+                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                   const SizedBox(height: 12),
 
-                  // 🗺️ زر فتح الخريطة لتحديد الموقع بدقة وجلب العنوان تلقائياً
+                  // 🗺️ زر فتح الخريطة لتحديد الموقع بدقة
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.amber,
@@ -91,45 +93,45 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     icon: const Icon(Icons.map, color: Colors.amber),
                     label: Text(
                       _detailsController.text.isEmpty ? 'تحديد الموقع من الخريطة والـ GPS 🗺️' : 'تحديث الموقع من الخريطة 📌',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),
                   const SizedBox(height: 12),
 
                   TextField(
                     controller: _areaController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'المنطقة أو الحي (مثل: المسبح، الدحي، العريش)',
-                      labelStyle: TextStyle(color: Colors.grey),
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      labelText: 'المنطقة أو الحي (مثل: المسبح، الدحي)*',
+                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
-                      fillColor: Color(0xFF121212),
-                      border: OutlineInputBorder(),
+                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _detailsController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: textColor),
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'التفاصيل (الشارع، بجوار...)',
-                      labelStyle: TextStyle(color: Colors.grey),
+                    decoration: InputDecoration(
+                      labelText: 'التفاصيل (الشارع، بجوار...)*',
+                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
-                      fillColor: Color(0xFF121212),
-                      border: OutlineInputBorder(),
+                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _instructionsController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
                       labelText: 'تعليمات للمندوب (اختياري)',
-                      labelStyle: TextStyle(color: Colors.grey),
+                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
-                      fillColor: Color(0xFF121212),
-                      border: OutlineInputBorder(),
+                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ],
@@ -141,7 +143,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
                 onPressed: () {
                   if (_titleController.text.isNotEmpty && _areaController.text.isNotEmpty) {
                     final newAddress = AddressModel(
@@ -156,7 +161,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     Navigator.pop(context);
                     
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تمت حفظ العنوان بنجاح 📍')),
+                      const SnackBar(content: Text('تم حفظ العنوان بنجاح 📍')),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -178,13 +183,17 @@ class _AddressesScreenState extends State<AddressesScreen> {
     final appState = Provider.of<AppState>(context);
     final addresses = appState.userAddresses;
 
+    final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
+    final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: themeBg,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('عناويني المحفوظة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+          backgroundColor: cardBg,
+          title: Text('عناويني المحفوظة 📍', style: TextStyle(color: Colors.amber[700], fontWeight: FontWeight.bold)),
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
         body: addresses.isEmpty
@@ -194,11 +203,11 @@ class _AddressesScreenState extends State<AddressesScreen> {
                   children: [
                     const Icon(Icons.location_off, size: 60, color: Colors.grey),
                     const SizedBox(height: 12),
-                    const Text('ليس لديك أي عناوين محفوظة حالياً', style: TextStyle(color: Colors.grey, fontSize: 15)),
+                    Text('ليس لديك أي عناوين محفوظة حالياً', style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                      onPressed: () => _showAddAddressDialog(context, appState),
+                      onPressed: () => _showAddAddressDialog(context, appState, cardBg, textColor),
                       icon: const Icon(Icons.add, color: Colors.black),
                       label: const Text('إضافة عنوان جديد', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                     ),
@@ -211,27 +220,64 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 itemBuilder: (context, index) {
                   final address = addresses[index];
                   return Card(
-                    color: const Color(0xFF1E1E1E),
+                    color: cardBg,
                     margin: const EdgeInsets.symmetric(vertical: 8),
+                    elevation: 3,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                       side: BorderSide(color: Colors.amber.withOpacity(0.3)),
                     ),
-                    child: ListTile(
-                      leading: const Icon(Icons.location_on, color: Colors.amber),
-                      title: Text(address.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text('${address.area} - ${address.details}\nتعليمات: ${address.instructions.isNotEmpty ? address.instructions : "لا توجد"}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                      isThreeLine: true,
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                        onPressed: () => appState.removeUserAddress(address.id),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.location_on, color: Colors.amber),
+                                  const SizedBox(width: 8),
+                                  Text(address.title, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                                ],
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                tooltip: 'حذف العنوان',
+                                onPressed: () => appState.removeUserAddress(address.id),
+                              ),
+                            ],
+                          ),
+                          const Divider(color: Colors.white12),
+                          Text('• المنطقة: ${address.area}', style: TextStyle(color: textColor, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text('• التفاصيل: ${address.details}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          if (address.instructions.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('• تعليمات المندوب: ${address.instructions}', style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                          ],
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amber,
+                                side: const BorderSide(color: Colors.amber),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () {
+                                appState.selectDefaultAddress(address);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('تم اختيار "${address.title}" عنواناً للطلب الحالي 🎯')),
+                                );
+                              },
+                              icon: const Icon(Icons.check_circle_outline, size: 16),
+                              label: const Text('تعيين كعنوان افتراضي للطلب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                          ),
+                        ],
                       ),
-                      onTap: () {
-                        appState.selectDefaultAddress(address);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تم اختيار "${address.title}" عنواناً للطلب الحالي 🎯')),
-                        );
-                      },
                     ),
                   );
                 },
@@ -239,7 +285,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
         floatingActionButton: addresses.isNotEmpty
             ? FloatingActionButton(
                 backgroundColor: Colors.amber,
-                onPressed: () => _showAddAddressDialog(context, appState),
+                onPressed: () => _showAddAddressDialog(context, appState, cardBg, textColor),
                 child: const Icon(Icons.add, color: Colors.black),
               )
             : null,
