@@ -47,7 +47,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     final restaurantController = TextEditingController(text: product?.restaurantName ?? '');
     final priceController = TextEditingController(text: product != null ? product.price.toString() : '');
     final imageController = TextEditingController(text: product?.imageUrl ?? '');
-    final descriptionController = TextEditingController(text: product?.description ?? ''); // 👈 متحكم حقل الوصف
+    final descriptionController = TextEditingController(text: product?.description ?? '');
     String selectedCategory = product?.category ?? 'المطاعم';
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
@@ -91,7 +91,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // 🟢 حقل وصف المنتج الجديد
                   TextField(
                     controller: descriptionController,
                     maxLines: 2,
@@ -218,7 +217,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     category: selectedCategory,
                     available: isAvailable,
                     imageUrl: imageController.text.trim(),
-                    description: descriptionController.text.trim(), // 👈 تمرير الوصف
+                    description: descriptionController.text.trim(),
                     unit: isVariablePrice ? selectedUnit : 'حبة',
                     isVariablePrice: isVariablePrice,
                   );
@@ -240,6 +239,53 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // 🛑 نافذة تأكيد الحذف الآمنة للمنتج
+  void _showDeleteConfirmationDialog(BuildContext context, AppState appState, String productId, String productName) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+              SizedBox(width: 8),
+              Text('تأكيد الحذف 🗑️', style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            'هل أنت متأكد من رغبتك في حذف المنتج ($productName) نهائياً؟',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                Navigator.pop(context); // إغلاق نافذة التأكيد
+                await appState.removeProduct(productId);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم حذف المنتج بنجاح 🗑️')),
+                  );
+                }
+              },
+              child: const Text('نعم، حذف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
       ),
     );
@@ -301,12 +347,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                            onPressed: () async {
-                              await appState.removeProduct(product.id);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('تم حذف المنتج بنجاح 🗑️')),
-                              );
-                            },
+                            onPressed: () => _showDeleteConfirmationDialog(context, appState, product.id, product.name),
                           ),
                         ],
                       ),
