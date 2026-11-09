@@ -849,7 +849,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   await appState.submitRestaurantRating(
                     orderId: orderId,
-                    restaurantName: restaurantName,
                     rating: rating.toDouble(),
                     reviewText: commentController.text.trim(),
                   );
@@ -1089,7 +1088,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _currentIndex,
                 children: pages,
               ),
-              // 🌟 شريط السلة العائم التفاعلي تماماً مثل تطبيقات التوصيل الكبرى
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -1226,7 +1224,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🌟 الواجهة الرئيسية المحدثة بتصميم تفاعلي وعصري (بدون ذكر زمن وصول أو سعر توصيل)
   Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
     if (selectedCategory == 'طلبات أخرى') {
       return Padding(
@@ -1366,7 +1363,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          // 🌟 شريط حالة المتجر المنسق
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1390,8 +1386,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          
-          // 🌟 شريط البحث العصري
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(
@@ -1410,8 +1404,6 @@ class _HomeScreenState extends State<HomeScreen> {
               onChanged: (val) => setState(() {}),
             ),
           ),
-
-          // 🌟 الأقسام التفاعلية العصرية (مثل Blinkit)
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 15),
 
@@ -1683,7 +1675,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🌟 تصميم الأقسام العصرية بتصميم تفاعلي متميز
   Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
     final categories = ['الكل', 'المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
     
