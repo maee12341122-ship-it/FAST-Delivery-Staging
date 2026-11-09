@@ -266,8 +266,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainDataFrame.spaceBetween,
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Row(
                                 children: [
