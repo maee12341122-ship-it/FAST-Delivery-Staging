@@ -1373,6 +1373,31 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في تقديم تقييم المندوب: $e');
     }
   }
+
+  // --- 🍽️ دالة تقييم المطعم وجودة الطعام ---
+  Future<void> submitRestaurantRating({
+    required String orderId,
+    required double rating,
+    required String reviewText,
+  }) async {
+    try {
+      await supabase.from('orders').update({
+        'restaurant_rating': rating,
+        'restaurant_review': reviewText,
+      }).eq('id', orderId);
+
+      final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      if (index != -1) {
+        orders[index]['restaurant_rating'] = rating;
+        orders[index]['restaurant_review'] = reviewText;
+        notifyListeners();
+      }
+
+      debugPrint('✅ تم حفظ تقييم المطعم للطلب #$orderId بنجاح');
+    } catch (e) {
+      debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
+    }
+  }
 }
 
 class _UserMock {
