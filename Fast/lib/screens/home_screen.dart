@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -223,7 +223,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = Provider.of<AppState>(context, listen: false);
-      appState.requestLocationAndNotificationPermissions();
+      
+      // 🛑 تم إزالة استدعاء إشعارات الموقع المزعجة من هنا تماماً لتلافي ظهور SnackBar أو إشعارات غير مرغوب فيها
+      appState.fetchStoreSettings();
+      appState.fetchProductsFromSupabase();
 
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
@@ -713,8 +716,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🌟 نافذة تقييم المطعم وجودة الطعام الجديدة
-  void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, Color cardBg, Color textColor) {
+  // 🌟 نافذة تقييم المطعم وجودة الطعام (تظهر فقط لطلبات المطاعم)
+  void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, String restaurantName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
 
@@ -726,11 +729,11 @@ class _HomeScreenState extends State<HomeScreen> {
           child: AlertDialog(
             backgroundColor: cardBg,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.restaurant, color: Colors.amber),
-                SizedBox(width: 10),
-                Text('تقييم جودة الطعام والمطعم 🍽️', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                const Icon(Icons.restaurant, color: Colors.amber),
+                const SizedBox(width: 10),
+                Expanded(child: Text('تقييم مطعم: $restaurantName 🍽️', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold))),
               ],
             ),
             content: Column(
@@ -760,7 +763,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: commentController,
                   style: TextStyle(color: textColor),
                   decoration: InputDecoration(
-                    labelText: 'ملاحظاتك عن الطعام (اختياري)',
+                    labelText: 'ملاحظاتك عن الطعام والمطعم (اختياري)',
                     labelStyle: const TextStyle(color: Colors.grey),
                     filled: true,
                     fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
@@ -778,13 +781,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   await appState.submitRestaurantRating(
                     orderId: orderId,
+                    restaurantName: restaurantName,
                     rating: rating.toDouble(),
                     reviewText: commentController.text.trim(),
                   );
                   if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح ⭐')),
+                    const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح وإشعار المشرف ⭐')),
                   );
                 },
                 child: const Text('إرسال تقييم المطعم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -1768,6 +1772,11 @@ class _HomeScreenState extends State<HomeScreen> {
         final status = order['status'] ?? '';
         final arabicStatus = _getArabicStatus(status);
         final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
+        final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
+
+        // 🌟 التحقق هل الطلب يحتوي على منتجات من مطعم فعلي
+        bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
+        String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
 
         int currentStep = 0;
         if (status == 'waitingForPricing') currentStep = 1;
@@ -1886,23 +1895,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.star, size: 18),
                       label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                    const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber.withOpacity(0.15),
-                        foregroundColor: Colors.amber,
-                        minimumSize: const Size(double.infinity, 42),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                    
+                    // 🌟 يظهر زر تقييم المطعم حصرياً إذا كان الطلب من مطعم
+                    if (isRestaurantOrder) ...[
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber.withOpacity(0.15),
+                          foregroundColor: Colors.amber,
+                          minimumSize: const Size(double.infinity, 42),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                          ),
                         ),
+                        onPressed: () {
+                          _showRestaurantRatingDialog(context, appState, order['id'].toString(), detectedRestaurantName, cardBg, textColor);
+                        },
+                        icon: const Icon(Icons.restaurant_menu, size: 18),
+                        label: Text('قيم مطعم ($detectedRestaurantName) وجودة الطعام 🍽️', style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      onPressed: () {
-                        _showRestaurantRatingDialog(context, appState, order['id'].toString(), cardBg, textColor);
-                      },
-                      icon: const Icon(Icons.restaurant_menu, size: 18),
-                      label: const Text('قيم المطعم وجودة الطعام 🍽️', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
+                    ],
                   ],
                 ],
               ),
@@ -2035,7 +2048,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const AddressesScreen()),
+            MaterialPageRoute(builder: (context,) => const AddressesScreen()),
           );
         }),
 
