@@ -1325,7 +1325,7 @@ class AppState extends ChangeNotifier {
     addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
   }
 
-  // --- ⭐ دالة تقييم المندوب وإرسال إشعاره المضافة حديثاً ---
+  // --- ⭐ دالة تقييم المندوب وإرسال إشعاره المحدثة والآمنة ---
   Future<void> submitCourierRating({
     required String orderId,
     required String courierName,
@@ -1333,11 +1333,13 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
+      // 1. تحديث التقييم والملاحظة في جدول الطلبات سحابياً
       await supabase.from('orders').update({
         'courier_rating': rating,
         'courier_review': reviewText,
       }).eq('id', orderId);
 
+      // 2. تحديث التقييم في القائمة المحلية فوراً
       final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
       if (index != -1) {
         orders[index]['courier_rating'] = rating;
@@ -1345,16 +1347,28 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
 
-      String? courierPlayerId = await getCourierPlayerIdByName(courierName);
-      if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
-        await sendAutoNotification(
-          targetPlayerId: courierPlayerId,
-          title: 'تقييم جديد للطلب #$orderId ⭐',
-          body: 'لقد حصلت على تقييم ($rating من 5) من العميل! شكراً لجهودك.',
-        );
+      // 3. تحديد اسم المندوب بدقة من الطلب إذا كان courierName مرسلاً فارغاً
+      String targetCourierName = courierName.trim();
+      if (targetCourierName.isEmpty && index != -1) {
+        targetCourierName = orders[index]['assigned_courier']?.toString() ?? '';
       }
 
-      debugPrint('✅ تم حفظ التقييم وإرسال إشعار للمندوب بنجاح');
+      if (targetCourierName.isNotEmpty) {
+        // 4. البحث عن Player ID الخاص بالمندوب وإرسال الإشعار
+        String? courierPlayerId = await getCourierPlayerIdByName(targetCourierName);
+        if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
+          await sendAutoNotification(
+            targetPlayerId: courierPlayerId,
+            title: 'تقييم جديد للطلب #$orderId ⭐',
+            body: 'لقد حصلت على تقييم ($rating من 5) من العميل! شكراً لجهودك.',
+          );
+          debugPrint('✅ تم إرسال إشعار التقييم للمندوب ($targetCourierName) بنجاح');
+        } else {
+          debugPrint('⚠️ لم يتم العثور على Player ID للمندوب: $targetCourierName');
+        }
+      } else {
+        debugPrint('⚠️ لا يوجد اسم مندوب مرتبط بهذا الطلب لإرسال الإشعار إليه.');
+      }
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المندوب: $e');
     }
