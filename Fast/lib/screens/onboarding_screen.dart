@@ -13,8 +13,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
 
-  // خطوات الشرح التوضيحية للعميل عند أول استخدام للبرنامج
-  final List> _onboardingData = [
+  // خطوات الشرح التوضيحية للعميل
+  final List _onboardingData = [
     {
       'title': 'أهلاً بك في فاست ديليفري 🚀',
       'desc': 'أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة إلى باب منزلك في تعز بكل سهولة.',
@@ -67,7 +67,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: _onboardingData.length,
-                  onChanged: (index) {
+                  onPageChanged: (index) {
                     setState(() {
                       _currentIndex = index;
                     });
