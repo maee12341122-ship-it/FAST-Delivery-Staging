@@ -40,8 +40,6 @@ void main() async {
 
   // 4. إنشاء AppState وتهيئة الجلسة المحفوظة تلقائياً
   final appState = AppState();
-  await appState.initSession(); // 👈 استعادة جلسة المشرف والمستخدم من الذكرة المحلية
-
   runApp(
     MultiProvider(
       providers: [
