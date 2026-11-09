@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 
 class NotificationService {
   static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
+  static const String _restApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 مفتاحك الحقيقي لإرسال الإشعارات
 
   /// 1. تهيئة الاستماع للإشعارات والنقر عليها
   static Future<void> initialize() async {
@@ -14,7 +17,6 @@ class NotificationService {
       // الاستماع للنقر على الإشعار من المستخدم
       OneSignal.Notifications.addClickListener((event) {
         debugPrint('🚀 [النقر على الإشعار]: ${event.notification.title}');
-        // يمكنك هنا توجيه المستخدم للشاشة المناسبة بناءً على البيانات المرسلة
       });
 
       // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
@@ -22,7 +24,6 @@ class NotificationService {
         debugPrint('📱 [OneSignal Player ID الجديد]: ${state.current.id}');
       });
 
-      // طباعة معرف الجهاز الحالي للتأكد إذا كان متوفراً
       String? playerId = OneSignal.User.pushSubscription.id;
       debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
 
@@ -35,7 +36,6 @@ class NotificationService {
   /// 2. حفظ معرف الجهاز الحالي في جدول Supabase للمستخدم المسجل (عميل، مندوب، مشرف)
   static Future<void> saveUserPlayerId(String userId, String tableName) async {
     try {
-      // محاولة جلب الـ Player ID عدة مرات إذا لم يكن جاهزاً فوراً
       String? playerId = OneSignal.User.pushSubscription.id;
       
       if (playerId == null || playerId.isEmpty) {
@@ -45,7 +45,7 @@ class NotificationService {
 
       if (playerId != null && playerId.isNotEmpty) {
         await Supabase.instance.client
-            .from(tableName) // مثل جدول customers, couriers
+            .from(tableName)
             .update({'onesignal_player_id': playerId})
             .eq('id', userId);
         debugPrint("✅ تم حفظ OneSignal Player ID ($playerId) في جدول $tableName بنجاح");
@@ -57,14 +57,37 @@ class NotificationService {
     }
   }
 
-  /// Push notifications must be sent from a trusted server/Edge Function.
-  /// Never place the OneSignal REST API key in the mobile application.
+  /// 3. إرسال الإشعار الفوري (للشات أو التنبيهات) عبر OneSignal REST API
   static Future<void> sendNotificationToUser({
     required String targetPlayerId,
     required String title,
     required String body,
   }) async {
-    debugPrint('Push notification skipped: configure a secured server-side OneSignal sender.');
+    if (targetPlayerId.isEmpty) return;
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://onesignal.com/api/v1/notifications'),
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'Authorization': 'Basic $_restApiKey',
+        },
+        body: jsonEncode({
+          'app_id': _appId,
+          'include_player_ids': [targetPlayerId],
+          'headings': {'en': title, 'ar': title},
+          'contents': {'en': body, 'ar': body},
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ تم إرسال إشعار الشات بنجاح عبر NotificationService');
+      } else {
+        debugPrint('⚠️ فشل إرسال إشعار الشات: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في إرسال الإشعار عبر NotificationService: $e');
+    }
   }
 
   /// 4. دالة توافقية لإظهار إشعار محلي عند الحاجة
