@@ -597,13 +597,14 @@ class AppState extends ChangeNotifier {
   Future<bool> checkAndLoginCustomer(String phone) async {
     try {
       String cleanPhone = _normalizePhone(phone);
-      String fullPhoneWithZero = '0$cleanPhone';
-      String fullPhoneWith967 = '967$cleanPhone';
+      if (cleanPhone.length > 9) {
+        cleanPhone = cleanPhone.substring(cleanPhone.length - 9);
+      }
 
       final response = await supabase
           .from('customers')
           .select()
-          .or('phone.eq.$cleanPhone,phone.eq.$fullPhoneWithZero,phone.eq.$fullPhoneWith967')
+          .ilike('phone', '%$cleanPhone')
           .maybeSingle();
 
       if (response != null) {
