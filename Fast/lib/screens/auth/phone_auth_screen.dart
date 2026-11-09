@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
-import 'package:onesignal_flutter/onesignal_flutter.dart'; 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
-import '../../services/notification_service.dart'; 
 import '../customer/map_location_screen.dart';
 
 class PhoneAuthScreen extends StatefulWidget {
@@ -20,17 +18,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
+  final TextEditingController _addressController =
+      TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
 
   // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال البروفايل
-  int _currentStep = 0; 
+  int _currentStep = 0;
   bool _isLoading = false;
 
-  // Firebase Auth Web
-  static final FirebaseAuth _auth = FirebaseAuth.instance;
-  
-  // استخدام ديناميكي لمنع أخطاء الـ Minified Types على الويب
-  dynamic _confirmationResult;
+  final SupabaseClient _supabase = Supabase.instance.client;
+  String _formattedPhone = '';
 
   // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
@@ -48,7 +44,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       setState(() {
         if (address != null && address.isNotEmpty) {
           if (latLng != null) {
-            _addressController.text = '$address (الإحداثيات: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)})';
+            _addressController.text =
+                '$address (الإحداثيات: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)})';
           } else {
             _addressController.text = address;
           }
@@ -57,8 +54,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر Firebase Web مع دعم معالجة الويب والنوع الديناميكي
-  Future<void> _sendFirebaseOTP() async {
+  // 1️⃣ إرسال كود OTP عبر دالة generate_and_store_otp في Supabase
+  Future<void> _sendSupabaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,24 +76,33 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           formattedPhone = '+967$formattedPhone';
         }
       }
+      _formattedPhone = formattedPhone;
 
-      // إرسال الرمز عبر Firebase Auth للويب مع استخدام المتغير الديناميكي لتفادي minified types
-      dynamic result = await _auth.signInWithPhoneNumber(formattedPhone);
+      // توليد وحفظ كود الـ OTP عبر دالة Supabase SQL
+      final response = await _supabase.rpc(
+        'generate_and_store_otp',
+        params: {'target_phone': _formattedPhone},
+      );
+
+      final generatedCode = response.toString();
 
       setState(() {
-        _confirmationResult = result;
         _currentStep = 1; // الانتقال لمرحلة أدخل رمز OTP
         _isLoading = false;
       });
 
+      // تنبيه توضيحي بمحتوى الكود (يتم استبداله بإرسال الواتساب من السيرفر)
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إرسال رمز التحقق بنجاح إلى هاتفك! 📩')),
+        SnackBar(
+          content: Text('تم إرسال رمز التحقق بنجاح! 💬 (رمز التجربة: $generatedCode)'),
+          duration: const Duration(seconds: 5),
+        ),
       );
     } catch (e) {
       setState(() => _isLoading = false);
-      debugPrint('❌ خطأ فايربيس للرقم: $e');
+      debugPrint('❌ خطأ في إنشاء رمز OTP: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('فشل إرسال رمز التحقق: تأكد من صحة الرقم أو تفعيل Auth')),
+        SnackBar(content: Text('فشل إرسال رمز التحقق: $e')),
       );
     }
   }
@@ -114,35 +120,52 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_confirmationResult != null) {
-        UserCredential userCredential = await _confirmationResult!.confirm(otpCode);
+      // التأكد من صحة الرمز عبر دالة verify_otp_code في Supabase
+      final bool isValid = await _supabase.rpc(
+        'verify_otp_code',
+        params: {
+          'target_phone': _formattedPhone,
+          'entered_code': otpCode,
+        },
+      );
 
-        if (userCredential.user != null) {
-          final phone = _phoneController.text.trim();
+      if (isValid) {
+        // فحص السجل في قاعدة بيانات Supabase جدول customers
+        final existingCustomer = await _supabase
+            .from('customers')
+            .select()
+            .eq('phone_number', _formattedPhone)
+            .maybeSingle();
 
-          // فحص السجل في قاعدة بيانات Supabase جدول customers
-          bool exists = await appState.checkAndLoginCustomer(phone);
+        setState(() => _isLoading = false);
 
-          setState(() => _isLoading = false);
-
-          if (exists) {
-            setState(() {
-              _currentStep = 2;
-              _nameController.text = appState.userProfile?['name'] ?? '';
-              _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
-            });
-          } else {
-            appState.continueWithoutPhoneVerification(phone);
-            setState(() {
-              _currentStep = 2;
-            });
-          }
+        if (existingCustomer != null) {
+          // العميل موجود مسبقاً، نملأ البيانات للانتقال للمرحلة الأخيرة
+          _nameController.text = existingCustomer['full_name'] ?? '';
+          _addressController.text =
+              existingCustomer['address'] ?? 'تعز - ديلوكس';
+          setState(() {
+            _currentStep = 2;
+          });
+        } else {
+          // عميل جديد
+          appState.continueWithoutPhoneVerification(_formattedPhone);
+          setState(() {
+            _currentStep = 2;
+          });
         }
+      } else {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته (5 دقائق)')),
+        );
       }
     } catch (e) {
       setState(() => _isLoading = false);
+      debugPrint('❌ خطأ في التحقق من OTP: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
+        SnackBar(content: Text('حدث خطأ أثناء التحقق: $e')),
       );
     }
   }
@@ -177,7 +200,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           ),
           title: const Text(
             'FAST – تسجيل دخول العميل',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
         body: Center(
@@ -208,7 +232,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     ),
                     child: Icon(
                       _currentStep == 1
-                          ? Icons.mark_email_read_outlined
+                          ? Icons.mark_chat_read_outlined
                           : Icons.person_outline_rounded,
                       size: 50,
                       color: primaryGold,
@@ -220,11 +244,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                   if (_currentStep == 0) ...[
                     const Text(
                       'تسجيل الدخول برقم الهاتف',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الرسائل النصية',
+                      'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الواتساب',
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -254,12 +281,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGold,
                         minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _isLoading ? null : _sendFirebaseOTP,
+                      onPressed: _isLoading ? null : _sendSupabaseOTP,
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('إرسال رمز التحقق (OTP) 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                          : const Text('إرسال رمز التحقق (OTP) 💬',
+                              style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15)),
                     ),
                   ]
 
@@ -267,11 +299,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                   else if (_currentStep == 1) ...[
                     const Text(
                       'أدخل رمز التحقق (OTP)',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'تم إرسال رمز التحقق إلى ${_phoneController.text.trim()}',
+                      'تم إرسال رمز التحقق إلى $_formattedPhone',
                       style: const TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -280,12 +315,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       controller: _otpController,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 20, letterSpacing: 8),
                       maxLength: 6,
                       decoration: InputDecoration(
                         labelText: 'رمز التحقق (6 أرقام)',
-                        labelStyle: const TextStyle(color: Colors.grey, letterSpacing: 0),
-                        prefixIcon: const Icon(Icons.lock_clock_outlined, color: primaryGold),
+                        labelStyle:
+                            const TextStyle(color: Colors.grey, letterSpacing: 0),
+                        prefixIcon:
+                            const Icon(Icons.lock_clock_outlined, color: primaryGold),
                         filled: true,
                         fillColor: backgroundColor,
                         enabledBorder: OutlineInputBorder(
@@ -303,16 +341,24 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGold,
                         minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _isLoading ? null : () => _verifyOTPAndProceed(appState),
+                      onPressed: _isLoading
+                          ? null
+                          : () => _verifyOTPAndProceed(appState),
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('تأكيد الرمز والمتابعة 🔑', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                          : const Text('تأكيد الرمز والمتابعة 🔑',
+                              style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15)),
                     ),
                     TextButton(
                       onPressed: () => setState(() => _currentStep = 0),
-                      child: const Text('تغيير رقم الهاتف', style: TextStyle(color: primaryGold)),
+                      child: const Text('تغيير رقم الهاتف',
+                          style: TextStyle(color: primaryGold)),
                     ),
                   ]
 
@@ -320,7 +366,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                   else ...[
                     const Text(
                       'استكمال وتأكيد البيانات الشخصية',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -355,7 +404,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       decoration: InputDecoration(
                         labelText: 'العنوان التفصيلي (مثال: ديلوكس، شارع جمال)',
                         labelStyle: const TextStyle(color: Colors.grey),
-                        prefixIcon: const Icon(Icons.location_on, color: primaryGold),
+                        prefixIcon:
+                            const Icon(Icons.location_on, color: primaryGold),
                         filled: true,
                         fillColor: backgroundColor,
                         enabledBorder: OutlineInputBorder(
@@ -369,41 +419,57 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: primaryGold),
                         minimumSize: const Size(double.infinity, 45),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       icon: const Icon(Icons.map, color: primaryGold),
-                      label: const Text('تحديد موقعك عبر الخريطة التفاعلية 🗺️', style: TextStyle(color: primaryGold, fontWeight: FontWeight.bold)),
+                      label: const Text(
+                        'تحديد موقعك عبر الخريطة التفاعلية 🗺️',
+                        style: TextStyle(
+                            color: primaryGold, fontWeight: FontWeight.bold),
+                      ),
                       onPressed: _openInteractiveMap,
                     ),
-
                     const SizedBox(height: 25),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGold,
                         minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () async {
-                        if (_nameController.text.trim().isNotEmpty && _addressController.text.trim().isNotEmpty) {
+                        final name = _nameController.text.trim();
+                        final address = _addressController.text.trim();
+
+                        if (name.isNotEmpty && address.isNotEmpty) {
+                          // حفظ بيانات العميل في جدول customers في Supabase
+                          await _supabase.from('customers').upsert({
+                            'phone_number': _formattedPhone,
+                            'full_name': name,
+                            'address': address,
+                          }, onConflict: 'phone_number');
+
                           await appState.saveUserProfileDetails(
-                            _nameController.text.trim(),
-                            _addressController.text.trim(),
+                            name,
+                            address,
                           );
-                          
+
                           await appState.requestLocationAndNotificationPermissions();
 
+                          // حفظ OneSignal Player ID مع العميل
                           try {
-                            String? playerId = OneSignal.User.pushSubscription.id;
-                            if (playerId != null && playerId.isNotEmpty && appState.currentUserId != null) {
-                              await Supabase.instance.client
+                            String? playerId =
+                                OneSignal.User.pushSubscription.id;
+                            if (playerId != null && playerId.isNotEmpty) {
+                              await _supabase
                                   .from('customers')
                                   .update({'onesignal_player_id': playerId})
-                                  .eq('phone', appState.currentUserId!);
+                                  .eq('phone_number', _formattedPhone);
                             }
                           } catch (e) {
                             debugPrint('خطأ في حفظ Player ID: $e');
@@ -414,17 +480,24 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           } else {
                             Navigator.pop(context);
                           }
-                          
+
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
+                            const SnackBar(
+                                content: Text(
+                                    'أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
                           );
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
+                            const SnackBar(
+                                content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
                           );
                         }
                       },
-                      child: const Text('حفظ والدخول للتطبيق 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: const Text('حفظ والدخول للتطبيق 🚀',
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15)),
                     ),
                   ],
                 ],
