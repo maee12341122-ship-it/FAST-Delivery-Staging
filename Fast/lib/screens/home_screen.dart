@@ -13,7 +13,8 @@ import 'package:fast/screens/chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart'; // 📍 تم إضافة استيراد شاشة العناوين المحفوظة هنا
-import 'map_location_screen.dart'; 
+import 'customer/map_location_screen.dart';
+
 
 // 🟢 شاشة تتبع الطلب المدمجة مباشرة لتعمل بسلاسة تامة
 class OrderTrackingScreen extends StatelessWidget {
