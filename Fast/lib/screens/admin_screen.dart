@@ -5,7 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'admin/admin_products_screen.dart';
-import 'admin/admin_reports_screen.dart'; // 👈 استيراد شاشة تقارير الأرباح والمبيعات
+import 'admin/admin_reports_screen.dart';
+import 'admin_restaurants_screen.dart'; // 👈 استيراد شاشة إدارة المطاعم والمبيعات الجديدة
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -278,10 +279,8 @@ class _AdminScreenState extends State<AdminScreen> {
                       return;
                     }
                     
-                    // تحديث الرسوم في قاعدة البيانات والـ AppState
                     appState.setOrderDeliveryFee(orderId, fee, courierName);
 
-                    // إرسال إشعار تلقائي للعميل عبر OneSignal
                     try {
                       final customerPhone = order['phone']?.toString() ?? '';
                       if (customerPhone.isNotEmpty) {
@@ -500,6 +499,7 @@ class _AdminScreenState extends State<AdminScreen> {
           const SizedBox(height: 15),
           const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
+          
           // 👈 زر عرض تقارير الأرباح والمبيعات الشاملة
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
@@ -516,6 +516,25 @@ class _AdminScreenState extends State<AdminScreen> {
             },
             icon: const Icon(Icons.analytics, size: 22),
             label: const Text('عرض تقارير الأرباح والمبيعات الشاملة 📈', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+          const SizedBox(height: 12),
+
+          // 👈 زر إدارة المطاعم والمبيعات الجديدة
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueGrey[800],
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminRestaurantsScreen()),
+              );
+            },
+            icon: const Icon(Icons.storefront, size: 22, color: Colors.amber),
+            label: const Text('إدارة المطاعم ومبيعاتها 🍽️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ],
       ),
