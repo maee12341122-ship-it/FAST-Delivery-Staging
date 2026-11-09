@@ -17,11 +17,9 @@ class PhoneAuthScreen extends StatefulWidget {
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
 
-  bool _isOtpSent = false;
   bool _isProfileStep = false;
   bool _isLoading = false;
 
@@ -59,7 +57,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   @override
   void dispose() {
     _phoneController.dispose();
-    _otpController.dispose();
     _nameController.dispose();
     _addressController.dispose();
     super.dispose();
@@ -85,7 +82,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             onPressed: () => Navigator.pop(context),
           ),
           title: const Text(
-            'FAST – بوابة المصادقة عبر الواتساب',
+            'FAST – تسجيل دخول العميل',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
@@ -116,22 +113,22 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.mark_chat_unread_rounded,
+                      Icons.person_outline_rounded,
                       size: 50,
                       color: primaryGold,
                     ),
                   ),
                   const SizedBox(height: 20),
 
-                  // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
-                  if (!_isOtpSent && !_isProfileStep) ...[
+                  // ---------------- المرحلة الأولى: إدخال رقم الهاتف والتحقق من وجوده بالسيرفر ----------------
+                  if (!_isProfileStep) ...[
                     const Text(
                       'تسجيل الدخول برقم الهاتف',
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'أدخل رقم هاتفك ليصلك رمز التحقق (OTP) عبر رسالة واتساب رسمية',
+                      'أدخل رقم هاتفك المسجل في النظام للمتابعة مباشرة',
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -175,112 +172,39 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                               }
                               setState(() => _isLoading = true);
 
-                              // فحص إذا كان الحساب موجوداً مسبقاً
+                              // فحص السجل في قاعدة بيانات Supabase جدول customers
                               bool exists = await appState.checkAndLoginCustomer(phone);
 
-                              // 🚀 هنا يتم استدعاء دالة إرسال الرمز عبر Meta WhatsApp API
-                              // يمكنك استبدال هذا السطر باستدعاء Supabase Edge Function الخاصة بك
-                              try {
-                                // مثال: await supabase.functions.invoke('send-whatsapp-otp', body: {'phone': phone});
-                                appState.requestOtpForPhone(phone); // توليد الرمز محلياً مؤقتاً للتجربة
+                              setState(() => _isLoading = false);
 
+                              if (exists) {
                                 setState(() {
-                                  _isLoading = false;
-                                  _isOtpSent = true;
+                                  _isProfileStep = true;
+                                  _nameController.text = appState.userProfile?['name'] ?? '';
+                                  _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
                                 });
-
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تم إرسال رمز التحقق (OTP) إلى واتساب بنجاح 🟢')),
+                                  const SnackBar(content: Text('تم التحقق من الحساب بنجاح ✅')),
                                 );
-                              } catch (e) {
-                                setState(() => _isLoading = false);
+                              } else {
+                                // إذا لم يكن مسجلاً، نتيحه كعميل جديد وننتقل لتسجيل اسمه وعنوانه لأول مرة
+                                appState.continueWithoutPhoneVerification(phone);
+                                setState(() {
+                                  _isProfileStep = true;
+                                });
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('تعذر إرسال الرمز عبر واتساب: $e')),
+                                  const SnackBar(content: Text('أهلاً بك! يرجى إكمال بياناتك الشخصية 🚀')),
                                 );
                               }
                             },
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('إرسال رمز التحقق عبر واتساب 💬', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                          : const Text('متابعة الدخول 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                   ]
 
-                  // ---------------- المرحلة الثانية: إدخال وتحقق رمز الـ OTP ----------------
-                  else if (_isOtpSent && !_isProfileStep) ...[
-                    const Text(
-                      'أدخل رمز التحقق (OTP)',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'تم إرسال رسالة تحتوي على رمز التحقق إلى الرقم:\n${_phoneController.text.trim()}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 4,
-                      style: const TextStyle(color: Colors.white, fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        counterText: '',
-                        hintText: '----',
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade800),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGold, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGold,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        final enteredOtp = _otpController.text.trim();
-                        final phone = _phoneController.text.trim();
-
-                        // التحقق من صحة الرمز عبر الـ AppState
-                        bool isValid = appState.verifyOtpAndLogin(phone, enteredOtp);
-                        if (isValid) {
-                          setState(() {
-                            _isProfileStep = true;
-                            _nameController.text = appState.userProfile?['name'] ?? '';
-                            _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تم التحقق بنجاح! أكمل بياناتك الآن ✅')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('رمز التحقق غير صحيح، حاول مجدداً ❌')),
-                          );
-                        }
-                      },
-                      child: const Text('تحقق من الرمز 🔓', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        _isOtpSent = false;
-                        _otpController.clear();
-                      }),
-                      child: const Text('تغيير رقم الهاتف أو إعادة الإرسال', style: TextStyle(color: Colors.grey)),
-                    ),
-                  ]
-
-                  // ---------------- المرحلة الثالثة: إدخال البيانات والعنوان ----------------
-                  else if (_isProfileStep) ...[
+                  // ---------------- المرحلة الثانية: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
+                  else ...[
                     const Text(
                       'استكمال وتأكيد البيانات الشخصية',
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
