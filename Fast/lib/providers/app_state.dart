@@ -1,4 +1,4 @@
-import 'dart:convert';
+Import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -637,15 +637,40 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void requestOtpForPhone(String phone) {
+  // --- 📱 [تم التحديث لربط واتساب الحقيقي عبر Supabase Edge Function] ---
+  Future<void> requestOtpForPhone(String phone) async {
     generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
     debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
     
-    openFastWhatsApp(
-      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
-    ).catchError((e) { 
-      debugPrint('WhatsApp unavailable: $e'); 
-    });
+    final cleanPhone = _normalizePhone(phone);
+    final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
+
+    try {
+      debugPrint('🚀 جاري إرسال رمز التحقق عبر واتساب عبر دالة سوبابيس...');
+      
+      final response = await supabase.functions.invoke(
+        'send-whatsapp-otp',
+        body: {
+          'phone': formattedPhone, 
+          'otpCode': generatedDynamicOtp,
+        },
+      );
+
+      if (response.status == 200 || response.data != null) {
+        debugPrint('✅ تم إرسال الرمز عبر واتساب بنجاح!');
+      } else {
+        debugPrint('⚠️ فشل الإرسال من السيرفر: ${response.data}');
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ أثناء استدعاء دالة إرسال الرمز عبر واتساب: $e');
+      // محاولة احتياطية عبر رابط الـ wa.me في حال تعطل الشبكة مؤقتاً
+      openFastWhatsApp(
+        message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
+      ).catchError((err) { 
+        debugPrint('WhatsApp unavailable: $err'); 
+      });
+    }
+
     notifyListeners();
   }
 
@@ -789,7 +814,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 🛠️ [تم التعديل لإزالة Edge Functions] إضافة مندوب مباشرة عبر Supabase Auth والجدول ---
   Future<void> addCourier(String name, String phone, String username, String password) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('يجب تسجيل دخول المشرف أولاً.');
@@ -798,7 +822,6 @@ class AppState extends ChangeNotifier {
     
     final email = '${username.trim().toLowerCase()}@courier.fast.local';
     
-    // إنشاء الحساب في Supabase Auth مع دور مندوب
     final authRes = await supabase.auth.signUp(
       email: email,
       password: password,
@@ -809,7 +832,6 @@ class AppState extends ChangeNotifier {
       throw Exception('تعذر إنشاء حساب المصادقة للمندوب.');
     }
 
-    // إدخال بيانات المندوب في جدول couriers المباشر
     await supabase.from('couriers').insert({
       'name': name.trim(),
       'phone': phone.trim(),
@@ -1108,7 +1130,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 🛡️ [تم التعديل] إضافة حماية إغلاق وفتح التطبيق برمجياً لمنع إرسال طلبات خارج أوقات العمل
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -1118,7 +1139,6 @@ class AppState extends ChangeNotifier {
     required String paymentMethod,
     required String paymentAccount,
   }) async {
-    // 🛑 فحص حالة الدوام لمنع التلاعب البرمجي وإرسال طلبات أثناء إغلاق التطبيق
     if (!isStoreOpen) {
       throw Exception('عذراً، التطبيق مغلق حالياً (أوقات الدوام من $startHour:00 إلى $endHour:00). لا يمكن استقبال طلبات جديدة.');
     }
@@ -1346,7 +1366,6 @@ class AppState extends ChangeNotifier {
     addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
   }
 
-  // --- ⭐ دالة تقييم المندوب وإرسال إشعاره المحدثة والآمنة ---
   Future<void> submitCourierRating({
     required String orderId,
     required String courierName,
@@ -1379,19 +1398,13 @@ class AppState extends ChangeNotifier {
             title: 'تقييم جديد للطلب #$orderId ⭐',
             body: 'لقد حصلت على تقييم ($rating من 5) من العميل! شكراً لجهودك.',
           );
-          debugPrint('✅ تم إرسال إشعار التقييم للمندوب ($targetCourierName) بنجاح');
-        } else {
-          debugPrint('⚠️ لم يتم العثور على Player ID للمندوب: $targetCourierName');
         }
-      } else {
-        debugPrint('⚠️ لا يوجد اسم مندوب مرتبط بهذا الطلب لإرسال الإشعار إليه.');
       }
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المندوب: $e');
     }
   }
 
-  // --- 🍽️ دالة تقييم المطعم وجودة الطعام ---
   Future<void> submitRestaurantRating({
     required String orderId,
     required double rating,
@@ -1409,8 +1422,6 @@ class AppState extends ChangeNotifier {
         orders[index]['restaurant_review'] = reviewText;
         notifyListeners();
       }
-
-      debugPrint('✅ تم حفظ تقييم المطعم للطلب #$orderId بنجاح');
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
     }
