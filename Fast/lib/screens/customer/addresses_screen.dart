@@ -220,7 +220,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.location_on, color: Colors.amber),
                       title: Text(address.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text('${address.area} - ${address.details}\nتعليمات: ${address.instructions.isNotEmpty ? address.instructions : "لا توجد"}', style: constTextStyle(color: Colors.grey, fontSize: 13)),
+                      subtitle: Text('${address.area} - ${address.details}\nتعليمات: ${address.instructions.isNotEmpty ? address.instructions : "لا توجد"}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                       isThreeLine: true,
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
@@ -241,7 +241,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 backgroundColor: Colors.amber,
                 onPressed: () => _showAddAddressDialog(context, appState),
                 child: const Icon(Icons.add, color: Colors.black),
-              ),
+              )
             : null,
       ),
     );
