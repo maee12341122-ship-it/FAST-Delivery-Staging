@@ -41,7 +41,7 @@ class AppState extends ChangeNotifier {
     if (targetPlayerId.isEmpty) return;
 
     const String oneSignalAppId = '60850bed-4af8-4df1-a2f5-77411630f447'; 
-    const String oneSignalRestApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 تم وضع مفتاحك الحقيقي هنا
+    const String oneSignalRestApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 مفتاحك الحقيقي
 
     try {
       await http.post(
@@ -62,8 +62,6 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في إرسال الإشعار التلقائي: $e');
     }
   }
-
-
 
   // --- ❤️ إدارة المنتجات المفضلة ---
   final List<String> _favoriteProductIds = [];
@@ -88,11 +86,10 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة (إدارة عناوين متعددة مع الربط السحابي بـ Supabase) ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
-  // 1. جلب العناوين من Supabase برقم هاتف العميل
   Future<void> fetchUserAddressesFromSupabase() async {
     if (userProfile == null || userProfile!['phone'] == null || userProfile!['phone']!.isEmpty) {
       _loadUserAddressesFromPrefs(); 
@@ -126,7 +123,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 2. إضافة عنوان جديد وإرساله إلى Supabase
   Future<void> addUserAddress(AddressModel address) async {
     _userAddresses.add(address);
     if (_userAddresses.length == 1) {
@@ -152,7 +148,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 3. حذف عنوان من الهاتف وSupabase
   Future<void> removeUserAddress(String id) async {
     _userAddresses.removeWhere((a) => a.id == id);
     _saveUserAddressesToPrefs();
@@ -205,7 +200,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _saveUserAddressesToPrefs() async {
+  Future<void> _saveUserAddressesFromPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final List> listToEncode = _userAddresses.map((a) => {
@@ -247,7 +242,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- جلب معرفات المشرفين من جدول admins الفعلي ---
   Future<List<String>> getAllAdminPlayerIds() async {
     try {
       final response = await supabase
@@ -326,7 +320,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // --- إعدادات أوقات الدوام والدعم ---
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
@@ -356,7 +349,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- إدارة رسائل الشات اللحظية ---
   Stream getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -393,8 +385,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     Share.share(
-      'حمل تطبيق FAST - أسرع خدمة توصيل في تعز! 🚀\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
-      subject: 'تطبيق FAST تعز',
+      'حمل تطبيق Fast Delivery - أسرع خدمة توصيل في تعز! 🚀\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      subject: 'تطبيق Fast Delivery تعز',
     );
   }
 
@@ -423,7 +415,7 @@ class AppState extends ChangeNotifier {
         } catch (e) {
           debugPrint('⚠️ خطأ في تفعيل OneSignal بعد الاذن: $e');
         }
-        addNotification('تطبيق FAST - تعز', 'تم تفعيل الإشعارات وتحديد الموقع بنجاح 🚀');
+        addNotification('تطبيق Fast Delivery - تعز', 'تم تفعيل الإشعارات وتحديد الموقع بنجاح 🚀');
       } else {
         debugPrint('⚠️ تم رفض إذن الإشعارات من المستخدم');
       }
@@ -557,7 +549,7 @@ class AppState extends ChangeNotifier {
             'city': city,
             'address': response['address']?.toString() ?? address ?? '',
           };
-          fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً فور استعادة الجلسة
+          fetchUserAddressesFromSupabase();
           notifyListeners();
           await restoreLastCustomerOrder();
           return;
@@ -572,7 +564,7 @@ class AppState extends ChangeNotifier {
         'city': city,
         'address': address ?? '',
       };
-      fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً
+      fetchUserAddressesFromSupabase();
       notifyListeners();
       await restoreLastCustomerOrder();
     }
@@ -625,7 +617,7 @@ class AppState extends ChangeNotifier {
           'address': address,
         };
 
-        fetchUserAddressesFromSupabase(); // 📍 جلب العناوين سحابياً عند تسجيل الدخول الناجح
+        fetchUserAddressesFromSupabase();
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userPhone', dbPhone);
@@ -643,13 +635,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 🔐 نظام التحقق عبر OTP عبر واتساب ---
   void requestOtpForPhone(String phone) {
     generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
     debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
     
     openFastWhatsApp(
-      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق FAST هو: $generatedDynamicOtp'
+      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery هو: $generatedDynamicOtp'
     ).catchError((e) { 
       debugPrint('WhatsApp unavailable: $e'); 
     });
@@ -767,7 +758,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- إدارة جلسة المناديب ---
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
