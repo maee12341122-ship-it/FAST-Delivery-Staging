@@ -3,14 +3,25 @@ import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 👈 استيراد مكتبة الإشعارات المحلية للصوت
 
 class NotificationService {
   static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
   static const String _restApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 مفتاحك الحقيقي لإرسال الإشعارات
 
-  /// 1. تهيئة الاستماع للإشعارات والنقر عليها
+  static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  /// 1. تهيئة الاستماع للإشعارات والنقر عليها والتنبيهات المحلية
   static Future<void> initialize() async {
     try {
+      // إعدادات الإشعارات المحلية للصوت والاهتزاز
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const InitializationSettings initializationSettings =
+          InitializationSettings(android: initializationSettingsAndroid);
+      await _localNotificationsPlugin.initialize(initializationSettings);
+
       // طلب إذن الإشعارات من المستخدم نظامياً
       await OneSignal.Notifications.requestPermission(true);
 
@@ -77,6 +88,8 @@ class NotificationService {
           'include_player_ids': [targetPlayerId],
           'headings': {'en': title, 'ar': title},
           'contents': {'en': body, 'ar': body},
+          'android_sound': 'default', // 👈 التأكد من تشغيل صوت أندرويد الافتراضي
+          'ios_sound': 'default',     // 👈 التأكد من تشغيل صوت آيفون الافتراضي
         }),
       );
 
@@ -90,8 +103,32 @@ class NotificationService {
     }
   }
 
-  /// 4. دالة توافقية لإظهار إشعار محلي عند الحاجة
+  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز عند الحاجة داخل التطبيق
   static Future<void> showLocalNotification(String title, String body) async {
-    debugPrint('📢 [FAST Notification]: $title - $body');
+    try {
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+        'fast_delivery_sound_channel_v3',
+        'تنبيهات صوتية - Fast Delivery',
+        channelDescription: 'قناة مخصصة لتنبيهات الطلبات مع الصوت والاهتزاز',
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: true, // 👈 تفعيل الصوت
+        enableVibration: true, // 👈 تفعيل الاهتزاز
+      );
+
+      const NotificationDetails platformChannelSpecifics =
+          NotificationDetails(android: androidPlatformChannelSpecifics);
+
+      await _localNotificationsPlugin.show(
+        DateTime.now().millisecond,
+        title,
+        body,
+        platformChannelSpecifics,
+      );
+      debugPrint('📢 [تم عرض الإشعار المحلي الصوتي]: $title - $body');
+    } catch (e) {
+      debugPrint('❌ خطأ في إظهار الإشعار المحلي: $e');
+    }
   }
 }
