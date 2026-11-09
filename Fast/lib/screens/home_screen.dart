@@ -1,7 +1,8 @@
-Import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
@@ -223,8 +224,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = Provider.of<AppState>(context, listen: false);
-      
-      // 🛑 تم إزالة استدعاء إشعارات الموقع المزعجة من هنا تماماً لتلافي ظهور SnackBar أو إشعارات غير مرغوب فيها
       appState.fetchStoreSettings();
       appState.fetchProductsFromSupabase();
 
@@ -246,6 +245,76 @@ class _HomeScreenState extends State<HomeScreen> {
     _addressDescriptionController.dispose();
     _paymentAccountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _launchWhatsApp() async {
+    final Uri url = Uri.parse('https://wa.me/967775145534?text=مرحباً، أود الاستفسار عن خدمة التوصيل');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _launchPhoneCall() async {
+    final Uri url = Uri.parse('tel:775145534');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    }
+  }
+
+  void _showContactUsDialog(BuildContext context, Color cardBg, Color textColor) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: cardBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.headset_mic, color: Colors.amber),
+              SizedBox(width: 10),
+              Text('خدمة العملاء والتواصل 📞', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('تواصل معنا عبر خدمة العملاء لأي استفسار أو مساعدة:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _launchWhatsApp,
+                icon: const Icon(Icons.chat, color: Colors.white),
+                label: const Text('خدمة العملاء واتساب (775145534) 💬', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueGrey[800],
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _launchPhoneCall,
+                icon: const Icon(Icons.phone, color: Colors.amber),
+                label: const Text('اتصل بخدمة العملاء (775145534) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void showExitConfirmationDialog(BuildContext context, Color cardBg, Color textColor) {
@@ -716,7 +785,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🌟 نافذة تقييم المطعم وجودة الطعام (تظهر فقط لطلبات المطاعم)
   void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, String restaurantName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
@@ -1021,6 +1089,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _currentIndex,
                 children: pages,
               ),
+              // 🌟 شريط السلة العائم التفاعلي تماماً مثل تطبيقات التوصيل الكبرى
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -1157,13 +1226,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 🌟 الواجهة الرئيسية المحدثة بتصميم تفاعلي وعصري (بدون ذكر زمن وصول أو سعر توصيل)
   Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
     if (selectedCategory == 'طلبات أخرى') {
       return Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
-            _buildCategoriesBar(appState, textColor, cardBg),
+            _buildInteractiveCategoriesBar(appState, textColor, cardBg),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(20),
@@ -1296,6 +1366,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          // 🌟 شريط حالة المتجر المنسق
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1319,6 +1390,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          
+          // 🌟 شريط البحث العصري
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(
@@ -1332,13 +1405,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 prefixIcon: const Icon(Icons.search, color: Colors.amber),
                 filled: true,
                 fillColor: cardBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
               ),
               onChanged: (val) => setState(() {}),
             ),
           ),
-          _buildCategoriesBar(appState, textColor, cardBg),
-          const SizedBox(height: 10),
+
+          // 🌟 الأقسام التفاعلية العصرية (مثل Blinkit)
+          _buildInteractiveCategoriesBar(appState, textColor, cardBg),
+          const SizedBox(height: 15),
 
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             Padding(
@@ -1359,7 +1434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Card(
                         color: cardBg,
                         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         child: ListTile(
                           leading: const CircleAvatar(
                             backgroundColor: Colors.amber,
@@ -1608,24 +1683,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCategoriesBar(AppState appState, Color textColor, Color cardBg) {
+  // 🌟 تصميم الأقسام العصرية بتصميم تفاعلي متميز
+  Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
+    final categories = ['الكل', 'المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
+    
     return SizedBox(
-      height: 48,
+      height: 52,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: ['الكل', 'المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'].map((cat) {
+        children: categories.map((cat) {
           final isSelected = selectedCategory == cat;
           return Padding(
             padding: const EdgeInsets.only(left: 8.0),
             child: ChoiceChip(
-              label: Text(cat, style: TextStyle(color: isSelected ? Colors.black : textColor, fontWeight: FontWeight.bold)),
+              label: Text(cat, style: TextStyle(color: isSelected ? Colors.black : textColor, fontWeight: FontWeight.bold, fontSize: 13)),
               selected: isSelected,
               selectedColor: Colors.amber,
               backgroundColor: cardBg,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.3)),
               ),
               onSelected: (val) {
                 setState(() {
@@ -1774,7 +1852,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
         final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
 
-        // 🌟 التحقق هل الطلب يحتوي على منتجات من مطعم فعلي
         bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
         String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
 
@@ -1895,8 +1972,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.star, size: 18),
                       label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                    
-                    // 🌟 يظهر زر تقييم المطعم حصرياً إذا كان الطلب من مطعم
                     if (isRestaurantOrder) ...[
                       const SizedBox(height: 8),
                       ElevatedButton.icon(
@@ -2048,7 +2123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context,) => const AddressesScreen()),
+            MaterialPageRoute(builder: (context) => const AddressesScreen()),
           );
         }),
 
@@ -2057,6 +2132,10 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
             MaterialPageRoute(builder: (context) => const FavoritesScreen()),
           );
+        }),
+
+        _buildProfileItem(Icons.headset_mic, 'خدمة العملاء وتواصل معنا 📞', cardBg, textColor, () {
+          _showContactUsDialog(context, cardBg, textColor);
         }),
 
         _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, () {
@@ -2074,9 +2153,24 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildProfileItem(Icons.share, 'مشاركة التطبيق مع الأصدقاء', cardBg, textColor, () {
           appState.shareApp();
         }),
-        _buildProfileItem(Icons.help_outline, 'مركز المساعدة والأسئلة الشائعة', cardBg, textColor, () {
-          _showHowToUseDialog(context, cardBg, textColor);
-        }),
+
+        const SizedBox(height: 25),
+        Center(
+          child: Column(
+            children: [
+              Text(
+                'الإصدار: 2.0.63',
+                style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'تم التطوير بواسطة Eng. Maeen Almurish',
+                style: TextStyle(color: Colors.amber[700], fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 15),
       ],
     );
   }
