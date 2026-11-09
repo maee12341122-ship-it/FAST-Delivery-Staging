@@ -106,12 +106,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     ),
                     const SizedBox(height: 30),
                     
-                    // حقل اسم المستخدم
+                    // حقل اسم المستخدم (تم وضع admin كـ hintText)
                     TextFormField(
                       controller: _usernameController,
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'اسم المستخدم',
+                        hintText: 'admin', // 👈 جعل كلمة admin تظهر كـ تلميح
+                        hintStyle: TextStyle(color: Colors.white38),
                         labelStyle: TextStyle(color: Colors.grey),
                         border: OutlineInputBorder(),
                         filled: true,
