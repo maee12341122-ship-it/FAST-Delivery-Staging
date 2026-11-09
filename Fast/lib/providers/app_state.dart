@@ -24,7 +24,6 @@ class AppState extends ChangeNotifier {
     _loadAdminSession();
     _loadCourierSession();
     _loadUserSession();
-    _loadUserAddressesFromPrefs();
     fetchStoreSettings();
     fetchProductsFromSupabase();
     fetchCouriersFromSupabase();
@@ -86,7 +85,7 @@ class AppState extends ChangeNotifier {
     return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
+  // --- 🏠 قائمة وعناوين العميل المحفوظة (مرتبطة بقاعدة البيانات سحابياً) ---
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
@@ -116,6 +115,7 @@ class AppState extends ChangeNotifier {
         }
         _saveUserAddressesFromPrefs(); 
         notifyListeners();
+        debugPrint('✅ تم جلب العناوين من Supabase بنجاح (${_userAddresses.length} عناوين)');
       }
     } catch (e) {
       debugPrint('⚠️ خطأ في جلب العناوين من Supabase: $e');
@@ -142,6 +142,7 @@ class AppState extends ChangeNotifier {
           'instructions': address.instructions.trim(),
         });
         debugPrint('✅ تم حفظ العنوان في Supabase بنجاح');
+        await fetchUserAddressesFromSupabase();
       } catch (e) {
         debugPrint('❌ خطأ في حفظ العنوان سحابياً: $e');
       }
@@ -518,7 +519,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Map<String, String>? userProfile;
+  Map<String, dynamic>? userProfile;
   String? generatedDynamicOtp;
   String? lastOrderTrackingCode;
 
@@ -549,7 +550,8 @@ class AppState extends ChangeNotifier {
             'city': city,
             'address': response['address']?.toString() ?? address ?? '',
           };
-          fetchUserAddressesFromSupabase();
+          // ✅ استدعاء جلب العناوين سحابياً عند استعادة الجلسة
+          await fetchUserAddressesFromSupabase();
           notifyListeners();
           await restoreLastCustomerOrder();
           return;
@@ -564,7 +566,7 @@ class AppState extends ChangeNotifier {
         'city': city,
         'address': address ?? '',
       };
-      fetchUserAddressesFromSupabase();
+      await fetchUserAddressesFromSupabase();
       notifyListeners();
       await restoreLastCustomerOrder();
     }
@@ -617,7 +619,8 @@ class AppState extends ChangeNotifier {
           'address': address,
         };
 
-        fetchUserAddressesFromSupabase();
+        // ✅ استدعاء جلب العناوين سحابياً فور تسجيل الدخول بنجاح
+        await fetchUserAddressesFromSupabase();
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userPhone', dbPhone);
@@ -749,13 +752,14 @@ class AppState extends ChangeNotifier {
 
   void logoutUser() async {
     userProfile = null;
-    _userAddresses.clear();
+    _userAddresses.clear(); // تفريغ العناوين المحلية عند الخروج لكي لا تتداخل بين الحسابات
     final prefs = await SharedPreferences.getInstance();
     prefs.remove('userPhone');
     prefs.remove('userName');
     prefs.remove('userAddress');
     prefs.remove('user_saved_addresses_json');
     notifyListeners();
+    debugPrint('🚪 تم تسجيل خروج المستخدم بنجاح');
   }
 
   Map<String, dynamic>? currentCourier;
@@ -1329,13 +1333,11 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      // 1. تحديث التقييم والملاحظة في جدول الطلبات سحابياً
       await supabase.from('orders').update({
         'courier_rating': rating,
         'courier_review': reviewText,
       }).eq('id', orderId);
 
-      // 2. تحديث التقييم في القائمة المحلية فوراً
       final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
       if (index != -1) {
         orders[index]['courier_rating'] = rating;
@@ -1343,7 +1345,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
 
-      // 3. البحث عن Player ID الخاص بالمندوب لإرسال الإشعار
       String? courierPlayerId = await getCourierPlayerIdByName(courierName);
       if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
         await sendAutoNotification(
