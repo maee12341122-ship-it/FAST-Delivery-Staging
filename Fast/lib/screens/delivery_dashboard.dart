@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart'; // 👈 استدعاء حزمة خرائط جوجل للعرض المصغر
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import 'package:fast/screens/chat_screen.dart';
@@ -59,8 +59,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
         return LatLng(lat, lng);
       }
     }
-    // الإحداثيات الافتراضية لمدينة تعز إن لم توجد إحداثيات مخزنة بالطلب
-    return const LatLng(13.5779, 44.0219);
+    return const LatLng(13.5779, 44.0219); // افتراضي لتعز
   }
 
   @override
@@ -210,7 +209,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   Text('المنتجات: $itemsDesc', style: const TextStyle(color: Colors.white, fontSize: 13)),
                                   const SizedBox(height: 10),
 
-                                  // 🗺️ عنصر خريطة مصغرة تفاعلية (Lite Mode) داخل بطاقة الطلب للمندوب
+                                  // خريطة مصغرة
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
                                     child: SizedBox(
@@ -228,7 +227,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                             infoWindow: InfoWindow(title: 'موقع العميل: $customerName'),
                                           ),
                                         },
-                                        liteModeEnabled: true, // خريطة خفيفة ومناسبة داخل القوائم الطويلة
+                                        liteModeEnabled: true,
                                         zoomControlsEnabled: false,
                                         myLocationButtonEnabled: false,
                                       ),
@@ -236,7 +235,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // 🧭 زر التوجيه عبر خرائط جوجل للمندوب
+                                  // زر التوجيه عبر الخريطة
                                   SizedBox(
                                     width: double.infinity,
                                     child: OutlinedButton.icon(
@@ -252,7 +251,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 8),
 
-                                  // حاوية توضيح طريقة الدفع للمندوب
+                                  // طريقة الدفع
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.all(8),
@@ -272,7 +271,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // زر شات المندوب مع الإدارة
+                                  // زر الشات
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: OutlinedButton.icon(
@@ -298,16 +297,27 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
+                                  // أزرار التحكم بالطلب (قبول / رفض / وصلت / تم التسليم)
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
-                                      if (status == 'waitingCourierApproval')
+                                      if (status == 'waitingCourierApproval') ...[
+                                        // زر رفض الطلب
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                          onPressed: () => appState.courierRespondToOrder(orderId, false), // false لرفض الطلب
+                                          icon: const Icon(Icons.close, size: 16),
+                                          label: const Text('رفض الطلب'),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // زر قبول الطلب
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                                          onPressed: () => appState.courierRespondToOrder(orderId, true),
+                                          onPressed: () => appState.courierRespondToOrder(orderId, true), // true لقبول الطلب
                                           icon: const Icon(Icons.check, size: 16),
                                           label: const Text('قبول الطلب'),
                                         ),
+                                      ],
                                       if (status == 'onTheWay')
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
