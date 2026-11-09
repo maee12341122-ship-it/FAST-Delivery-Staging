@@ -89,9 +89,11 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
             ),
             const SizedBox(height: 10),
             restaurantsList.isEmpty
-                ? const Center(
-                    padding: EdgeInsets.all(30),
-                    child: Text('لا توجد مطاعم قائمة حالياً', style: TextStyle(color: Colors.grey)),
+                ? Padding(
+                    padding: const EdgeInsets.all(30),
+                    child: const Center(
+                      child: Text('لا توجد مطاعم قائمة حالياً', style: TextStyle(color: Colors.grey)),
+                    ),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
