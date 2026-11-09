@@ -21,9 +21,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    defaultConfig {
-        applicationId = "com.example.taiz_express"
+defaultConfig {
+    applicationId "com.maeen.fastdelivery"
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
