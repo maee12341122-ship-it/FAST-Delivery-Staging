@@ -788,20 +788,36 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // --- 🛠️ [تم التعديل لإزالة Edge Functions] إضافة مندوب مباشرة عبر Supabase Auth والجدول ---
   Future<void> addCourier(String name, String phone, String username, String password) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('يجب تسجيل دخول المشرف أولاً.');
     }
-    if (password.length < 10) throw Exception('كلمة مرور المندوب يجب ألا تقل عن 10 أحرف.');
-    final result = await supabase.functions.invoke('admin-create-courier', body: {
+    if (password.length < 6) throw Exception('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف.');
+    
+    final email = '${username.trim().toLowerCase()}@courier.fast.local';
+    
+    // إنشاء الحساب في Supabase Auth مع دور مندوب
+    final authRes = await supabase.auth.signUp(
+      email: email,
+      password: password,
+      data: {'role': 'courier', 'name': name.trim()},
+    );
+
+    if (authRes.user == null) {
+      throw Exception('تعذر إنشاء حساب المصادقة للمندوب.');
+    }
+
+    // إدخال بيانات المندوب في جدول couriers المباشر
+    await supabase.from('couriers').insert({
       'name': name.trim(),
       'phone': phone.trim(),
       'username': username.trim(),
-      'password': password,
+      'auth_user_id': authRes.user!.id,
+      'status': 'available',
+      'is_logged_in': false,
     });
-    if (result.status < 200 || result.status >= 300) {
-      throw Exception('تعذر إنشاء حساب المندوب: ${result.data}');
-    }
+
     await fetchCouriersFromSupabase();
   }
 
@@ -1148,7 +1164,7 @@ class AppState extends ChangeNotifier {
       
       _cartItems.clear();
       
-      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
