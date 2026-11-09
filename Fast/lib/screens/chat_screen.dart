@@ -144,7 +144,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
                         _msgController.clear();
 
-                        // 2. 👈 [الإضافة الجديدة]: جلب معرف الطرف الآخر وإرسال إشعار فوري عبر OneSignal
+                        if (!mounted) return;
+
+                        // 2. 👈 جلب معرف الطرف الآخر وإرسال إشعار فوري عبر OneSignal
                         try {
                           String? receiverPlayerId = await appState.getReceiverPlayerIdForChat(
                             orderId: widget.orderId,
