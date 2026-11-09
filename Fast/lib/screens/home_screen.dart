@@ -286,7 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 📖 نافذة كيفية استخدام التطبيق الاحترافية
   void _showHowToUseDialog(BuildContext context, Color cardBg, Color textColor) {
     showDialog(
       context: context,
@@ -702,6 +701,93 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
                 child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🌟 نافذة تقييم المطعم وجودة الطعام الجديدة
+  void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, Color cardBg, Color textColor) {
+    int rating = 5;
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: cardBg,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.restaurant, color: Colors.amber),
+                SizedBox(width: 10),
+                Text('تقييم جودة الطعام والمطعم 🍽️', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('كيف وجدت جودة وطعم الطعام من المطعم؟', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 15),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    return IconButton(
+                      icon: Icon(
+                        index < rating ? Icons.star : Icons.star_border,
+                        color: Colors.amber,
+                        size: 30,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          rating = index + 1;
+                        });
+                      },
+                    );
+                  }),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: commentController,
+                  style: TextStyle(color: textColor),
+                  decoration: InputDecoration(
+                    labelText: 'ملاحظاتك عن الطعام (اختياري)',
+                    labelStyle: const TextStyle(color: Colors.grey),
+                    filled: true,
+                    fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  await appState.submitRestaurantRating(
+                    orderId: orderId,
+                    rating: rating.toDouble(),
+                    reviewText: commentController.text.trim(),
+                  );
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح ⭐')),
+                  );
+                },
+                child: const Text('إرسال تقييم المطعم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -1800,6 +1886,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.star, size: 18),
                       label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.withOpacity(0.15),
+                        foregroundColor: Colors.amber,
+                        minimumSize: const Size(double.infinity, 42),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                        ),
+                      ),
+                      onPressed: () {
+                        _showRestaurantRatingDialog(context, appState, order['id'].toString(), cardBg, textColor);
+                      },
+                      icon: const Icon(Icons.restaurant_menu, size: 18),
+                      label: const Text('قيم المطعم وجودة الطعام 🍽️', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
                   ],
                 ],
               ),
@@ -1943,7 +2046,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }),
 
-        // 🌟 زر كيفية استخدام التطبيق الجديد المدمج هنا
         _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, () {
           _showHowToUseDialog(context, cardBg, textColor);
         }),
