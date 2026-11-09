@@ -6,7 +6,7 @@ import '../providers/app_state.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import 'admin_restaurants_screen.dart'; // 👈 استيراد شاشة إدارة المطاعم والمبيعات الجديدة
+import 'admin_restaurants_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -48,6 +48,98 @@ class _AdminScreenState extends State<AdminScreen> {
       case 'cancelledByCustomer': return '❌ ملغى من العميل';
       default: return status;
     }
+  }
+
+  // 🌟 نافذة عرض تقييمات المطاعم للمشرف
+  void _showRestaurantRatingsDialog(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.star, color: Colors.amber),
+              SizedBox(width: 8),
+              Text('تقييمات وملاحظات المطاعم ⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: FutureBuilder<List>>(
+              future: Supabase.instance.client
+                  .from('restaurant_ratings')
+                  .select()
+                  .order('created_at', ascending: false)
+                  .then((res) => List>.from(res)),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('خطأ في جلب التقييمات: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                }
+                final ratings = snapshot.data ?? [];
+                if (ratings.isEmpty) {
+                  return const Center(child: Text('لا توجد تقييمات مطاعم مسجلة حتى الآن 📭', style: TextStyle(color: Colors.grey)));
+                }
+                return ListView.builder(
+                  itemCount: ratings.length,
+                  itemBuilder: (context, index) {
+                    final r = ratings[index];
+                    return Card(
+                      color: const Color(0xFF121212),
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('🍽️ ${r['restaurant_name'] ?? 'مطعم'}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star, color: Colors.amber, size: 16),
+                                    const SizedBox(width: 4),
+                                    Text('${r['rating'] ?? 5.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text('📦 رقم الطلب: #${r['order_id']}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text('📞 هاتف العميل: ${r['customer_phone'] ?? 'غير معروف'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            if (r['review_text'] != null && r['review_text'].toString().isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text('💬 الملاحظة: "${r['review_text']}"', style: const TextStyle(color: Colors.amberAccent, fontSize: 13)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -535,6 +627,21 @@ class _AdminScreenState extends State<AdminScreen> {
             },
             icon: const Icon(Icons.storefront, size: 22, color: Colors.amber),
             label: const Text('إدارة المطاعم ومبيعاتها 🍽️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+          const SizedBox(height: 12),
+
+          // 🌟 👈 زر عرض تقييمات وملاحظات المطاعم للمشرف
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo[900],
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+            ),
+            onPressed: () => _showRestaurantRatingsDialog(context),
+            icon: const Icon(Icons.star_rate, size: 22, color: Colors.amber),
+            label: const Text('عرض تقييمات وملاحظات المطاعم ⭐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ],
       ),
