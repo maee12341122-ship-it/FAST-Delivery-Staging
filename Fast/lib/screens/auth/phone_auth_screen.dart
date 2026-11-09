@@ -57,7 +57,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر Firebase Web (معدلة لمنع أي خطأ نوع بيانات)
+  // 1️⃣ إرسال كود OTP عبر Firebase Web مع دعم معالجة الويب والنوع الديناميكي
   Future<void> _sendFirebaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -80,8 +80,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
       }
 
-      // إرسال الرمز عبر Firebase Auth للويب
-      var result = await _auth.signInWithPhoneNumber(formattedPhone);
+      // إرسال الرمز عبر Firebase Auth للويب مع استخدام المتغير الديناميكي لتفادي minified types
+      dynamic result = await _auth.signInWithPhoneNumber(formattedPhone);
 
       setState(() {
         _confirmationResult = result;
@@ -94,8 +94,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       );
     } catch (e) {
       setState(() => _isLoading = false);
+      debugPrint('❌ خطأ فايربيس للرقم: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل إرسال رمز التحقق: $e')),
+        const SnackBar(content: Text('فشل إرسال رمز التحقق: تأكد من صحة الرقم أو تفعيل Auth')),
       );
     }
   }
