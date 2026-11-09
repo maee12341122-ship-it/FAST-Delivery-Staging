@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
+import '../services/notification_service.dart'; // استيراد خدمة الإشعارات
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -12,6 +13,9 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
+  // تخزين الحالات التي تم تنبيه المستخدم لها مطلع الجلسة لمنع التكرار المزعج
+  final Set<String> _notifiedOrders = {};
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -51,6 +55,30 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
                   final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
                   
+                  // 🔔 فحص حالة الطلب وإطلاق إشعار صوتي محلي عند التغييرات الهامة (بدون تكرار)
+                  final notificationKey = '$orderId-$status';
+                  if (!_notifiedOrders.contains(notificationKey)) {
+                    if (status == 'pricingSentToCustomer') {
+                      _notifiedOrders.add(notificationKey);
+                      NotificationService.showLocalNotification(
+                        'تحديد سعر جديد للطلب #$orderId 🔔',
+                        'تم تحديد رسوم التوصيل وإجمالي السعر، انقر للموافقة.',
+                      );
+                    } else if (status == 'onTheWay') {
+                      _notifiedOrders.add(notificationKey);
+                      NotificationService.showLocalNotification(
+                        'المندوب في الطريق 🛵',
+                        'خرج المندوب لتوصيل طلبك رقم #$orderId الآن!',
+                      );
+                    } else if (status == 'delivered') {
+                      _notifiedOrders.add(notificationKey);
+                      NotificationService.showLocalNotification(
+                        'تم توصيل الطلب بنجاح ✅',
+                        'شكراً لاستخدامك فاست ديليفري، نتمنى لك وقتاً سعيداً!',
+                      );
+                    }
+                  }
+
                   return Card(
                     color: const Color(0xFF1E1E1E),
                     margin: const EdgeInsets.symmetric(vertical: 8),
