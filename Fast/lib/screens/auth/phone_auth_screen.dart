@@ -45,12 +45,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           }
         }
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تحديد موقعك ونقل الإحداثيات بنجاح! 📍')),
-        );
-      }
     }
   }
 
@@ -138,7 +132,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       keyboardType: TextInputType.phone,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'رقم الهاتف (مثال: 775145534)',
+                        labelText: 'رقم الهاتف (مثال: 770000000)',
                         labelStyle: const TextStyle(color: Colors.grey),
                         prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
                         filled: true,
@@ -183,18 +177,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                   _nameController.text = appState.userProfile?['name'] ?? '';
                                   _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
                                 });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تم التحقق من الحساب بنجاح ✅')),
-                                );
                               } else {
                                 // إذا لم يكن مسجلاً، نتيحه كعميل جديد وننتقل لتسجيل اسمه وعنوانه لأول مرة
                                 appState.continueWithoutPhoneVerification(phone);
                                 setState(() {
                                   _isProfileStep = true;
                                 });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('أهلاً بك! يرجى إكمال بياناتك الشخصية 🚀')),
-                                );
                               }
                             },
                       child: _isLoading
