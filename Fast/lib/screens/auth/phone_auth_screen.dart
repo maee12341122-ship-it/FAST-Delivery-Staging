@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'dart:math';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
 
@@ -27,6 +28,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
+  String? _generatedOtp; // لحفظ الرمز المؤقت محلياً للمقارنة عند التحقق
 
   // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
@@ -54,7 +56,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر دالة generate_and_store_otp في Supabase
+  // 1️⃣ إرسال كود OTP الفعلي عبر WhatsApp Edge Function في Supabase
   Future<void> _sendSupabaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -78,41 +80,44 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
       _formattedPhone = formattedPhone;
 
-      // توليد وحفظ كود الـ OTP عبر دالة Supabase SQL
-      final response = await _supabase.rpc(
-        'generate_and_store_otp',
-        params: {'target_phone': _formattedPhone},
+      // توليد رمز عشوائي مكون من 4 أرقام للإرسال
+      _generatedOtp = (1000 + Random().nextInt(9000)).toString();
+
+      // استدعاء دالة Supabase Edge Function لإرسال الرمز عبر واتساب
+      final response = await _supabase.functions.invoke(
+        'send-whatsapp-otp',
+        body: {
+          'phone': _formattedPhone, 
+          'otpCode': _generatedOtp,
+        },
       );
 
-      final generatedCode = response.toString();
-
       setState(() {
-        _currentStep = 1; // الانتقال لمرحلة أدخل رمز OTP
+        _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
         _isLoading = false;
       });
 
-      // تنبيه توضيحي بمحتوى الكود (يتم استبداله بإرسال الواتساب من السيرفر)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم إرسال رمز التحقق بنجاح! 💬 (رمز التجربة: $generatedCode)'),
+          content: Text('تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
           duration: const Duration(seconds: 5),
         ),
       );
     } catch (e) {
       setState(() => _isLoading = false);
-      debugPrint('❌ خطأ في إنشاء رمز OTP: $e');
+      debugPrint('❌ خطأ في إرسال الرمز عبر واتساب: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل إرسال رمز التحقق: $e')),
+        SnackBar(content: Text('فشل إرسال رمز واتساب: $e')),
       );
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل / Supabase
+  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
-    if (otpCode.isEmpty || otpCode.length < 6) {
+    if (otpCode.isEmpty || otpCode.length < 4) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال رمز تحقق مكون من 6 أرقام')),
+        const SnackBar(content: Text('الرجاء إدخال رمز التحقق بشكل صحيح')),
       );
       return;
     }
@@ -120,28 +125,20 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // التأكد من صحة الرمز عبر دالة verify_otp_code في Supabase
-      final bool isValid = await _supabase.rpc(
-        'verify_otp_code',
-        params: {
-          'target_phone': _formattedPhone,
-          'entered_code': otpCode,
-        },
-      );
-
-      if (isValid) {
+      // التحقق من صحة الرمز (المطابقة مع الرمز المُولد أو الرمز التجريبي 1234)
+      if (otpCode == _generatedOtp || otpCode == '1234') {
         // فحص السجل في قاعدة بيانات Supabase جدول customers
         final existingCustomer = await _supabase
             .from('customers')
             .select()
-            .eq('phone_number', _formattedPhone)
+            .eq('phone', _formattedPhone)
             .maybeSingle();
 
         setState(() => _isLoading = false);
 
         if (existingCustomer != null) {
           // العميل موجود مسبقاً، نملأ البيانات للانتقال للمرحلة الأخيرة
-          _nameController.text = existingCustomer['full_name'] ?? '';
+          _nameController.text = existingCustomer['name'] ?? '';
           _addressController.text =
               existingCustomer['address'] ?? 'تعز - ديلوكس';
           setState(() {
@@ -158,7 +155,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته (5 دقائق)')),
+              content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
         );
       }
     } catch (e) {
@@ -287,7 +284,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       onPressed: _isLoading ? null : _sendSupabaseOTP,
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('إرسال رمز التحقق (OTP) 💬',
+                          : const Text('إرسال رمز التحقق عبر واتساب 💬',
                               style: TextStyle(
                                   color: Colors.black,
                                   fontWeight: FontWeight.bold,
@@ -317,9 +314,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Colors.white, fontSize: 20, letterSpacing: 8),
-                      maxLength: 6,
+                      maxLength: 4,
                       decoration: InputDecoration(
-                        labelText: 'رمز التحقق (6 أرقام)',
+                        labelText: 'رمز التحقق (4 أرقام)',
                         labelStyle:
                             const TextStyle(color: Colors.grey, letterSpacing: 0),
                         prefixIcon:
@@ -449,10 +446,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         if (name.isNotEmpty && address.isNotEmpty) {
                           // حفظ بيانات العميل في جدول customers في Supabase
                           await _supabase.from('customers').upsert({
-                            'phone_number': _formattedPhone,
-                            'full_name': name,
+                            'phone': _formattedPhone,
+                            'name': name,
                             'address': address,
-                          }, onConflict: 'phone_number');
+                          }, onConflict: 'phone');
 
                           await appState.saveUserProfileDetails(
                             name,
@@ -461,7 +458,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
                           await appState.requestLocationAndNotificationPermissions();
 
-                          // حفظ OneSignal Player ID مع العميل
                           try {
                             String? playerId =
                                 OneSignal.User.pushSubscription.id;
@@ -469,7 +465,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                               await _supabase
                                   .from('customers')
                                   .update({'onesignal_player_id': playerId})
-                                  .eq('phone_number', _formattedPhone);
+                                  .eq('phone', _formattedPhone);
                             }
                           } catch (e) {
                             debugPrint('خطأ في حفظ Player ID: $e');
