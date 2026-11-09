@@ -22,7 +22,8 @@ dependencies:
   share_plus: ^7.2.1
   onesignal_flutter: ^5.2.0
   permission_handler: ^11.3.1
-  image_picker: ^1.0.7 # 👈 أضفناها هنا بنسخة متوافقة تماماً ومستقرة
+  image_picker: ^1.0.7
+  flutter_local_notifications: ^17.2.1 # 👈 تم إضافتها هنا بنجاح
 
 dev_dependencies:
   flutter_test:
