@@ -12,11 +12,9 @@ import 'courier_screen.dart';
 import 'package:fast/screens/chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
-import 'customer/addresses_screen.dart'; // 📍 تم إضافة استيراد شاشة العناوين المحفوظة هنا
+import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
 
-
-// 🟢 شاشة تتبع الطلب المدمجة مباشرة لتعمل بسلاسة تامة
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
 
@@ -205,6 +203,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   String selectedCategory = 'الكل';
+  String? selectedRestaurantName; // 👈 متغير خاص لعرض منتجات كل مطعم لوحده حصرياً
   final TextEditingController _searchController = TextEditingController();
 
   final TextEditingController _customItemNameController = TextEditingController();
@@ -287,7 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🛑 نافذة إدخال السعر الإلزامي فقط (بدون وزن أو تعقيد)
   void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController priceController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
@@ -444,8 +442,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       validator: (v) => v == null || v.length < 9 ? 'يرجى إدخال رقم صحيح' : null,
                     ),
                     const SizedBox(height: 12),
-                    
-                    // 🗺️ زر فتح الخريطة لتحديد الموقع وتعبئة العنوان تلقائياً
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
@@ -555,7 +551,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showRatingDialog(BuildContext context, AppState appState, String orderId, Color cardBg, Color textColor) {
+  // 🌟 نافذة التقييم المحدثة لترسل التقييم للمندوب عبر AppState
+  void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
 
@@ -616,7 +613,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundColor: Colors.amber,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                onPressed: () {
+                onPressed: () async {
+                  await appState.submitCourierRating(
+                    orderId: orderId,
+                    courierName: courierName.isNotEmpty ? courierName : 'المندوب',
+                    rating: rating.toDouble(),
+                    reviewText: commentController.text.trim(),
+                  );
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('شكراً لك! تم إرسال تقييمك للمندوب بنجاح ⭐')),
@@ -1093,12 +1097,22 @@ class _HomeScreenState extends State<HomeScreen> {
     List<ProductModel> filteredProducts = [];
 
     if (selectedCategory == 'المطاعم') {
-      uniqueRestaurants = (appState.products as List)
-          .map((e) => e as ProductModel)
-          .where((p) => p.category == 'المطاعم')
-          .map((p) => p.restaurantName)
-          .toSet()
-          .toList();
+      if (selectedRestaurantName == null) {
+        // عرض قائمة المطاعم الفريدة
+        uniqueRestaurants = (appState.products as List)
+            .map((e) => e as ProductModel)
+            .where((p) => p.category == 'المطاعم')
+            .map((p) => p.restaurantName)
+            .toSet()
+            .toList();
+      } else {
+        // عرض منتجات المطعم المحدد فقط لوحده
+        filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
+          final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
+          final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
+          return matchesRestaurant && matchesSearch;
+        }).toList();
+      }
     } else {
       filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
         final matchesCategory = selectedCategory == 'الكل' || p.category == selectedCategory;
@@ -1148,7 +1162,9 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _searchController,
               style: TextStyle(color: textColor),
               decoration: InputDecoration(
-                hintText: 'ابحث عن طعام، بقالة، خضار، أو دواء...',
+                hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
+                    ? 'ابحث داخل وجبات $selectedRestaurantName...'
+                    : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
                 hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                 prefixIcon: const Icon(Icons.search, color: Colors.amber),
                 filled: true,
@@ -1161,10 +1177,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          if (selectedCategory == 'المطاعم') ...[
+          // 🍽️ عرض المطاعم أو وجبات المطعم المحدد بشكل منفصل
+          if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-              child: Text('اختر مطعماً لعرض وجباته 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
+              child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
             ),
             uniqueRestaurants.isEmpty
                 ? const Padding(
@@ -1187,11 +1204,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Icon(Icons.restaurant, color: Colors.black),
                           ),
                           title: Text(restaurantName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-                          subtitle: const Text('اضغط لعرض الوجبات والقائمة 📋', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          subtitle: const Text('اضغط لعرض الوجبات الخاصة بهذا المطعم فقط 📋', style: TextStyle(color: Colors.grey, fontSize: 12)),
                           trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
                           onTap: () {
                             setState(() {
-                              _searchController.text = restaurantName;
+                              selectedRestaurantName = restaurantName; // 👈 اختيار المطعم لعرض وجباته لوحده
                             });
                           },
                         ),
@@ -1199,10 +1216,30 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ] else ...[
+            if (selectedCategory == 'المطاعم' && selectedRestaurantName != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('وجبات مطعم: $selectedRestaurantName 🍔', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          selectedRestaurantName = null; // 👈 العودة لقائمة المطاعم
+                        });
+                      },
+                      icon: const Icon(Icons.arrow_back, size: 16, color: Colors.amber),
+                      label: const Text('تغيير المطعم', style: TextStyle(color: Colors.amber)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             filteredProducts.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(50.0),
-                    child: Center(child: Text('لا توجد منتجات مطابقة للبحث 🔍', style: TextStyle(color: Colors.grey, fontSize: 15))),
+                    child: Center(child: Text('لا توجد منتجات مطابقة 🔍', style: TextStyle(color: Colors.grey, fontSize: 15))),
                   )
                 : GridView.builder(
                     shrinkWrap: true,
@@ -1431,6 +1468,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onSelected: (val) {
                 setState(() {
                   selectedCategory = cat;
+                  selectedRestaurantName = null; // إعادة تعيين المطعم المختار عند تغيير القسم
                   _searchController.clear();
                 });
               },
@@ -1571,6 +1609,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final order = customerOrders[index];
         final status = order['status'] ?? '';
         final arabicStatus = _getArabicStatus(status);
+        final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
 
         int currentStep = 0;
         if (status == 'waitingForPricing') currentStep = 1;
@@ -1684,7 +1723,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       onPressed: () {
-                        _showRatingDialog(context, appState, order['id'].toString(), cardBg, textColor);
+                        _showRatingDialog(context, appState, order['id'].toString(), assignedCourierName, cardBg, textColor);
                       },
                       icon: const Icon(Icons.star, size: 18),
                       label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1818,7 +1857,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }),
 
-        // 📍 زر إدارة العناوين المحفوظة في تبويب حسابي
         _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
           Navigator.push(
             context,
