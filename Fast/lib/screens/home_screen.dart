@@ -203,7 +203,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   String selectedCategory = 'الكل';
-  String? selectedRestaurantName; // 👈 متغير خاص لعرض منتجات كل مطعم لوحده حصرياً
+  String? selectedRestaurantName;
   final TextEditingController _searchController = TextEditingController();
 
   final TextEditingController _customItemNameController = TextEditingController();
@@ -283,6 +283,82 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // 📖 نافذة كيفية استخدام التطبيق الاحترافية
+  void _showHowToUseDialog(BuildContext context, Color cardBg, Color textColor) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: cardBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.help_center, color: Colors.amber, size: 28),
+              SizedBox(width: 10),
+              Text('كيفية استخدام تطبيق FAST 🌟', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildInstructionStep(
+                  '1️⃣ تصفح المنتجات أو اطلب خدمة خاصة',
+                  'اختر قسمك المفضل (مطاعم، بقالات، خضار وفواكه...) أو اطلب خدمة خاصة من تبويب "طلبات أخرى".',
+                  textColor,
+                ),
+                const Divider(color: Colors.white12, height: 16),
+                _buildInstructionStep(
+                  '2️⃣ تحديد الموقع وإرسال الطلب',
+                  'أضف منتجاتك للسلة، حدد عنوانك بدقة أو عبر خريطة الـ GPS، ثم اضغط على "تأكيد وإرسال الطلب".',
+                  textColor,
+                ),
+                const Divider(color: Colors.white12, height: 16),
+                _buildInstructionStep(
+                  '3️⃣ مراجعة التسعيرة من الإدارة',
+                  'ستقوم الإدارة بتحديد رسوم التوصيل وإرسالها لك. ستظهر لك نافذة فورية للموافقة على السعر أو رفضه.',
+                  textColor,
+                ),
+                const Divider(color: Colors.white12, height: 16),
+                _buildInstructionStep(
+                  '4️⃣ تعيين المندوب والتوصيل الفوري',
+                  'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته عبر الشات حتى يصل باب منزلك ✅',
+                  textColor,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('فهمت، شكراً 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInstructionStep(String title, String desc, Color textColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 4),
+        Text(desc, style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 12, height: 1.4)),
+      ],
     );
   }
 
@@ -551,7 +627,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🌟 نافذة التقييم المحدثة لترسل التقييم للمندوب عبر AppState
   void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
@@ -1098,7 +1173,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (selectedCategory == 'المطاعم') {
       if (selectedRestaurantName == null) {
-        // عرض قائمة المطاعم الفريدة
         uniqueRestaurants = (appState.products as List)
             .map((e) => e as ProductModel)
             .where((p) => p.category == 'المطاعم')
@@ -1106,7 +1180,6 @@ class _HomeScreenState extends State<HomeScreen> {
             .toSet()
             .toList();
       } else {
-        // عرض منتجات المطعم المحدد فقط لوحده
         filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
           final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
           final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
@@ -1177,7 +1250,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          // 🍽️ عرض المطاعم أو وجبات المطعم المحدد بشكل منفصل
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
@@ -1208,7 +1280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
                           onTap: () {
                             setState(() {
-                              selectedRestaurantName = restaurantName; // 👈 اختيار المطعم لعرض وجباته لوحده
+                              selectedRestaurantName = restaurantName;
                             });
                           },
                         ),
@@ -1226,7 +1298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     TextButton.icon(
                       onPressed: () {
                         setState(() {
-                          selectedRestaurantName = null; // 👈 العودة لقائمة المطاعم
+                          selectedRestaurantName = null;
                         });
                       },
                       icon: const Icon(Icons.arrow_back, size: 16, color: Colors.amber),
@@ -1468,7 +1540,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onSelected: (val) {
                 setState(() {
                   selectedCategory = cat;
-                  selectedRestaurantName = null; // إعادة تعيين المطعم المختار عند تغيير القسم
+                  selectedRestaurantName = null;
                   _searchController.clear();
                 });
               },
@@ -1871,6 +1943,11 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }),
 
+        // 🌟 زر كيفية استخدام التطبيق الجديد المدمج هنا
+        _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, () {
+          _showHowToUseDialog(context, cardBg, textColor);
+        }),
+
         _buildProfileItem(Icons.dark_mode, 'مظهر التطبيق (${appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})', cardBg, textColor, () {
           appState.toggleTheme();
         }),
@@ -1883,21 +1960,7 @@ class _HomeScreenState extends State<HomeScreen> {
           appState.shareApp();
         }),
         _buildProfileItem(Icons.help_outline, 'مركز المساعدة والأسئلة الشائعة', cardBg, textColor, () {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text('كيف نعمل؟', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-              content: const Text(
-                '1. تختار منتجاتك أو تطلب طلباً خاصاً.\n2. تحدد الإدارة سعر التوصيل.\n3. توافق على التسعير ليذهب الطلب للمندوب.\n4. يستلم طلبك حتى باب منزلك بكل سرعة!',
-                style: TextStyle(color: Colors.grey, height: 1.5),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('فهمت', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)))
-              ],
-            ),
-          );
+          _showHowToUseDialog(context, cardBg, textColor);
         }),
       ],
     );
