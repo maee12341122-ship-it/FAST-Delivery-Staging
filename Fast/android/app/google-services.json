@@ -1,33 +1,26 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "firebase_url": "https://your-project-default-rtdb.firebaseio.com",
-    "project_id": "taiz-express-project",
-    "storage_bucket": "taiz-express-project.appspot.com"
+    "project_number": "918735653187",
+    "project_id": "taizexprees",
+    "storage_bucket": "taizexprees.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:918735653187:android:46c00f7cc68401126387f6",
         "android_client_info": {
-          "package_name": "com.example.taiz_express"
+          "package_name": "com.maeen.fastdelivery"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyA_Your_Firebase_API_Key_Here"
+          "current_key": "AIzaSyADnYL1mZh3a-djfm5qUC-La6N-TzQInnI"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
-        },
         "appinvite_service": {
-          "status": 1
-        },
-        "ads_service": {
-          "status": 2
+          "other_platform_oauth_client": []
         }
       }
     }
