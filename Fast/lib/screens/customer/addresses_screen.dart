@@ -29,12 +29,22 @@ class _AddressesScreenState extends State<AddressesScreen> {
     super.dispose();
   }
 
-  void _showAddAddressDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
-    _titleController.text = 'المنزل 🏠';
-    _areaController.clear();
-    _detailsController.clear();
-    _instructionsController.clear();
-    _selectedLatLng = null;
+  // 🛠️ دالة موحدة لإضافة أو تعديل العنوان
+  void _showAddressDialog(BuildContext context, AppState appState, Color cardBg, Color textColor, {AddressModel? addressToEdit}) {
+    final bool isEditing = addressToEdit != null;
+
+    if (isEditing) {
+      _titleController.text = addressToEdit.title;
+      _areaController.text = addressToEdit.area;
+      _detailsController.text = addressToEdit.details;
+      _instructionsController.text = addressToEdit.instructions;
+    } else {
+      _titleController.text = 'المنزل 🏠';
+      _areaController.clear();
+      _detailsController.clear();
+      _instructionsController.clear();
+      _selectedLatLng = null;
+    }
 
     showDialog(
       context: context,
@@ -47,7 +57,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: Colors.amber.withOpacity(0.4)),
             ),
-            title: const Text('إضافة عنوان جديد 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+            title: Text(
+              isEditing ? 'تعديل العنوان ✏️' : 'إضافة عنوان جديد 📍',
+              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -56,7 +69,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     controller: _titleController,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      labelText: 'تسمية العنوان (مثل: البيت، العمل)',
+                      labelText: 'تسمية العنوان (مثل: منزل هشام المريش)',
                       labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
                       fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
@@ -102,7 +115,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     controller: _areaController,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      labelText: 'المنطقة أو الحي (مثل: المسبح، الدحي)*',
+                      labelText: 'المنطقة أو الحي (مثل: المسبح، ديلوكس)*',
                       labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
                       fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
@@ -149,27 +162,48 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 ),
                 onPressed: () {
                   if (_titleController.text.isNotEmpty && _areaController.text.isNotEmpty) {
-                    final newAddress = AddressModel(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      title: _titleController.text.trim(),
-                      area: _areaController.text.trim(),
-                      details: _detailsController.text.trim(),
-                      instructions: _instructionsController.text.trim(),
-                    );
-                    
-                    appState.addUserAddress(newAddress);
-                    Navigator.pop(context);
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم حفظ العنوان بنجاح 📍')),
-                    );
+                    if (isEditing) {
+                      // 🔄 تحديث العنوان الموجود
+                      final updatedAddress = AddressModel(
+                        id: addressToEdit.id,
+                        title: _titleController.text.trim(),
+                        area: _areaController.text.trim(),
+                        details: _detailsController.text.trim(),
+                        instructions: _instructionsController.text.trim(),
+                      );
+                      // نفترض أنك تمتلك دالة update أو سنقوم بحذفه وإضافته أو تحديثه عبر الـ Provider
+                      // سنقوم باستبداله مباشرة إذا كانت الدالة متوفرة أو إزالته ثم إضافته
+                      appState.removeUserAddress(addressToEdit.id);
+                      appState.addUserAddress(updatedAddress);
+                      
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تم تعديل العنوان بنجاح ✏️')),
+                      );
+                    } else {
+                      // ➕ إضافة عنوان جديد
+                      final newAddress = AddressModel(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        title: _titleController.text.trim(),
+                        area: _areaController.text.trim(),
+                        details: _detailsController.text.trim(),
+                        instructions: _instructionsController.text.trim(),
+                      );
+                      
+                      appState.addUserAddress(newAddress);
+                      Navigator.pop(context);
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تم حفظ العنوان بنجاح 📍')),
+                      );
+                    }
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('يرجى كتابة تسمية العنوان والمنطقة على الأقل ⚠️')),
                     );
                   }
                 },
-                child: const Text('حفظ العنوان', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: Text(isEditing ? 'حفظ التعديلات' : 'حفظ العنوان', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -207,7 +241,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                      onPressed: () => _showAddAddressDialog(context, appState, cardBg, textColor),
+                      onPressed: () => _showAddressDialog(context, appState, cardBg, textColor),
                       icon: const Icon(Icons.add, color: Colors.black),
                       label: const Text('إضافة عنوان جديد', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                     ),
@@ -233,7 +267,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainDataFrame.spaceBetween,
                             children: [
                               Row(
                                 children: [
@@ -242,10 +276,21 @@ class _AddressesScreenState extends State<AddressesScreen> {
                                   Text(address.title, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16)),
                                 ],
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                tooltip: 'حذف العنوان',
-                                onPressed: () => appState.removeUserAddress(address.id),
+                              Row(
+                                children: [
+                                  // ✏️ زر التعديل
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, color: Colors.amber),
+                                    tooltip: 'تعديل العنوان',
+                                    onPressed: () => _showAddressDialog(context, appState, cardBg, textColor, addressToEdit: address),
+                                  ),
+                                  // 🗑️ زر الحذف
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                    tooltip: 'حذف العنوان',
+                                    onPressed: () => appState.removeUserAddress(address.id),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -285,7 +330,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
         floatingActionButton: addresses.isNotEmpty
             ? FloatingActionButton(
                 backgroundColor: Colors.amber,
-                onPressed: () => _showAddAddressDialog(context, appState, cardBg, textColor),
+                onPressed: () => _showAddressDialog(context, appState, cardBg, textColor),
                 child: const Icon(Icons.add, color: Colors.black),
               )
             : null,
