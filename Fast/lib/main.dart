@@ -9,13 +9,12 @@ import 'screens/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. تهيئة OneSignal للإشعارات الخارجية (تعمل تلقائياً بدون تعديل ملفات أندرويد)
+  // 1. تهيئة OneSignal للإشعارات الخارجية
   try {
-    // تم وضع معرف التطبيق الخاص بك بنجاح
     OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
     
-    // طلب إذن الإشعارات من المستخدم (يظهر تلقائياً)
-    OneSignal.Notifications.requestPermission(true);
+    // طلب إذن الإشعارات من المستخدم
+    await OneSignal.Notifications.requestPermission(true);
     
     debugPrint("✅ تمت تهيئة OneSignal بنجاح");
   } catch (e) {
@@ -32,17 +31,21 @@ void main() async {
     debugPrint('⚠️ خطأ في اتصال Supabase: $e');
   }
 
-  // 3. تهيئة خدمة الإشعارات المحلية الخاصة بالمشروع
+  // 3. تهيئة خدمة الإشعارات المحلية
   try {
     await NotificationService.initialize();
   } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
+    debugPrint('⚠️ خطأ في تهيئة الإشعارات المحلية: $e');
   }
+
+  // 4. إنشاء AppState وتهيئة الجلسة المحفوظة تلقائياً
+  final appState = AppState();
+  await appState.initSession(); // 👈 استعادة جلسة المشرف والمستخدم من الذكرة المحلية
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AppState()),
+        ChangeNotifierProvider<AppState>.value(value: appState),
       ],
       child: const FastApp(),
     ),
