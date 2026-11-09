@@ -1,7 +1,7 @@
 name: fast
 description: Fast Delivery App - أسرع تطبيق توصيل في تعز.
 publish_to: 'none'
-version: 2.2.0+2
+version: 2.2.0+3
 
 environment:
   sdk: '>=3.7.0 <4.0.0'
