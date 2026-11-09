@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 import 'package:onesignal_flutter/onesignal_flutter.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/app_state.dart';
 import '../../services/notification_service.dart'; 
 import '../customer/map_location_screen.dart';
@@ -17,11 +18,17 @@ class PhoneAuthScreen extends StatefulWidget {
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
 
-  bool _isProfileStep = false;
+  // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال البروفايل
+  int _currentStep = 0; 
   bool _isLoading = false;
+
+  // Firebase Auth Web
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  ConfirmationResult? _confirmationResult;
 
   // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
@@ -48,9 +55,94 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
+  // 1️⃣ إرسال كود OTP عبر Firebase Web
+  Future<void> _sendFirebaseOTP() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.length < 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // التنسيق للرمز الدولي (اليمن +967)
+      String formattedPhone = phone;
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+967$formattedPhone';
+      }
+
+      // إرسال الرمز عبر Firebase Auth للويب
+      _confirmationResult = await _auth.signInWithPhoneNumber(formattedPhone);
+
+      setState(() {
+        _currentStep = 1; // الانتقال لمرحلة أدخل رمز OTP
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إرسال رمز التحقق بنجاح إلى هاتفك! 📩')),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل إرسال رمز التحقق: $e')),
+      );
+    }
+  }
+
+  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل / Supabase
+  Future<void> _verifyOTPAndProceed(AppState appState) async {
+    final otpCode = _otpController.text.trim();
+    if (otpCode.isEmpty || otpCode.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رمز تحقق مكون من 6 أرقام')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (_confirmationResult != null) {
+        UserCredential userCredential = await _confirmationResult!.confirm(otpCode);
+
+        if (userCredential.user != null) {
+          final phone = _phoneController.text.trim();
+
+          // فحص السجل في قاعدة بيانات Supabase جدول customers
+          bool exists = await appState.checkAndLoginCustomer(phone);
+
+          setState(() => _isLoading = false);
+
+          if (exists) {
+            setState(() {
+              _currentStep = 2;
+              _nameController.text = appState.userProfile?['name'] ?? '';
+              _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
+            });
+          } else {
+            appState.continueWithoutPhoneVerification(phone);
+            setState(() {
+              _currentStep = 2;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _phoneController.dispose();
+    _otpController.dispose();
     _nameController.dispose();
     _addressController.dispose();
     super.dispose();
@@ -106,23 +198,25 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       color: primaryGold.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
+                    child: Icon(
+                      _currentStep == 1
+                          ? Icons.mark_email_read_outlined
+                          : Icons.person_outline_rounded,
                       size: 50,
                       color: primaryGold,
                     ),
                   ),
                   const SizedBox(height: 20),
 
-                  // ---------------- المرحلة الأولى: إدخال رقم الهاتف والتحقق من وجوده بالسيرفر ----------------
-                  if (!_isProfileStep) ...[
+                  // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
+                  if (_currentStep == 0) ...[
                     const Text(
                       'تسجيل الدخول برقم الهاتف',
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'أدخل رقم هاتفك المسجل في النظام للمتابعة مباشرة',
+                      'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الرسائل النصية',
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -154,44 +248,67 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         minimumSize: const Size(double.infinity, 50),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              final phone = _phoneController.text.trim();
-                              if (phone.isEmpty || phone.length < 9) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
-                                );
-                                return;
-                              }
-                              setState(() => _isLoading = true);
-
-                              // فحص السجل في قاعدة بيانات Supabase جدول customers
-                              bool exists = await appState.checkAndLoginCustomer(phone);
-
-                              setState(() => _isLoading = false);
-
-                              if (exists) {
-                                setState(() {
-                                  _isProfileStep = true;
-                                  _nameController.text = appState.userProfile?['name'] ?? '';
-                                  _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
-                                });
-                              } else {
-                                // إذا لم يكن مسجلاً، نتيحه كعميل جديد وننتقل لتسجيل اسمه وعنوانه لأول مرة
-                                appState.continueWithoutPhoneVerification(phone);
-                                setState(() {
-                                  _isProfileStep = true;
-                                });
-                              }
-                            },
+                      onPressed: _isLoading ? null : _sendFirebaseOTP,
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('متابعة الدخول 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                          : const Text('إرسال رمز التحقق (OTP) 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                   ]
 
-                  // ---------------- المرحلة الثانية: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
+                  // ---------------- المرحلة الثانية: إدخال رمز الـ OTP ----------------
+                  else if (_currentStep == 1) ...[
+                    const Text(
+                      'أدخل رمز التحقق (OTP)',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'تم إرسال رمز التحقق إلى ${_phoneController.text.trim()}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 25),
+                    TextField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
+                      maxLength: 6,
+                      decoration: InputDecoration(
+                        labelText: 'رمز التحقق (6 أرقام)',
+                        labelStyle: const TextStyle(color: Colors.grey, letterSpacing: 0),
+                        prefixIcon: const Icon(Icons.lock_clock_outlined, color: primaryGold),
+                        filled: true,
+                        fillColor: backgroundColor,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade800),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: primaryGold, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGold,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _isLoading ? null : () => _verifyOTPAndProceed(appState),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.black)
+                          : const Text('تأكيد الرمز والمتابعة 🔑', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _currentStep = 0),
+                      child: const Text('تغيير رقم الهاتف', style: TextStyle(color: primaryGold)),
+                    ),
+                  ]
+
+                  // ---------------- المرحلة الثالثة: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
                   else ...[
                     const Text(
                       'استكمال وتأكيد البيانات الشخصية',
