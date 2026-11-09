@@ -20,14 +20,18 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // 👈 تفعيل الـ Desugaring هنا لحل مشاكل flutter_local_notifications نهائياً
+        isCoreLibraryDesugaringEnabled = true
     }
-defaultConfig {
-    applicationId = "com.maeen.fastdelivery"
+
+    defaultConfig {
+        applicationId = "com.maeen.fastdelivery"
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     signingConfigs {
@@ -56,4 +60,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 👈 إضافة مكتبة الـ Desugaring المطلوبة في النهاية
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
