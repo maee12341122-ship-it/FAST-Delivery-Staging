@@ -201,21 +201,20 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _saveUserAddressesFromPrefs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List> listToEncode = _userAddresses.map((a) => {
-        'id': a.id,
-        'title': a.title,
-        'area': a.area,
-        'details': a.details,
-        'instructions': a.instructions,
-      }).toList();
-      await prefs.setString('user_saved_addresses_json', jsonEncode(listToEncode));
-    } catch (e) {
-      debugPrint('⚠️ خطأ في حفظ العناوين محلياً: $e');
-    }
+try {
+final prefs = await SharedPreferences.getInstance();
+final listToEncode = _userAddresses.map((a) => {
+'id': a.id,
+'title': a.title,
+'area': a.area,
+'details': a.details,
+'instructions': a.instructions,
+}).toList();
+await prefs.setString('user_saved_addresses_json', jsonEncode(listToEncode));
+} catch (e) {
+debugPrint('⚠️ خطأ في حفظ العناوين محلياً: $e');
+}
   }
-
   // --- 🗺️ ترجمة حالات الطلبات إلى العربية ---
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
