@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart'; // 👈 استدعاء حزمة ون سيجنال
-import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استدعاء سوبابيز لحفظ المعرف
+
 import '../providers/app_state.dart';
+import '../services/notification_service.dart'; // 👈 استدعاء خدمة الإشعارات الخاصة بك
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'delivery_dashboard.dart';
@@ -46,19 +46,8 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     final courierId = courier['id']?.toString() ?? courier['delivery_man_id']?.toString() ?? 'D-001';
     final courierName = courier['name']?.toString() ?? 'مندوب';
 
-    // 🚀 حفظ معرف OneSignal Player ID الخاص بجهاز المندوب في قاعدة بيانات Supabase عند تسجيل الدخول
-    try {
-      String? deviceId = OneSignal.User.pushSubscription.id;
-      if (deviceId != null) {
-        await Supabase.instance.client
-            .from('couriers') // أو جدول المناديب المعتمد لديكم في Supabase
-            .update({'onesignal_id': deviceId})
-            .eq('id', courierId);
-        debugPrint("✅ تم حفظ OneSignal ID للمندوب بنجاح: $deviceId");
-      }
-    } catch (e) {
-      debugPrint("⚠️ خطأ في حفظ OneSignal ID للمندوب: $e");
-    }
+    // 🚀 حفظ معرف OneSignal Player ID الخاص بجهاز المندوب في جدول couriers في Supabase
+    await NotificationService.saveUserPlayerId(courierId, 'couriers');
 
     if (!mounted) return;
 
