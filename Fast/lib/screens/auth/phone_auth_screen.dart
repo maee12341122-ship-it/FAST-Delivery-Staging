@@ -28,7 +28,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
   // Firebase Auth Web
   static final FirebaseAuth _auth = FirebaseAuth.instance;
-  ConfirmationResult? _confirmationResult;
+  
+  // استخدام ديناميكي لمنع أخطاء الـ Minified Types على الويب
+  dynamic _confirmationResult;
 
   // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
@@ -55,7 +57,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر Firebase Web
+  // 1️⃣ إرسال كود OTP عبر Firebase Web (معدلة لمنع أي خطأ نوع بيانات)
   Future<void> _sendFirebaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -68,16 +70,21 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // التنسيق للرمز الدولي (اليمن +967)
+      // تنسيق الرقم بالصيغة الدولية (اليمن +967)
       String formattedPhone = phone;
       if (!formattedPhone.startsWith('+')) {
-        formattedPhone = '+967$formattedPhone';
+        if (formattedPhone.startsWith('0')) {
+          formattedPhone = '+967${formattedPhone.substring(1)}';
+        } else {
+          formattedPhone = '+967$formattedPhone';
+        }
       }
 
       // إرسال الرمز عبر Firebase Auth للويب
-      _confirmationResult = await _auth.signInWithPhoneNumber(formattedPhone);
+      var result = await _auth.signInWithPhoneNumber(formattedPhone);
 
       setState(() {
+        _confirmationResult = result;
         _currentStep = 1; // الانتقال لمرحلة أدخل رمز OTP
         _isLoading = false;
       });
