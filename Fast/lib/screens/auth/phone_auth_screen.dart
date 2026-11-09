@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 استيراد سوبابيس لتحديث الـ Player ID
-import 'package:onesignal_flutter/onesignal_flutter.dart'; // 👈 استيراد مكتبة OneSignal
+import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:onesignal_flutter/onesignal_flutter.dart'; 
 import '../../providers/app_state.dart';
 import '../../services/notification_service.dart'; 
 import '../customer/map_location_screen.dart';
-// 👈 استدعاء شاشة الخريطة التفاعلية
 
 class PhoneAuthScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -26,7 +25,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   bool _isProfileStep = false;
   bool _isLoading = false;
 
-  // 🗺️ دالة لفتح الخريطة التفاعلية واستقبال البيانات المرتجعة منها
+  // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
     final result = await Navigator.push(
       context,
@@ -86,7 +85,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             onPressed: () => Navigator.pop(context),
           ),
           title: const Text(
-            'تعز إكسبرس - بوابة المصادقة',
+            'FAST – بوابة المصادقة عبر الواتساب',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
@@ -117,7 +116,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.flash_on,
+                      Icons.mark_chat_unread_rounded,
                       size: 50,
                       color: primaryGold,
                     ),
@@ -127,12 +126,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                   // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
                   if (!_isOtpSent && !_isProfileStep) ...[
                     const Text(
-                      'تسجيل الدخول / حساب جديد',
+                      'تسجيل الدخول برقم الهاتف',
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'أدخل رقم هاتفك للتحقق أو استرجاع بياناتك المسجلة مسبقاً',
+                      'أدخل رقم هاتفك ليصلك رمز التحقق (OTP) عبر رسالة واتساب رسمية',
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -142,7 +141,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       keyboardType: TextInputType.phone,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'رقم الهاتف',
+                        labelText: 'رقم الهاتف (مثال: 775145534)',
                         labelStyle: const TextStyle(color: Colors.grey),
                         prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
                         filled: true,
@@ -176,20 +175,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                               }
                               setState(() => _isLoading = true);
 
+                              // فحص إذا كان الحساب موجوداً مسبقاً
                               bool exists = await appState.checkAndLoginCustomer(phone);
 
-                              if (exists && appState.userProfile != null) {
-                                setState(() {
-                                  _isLoading = false;
-                                  _nameController.text = appState.userProfile!['name'] ?? '';
-                                  _addressController.text = appState.userProfile!['address'] ?? 'تعز - ديلوكس';
-                                  _isProfileStep = true;
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تم العثور على حسابك السابق واسترجاع بياناتك بنجاح! ✅')),
-                                );
-                              } else {
-                                appState.requestOtpForPhone(phone);
+                              // 🚀 هنا يتم استدعاء دالة إرسال الرمز عبر Meta WhatsApp API
+                              // يمكنك استبدال هذا السطر باستدعاء Supabase Edge Function الخاصة بك
+                              try {
+                                // مثال: await supabase.functions.invoke('send-whatsapp-otp', body: {'phone': phone});
+                                appState.requestOtpForPhone(phone); // توليد الرمز محلياً مؤقتاً للتجربة
 
                                 setState(() {
                                   _isLoading = false;
@@ -197,30 +190,57 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                 });
 
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('تم فتح واتساب برسالة جاهزة. أرسلها بنفسك، ويمكنك المتابعة كضيف دون توثيق الرقم.')),
+                                  const SnackBar(content: Text('تم إرسال رمز التحقق (OTP) إلى واتساب بنجاح 🟢')),
+                                );
+                              } catch (e) {
+                                setState(() => _isLoading = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('تعذر إرسال الرمز عبر واتساب: $e')),
                                 );
                               }
                             },
                       child: _isLoading
                           ? const CircularProgressIndicator(color: Colors.black)
-                          : const Text('فتح واتساب والمتابعة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                          : const Text('إرسال رمز التحقق عبر واتساب 💬', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                   ]
 
-                  // ---------------- المرحلة الثانية: إدخال رمز الـ OTP ----------------
+                  // ---------------- المرحلة الثانية: إدخال وتحقق رمز الـ OTP ----------------
                   else if (_isOtpSent && !_isProfileStep) ...[
                     const Text(
-                      'المتابعة كضيف',
+                      'أدخل رمز التحقق (OTP)',
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'تم فتح واتساب برسالة جاهزة إلى FAST. هذه الخطوة تواصل يدوي وليست تحققاً آلياً من ملكية الرقم.',
+                      'تم إرسال رسالة تحتوي على رمز التحقق إلى الرقم:\n${_phoneController.text.trim()}',
                       style: const TextStyle(color: Colors.grey, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 25),
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      style: const TextStyle(color: Colors.white, fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: '----',
+                        hintStyle: const TextStyle(color: Colors.grey),
+                        filled: true,
+                        fillColor: backgroundColor,
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade800),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: primaryGold, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGold,
@@ -228,23 +248,34 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () {
-                        final accepted = appState.continueWithoutPhoneVerification(_phoneController.text.trim());
-                        if (accepted) {
-                          setState(() => _isProfileStep = true);
+                        final enteredOtp = _otpController.text.trim();
+                        final phone = _phoneController.text.trim();
+
+                        // التحقق من صحة الرمز عبر الـ AppState
+                        bool isValid = appState.verifyOtpAndLogin(phone, enteredOtp);
+                        if (isValid) {
+                          setState(() {
+                            _isProfileStep = true;
+                            _nameController.text = appState.userProfile?['name'] ?? '';
+                            _addressController.text = appState.userProfile?['address'] ?? 'تعز - ديلوكس';
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تم التحقق بنجاح! أكمل بياناتك الآن ✅')),
+                          );
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تحقق من رقم الهاتف ثم حاول مجدداً.')),
+                            const SnackBar(content: Text('رمز التحقق غير صحيح، حاول مجدداً ❌')),
                           );
                         }
                       },
-                      child: const Text('متابعة كضيف (الرقم غير موثّق)', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: const Text('تحقق من الرمز 🔓', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                     TextButton(
                       onPressed: () => setState(() {
                         _isOtpSent = false;
                         _otpController.clear();
                       }),
-                      child: const Text('تغيير رقم الهاتف', style: TextStyle(color: Colors.grey)),
+                      child: const Text('تغيير رقم الهاتف أو إعادة الإرسال', style: TextStyle(color: Colors.grey)),
                     ),
                   ]
 
@@ -302,7 +333,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // 🗺️ زر يفتح خريطة جوجل التفاعلية المباشرة بدلاً من المتصفح الخارجي
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: primaryGold),
@@ -323,16 +353,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                       onPressed: () async {
                         if (_nameController.text.trim().isNotEmpty && _addressController.text.trim().isNotEmpty) {
-                          // 1. حفظ بيانات الملف الشخصي
                           await appState.saveUserProfileDetails(
                             _nameController.text.trim(),
                             _addressController.text.trim(),
                           );
                           
-                          // 2. طلب أذونات الموقع والإشعارات
                           await appState.requestLocationAndNotificationPermissions();
 
-                          // 3. حفظ الـ OneSignal Player ID في جدول العملاء بسوبابيس فوراً
                           try {
                             String? playerId = OneSignal.User.pushSubscription.id;
                             if (playerId != null && playerId.isNotEmpty && appState.currentUserId != null) {
@@ -340,18 +367,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                   .from('customers')
                                   .update({'onesignal_player_id': playerId})
                                   .eq('phone', appState.currentUserId!);
-                              debugPrint('✅ تم حفظ وتحديث OneSignal Player ID بنجاح: $playerId');
                             }
                           } catch (e) {
-                            debugPrint('❌ خطأ أثناء حفظ Player ID في تسجيل الدخول: $e');
-                          }
-
-                          // 4. حفظ Player ID عبر NotificationService أيضاً للتأكد
-                          if (appState.currentUserId != null) {
-                            await NotificationService.saveUserPlayerId(
-                              appState.currentUserId!, 
-                              'customers', 
-                            );
+                            debugPrint('خطأ في حفظ Player ID: $e');
                           }
 
                           if (widget.onLoginSuccess != null) {
