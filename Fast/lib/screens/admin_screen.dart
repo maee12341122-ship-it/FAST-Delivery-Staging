@@ -50,7 +50,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  // 🌟 نافذة عرض تقييمات المطاعم للمشرف
+  // 🌟 نافذة عرض تقييمات وملاحظات المطاعم للمشرف
   void _showRestaurantRatingsDialog(BuildContext context) async {
     showDialog(
       context: context,
@@ -69,27 +69,26 @@ class _AdminScreenState extends State<AdminScreen> {
           content: SizedBox(
             width: double.maxFinite,
             height: 400,
-            child: FutureBuilder<List>>(
+            child: FutureBuilder(
               future: Supabase.instance.client
                   .from('restaurant_ratings')
                   .select()
-                  .order('created_at', ascending: false)
-                  .then((res) => List>.from(res)),
-              builder: (context, snapshot) {
+                  .order('created_at', ascending: false),
+              builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: Colors.amber));
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text('خطأ في جلب التقييمات: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                 }
-                final ratings = snapshot.data ?? [];
+                final List<dynamic> ratings = snapshot.data ?? [];
                 if (ratings.isEmpty) {
                   return const Center(child: Text('لا توجد تقييمات مطاعم مسجلة حتى الآن 📭', style: TextStyle(color: Colors.grey)));
                 }
                 return ListView.builder(
                   itemCount: ratings.length,
                   itemBuilder: (context, index) {
-                    final r = ratings[index];
+                    final r = ratings[index] as Map<String, dynamic>;
                     return Card(
                       color: const Color(0xFF121212),
                       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -592,7 +591,6 @@ class _AdminScreenState extends State<AdminScreen> {
           const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
           
-          // 👈 زر عرض تقارير الأرباح والمبيعات الشاملة
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
@@ -611,7 +609,6 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
           const SizedBox(height: 12),
 
-          // 👈 زر إدارة المطاعم والمبيعات الجديدة
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blueGrey[800],
@@ -630,7 +627,6 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
           const SizedBox(height: 12),
 
-          // 🌟 👈 زر عرض تقييمات وملاحظات المطاعم للمشرف
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.indigo[900],
