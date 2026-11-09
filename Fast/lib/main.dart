@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 استيراد لتخزين حالة الترحيب
 import 'services/notification_service.dart';
 import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
+import 'screens/onboarding_screen.dart'; // 👈 استيراد شاشة الترحيب الجديدة
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 0. التحقق مما إذا كانت هذه هي المرة الأولى لتثبيت التطبيق
+  final prefs = await SharedPreferences.getInstance();
+  final bool hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
   // 1. تهيئة OneSignal للإشعارات الخارجية
   try {
@@ -45,13 +51,14 @@ void main() async {
       providers: [
         ChangeNotifierProvider<AppState>.value(value: appState),
       ],
-      child: const FastApp(),
+      child: FastApp(hasSeenOnboarding: hasSeenOnboarding),
     ),
   );
 }
 
 class FastApp extends StatelessWidget {
-  const FastApp({Key? key}) : super(key: key);
+  final bool hasSeenOnboarding;
+  const FastApp({Key? key, required this.hasSeenOnboarding}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +92,8 @@ class FastApp extends StatelessWidget {
           foregroundColor: Colors.amber,
         ),
       ),
-      home: const SplashScreen(),
+      // 👈 إذا شاهدها من قبل يذهب للـ SplashScreen، وإذا كانت أول مرة يذهب للـ OnboardingScreen
+      home: hasSeenOnboarding ? const SplashScreen() : const OnboardingScreen(),
     );
   }
 }
