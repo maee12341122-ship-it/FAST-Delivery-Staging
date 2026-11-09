@@ -114,7 +114,7 @@ class AppState extends ChangeNotifier {
             instructions: row['instructions']?.toString() ?? '',
           ));
         }
-        _saveUserAddressesToPrefs(); 
+        _saveUserAddressesFromPrefs(); 
         notifyListeners();
       }
     } catch (e) {
@@ -128,7 +128,7 @@ class AppState extends ChangeNotifier {
     if (_userAddresses.length == 1) {
       selectDefaultAddress(address);
     }
-    _saveUserAddressesToPrefs();
+    _saveUserAddressesFromPrefs();
     notifyListeners();
 
     if (userProfile != null && userProfile!['phone'] != null) {
@@ -150,7 +150,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> removeUserAddress(String id) async {
     _userAddresses.removeWhere((a) => a.id == id);
-    _saveUserAddressesToPrefs();
+    _saveUserAddressesFromPrefs();
     notifyListeners();
 
     try {
@@ -375,7 +375,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التسجيل في تطبيق FAST - تعز.'}) async {
+  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التسجيل في تطبيق Fast Delivery App.'}) async {
     final uri = Uri.parse('https://wa.me/967775145534?text=${Uri.encodeComponent(message)}');
     if (!await canLaunchUrl(uri)) {
       throw Exception('تعذر فتح واتساب أو المتصفح.');
@@ -385,8 +385,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     Share.share(
-      'حمل تطبيق Fast Delivery - أسرع خدمة توصيل في تعز! 🚀\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
-      subject: 'تطبيق Fast Delivery تعز',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل! 🚀\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      subject: 'تطبيق Fast Delivery App',
     );
   }
 
@@ -415,7 +415,7 @@ class AppState extends ChangeNotifier {
         } catch (e) {
           debugPrint('⚠️ خطأ في تفعيل OneSignal بعد الاذن: $e');
         }
-        addNotification('تطبيق Fast Delivery - تعز', 'تم تفعيل الإشعارات وتحديد الموقع بنجاح 🚀');
+        addNotification('تطبيق Fast Delivery App', 'تم تفعيل الإشعارات وتحديد الموقع بنجاح 🚀');
       } else {
         debugPrint('⚠️ تم رفض إذن الإشعارات من المستخدم');
       }
@@ -640,7 +640,7 @@ class AppState extends ChangeNotifier {
     debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
     
     openFastWhatsApp(
-      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery هو: $generatedDynamicOtp'
+      message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
     ).catchError((e) { 
       debugPrint('WhatsApp unavailable: $e'); 
     });
