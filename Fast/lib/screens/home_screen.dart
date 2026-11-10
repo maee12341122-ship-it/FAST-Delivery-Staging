@@ -358,6 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String selectedCategory = 'الكل';
   String? selectedRestaurantName;
   final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false; // تفعيل وإخفاء شريط البحث العلوي المصغر
 
   final TextEditingController _customItemNameController = TextEditingController();
   final TextEditingController _customItemPriceController = TextEditingController();
@@ -376,13 +377,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _previousUnreadCount = 0;
   bool _showPopupBadge = false;
   String _latestNotificationText = 'إشعار جديد!';
-
-  final List _heroStories = [
-    {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
-    {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
-    {'title': 'خضار وطازج 🥦', 'subtitle': 'أسعار يومية', 'category': 'الخضار والفواكه'},
-    {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
-  ];
 
   final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
 
@@ -626,7 +620,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 4. تعديل نافذة تفاصيل ومواصفات المنتج المنبثقة لتظهر في المنتصف كـ Dialog أنيق
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
@@ -1548,7 +1541,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final appState = Provider.of<AppState>(context);
 
     if (appState.unreadNotificationsCount > _previousUnreadCount) {
-      // 3. جلب نص الإشعار الحقيقي الفعلي وعرضه بدلاً من النص الثابت
       _latestNotificationText = appState.latestNotificationMessage ?? 'لديك إشعار جديد!';
       _popupAnimController.forward(from: 0.0);
       setState(() {
@@ -1609,6 +1601,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
+              // 🔍 زر البحث المصغر بجانب الإشعارات
+              IconButton(
+                icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.amber, size: 24),
+                tooltip: 'البحث السريع',
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _isSearching = !_isSearching;
+                    if (!_isSearching) _searchController.clear();
+                  });
+                },
+              ),
+
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2127,131 +2132,63 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
           _buildAdBannerWidget(cardBg, textColor),
 
-          SizedBox(
-            height: 95,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              itemCount: _heroStories.length,
-              itemBuilder: (context, index) {
-                final story = _heroStories[index];
-                final bool isSelected = selectedCategory == story['category'];
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      selectedCategory = story['category']!;
-                      selectedRestaurantName = null;
-                    });
-                  },
-                  child: Container(
-                    width: 140,
-                    margin: const EdgeInsets.only(left: 10),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: isSelected
-                          ? const LinearGradient(colors: [Colors.amber, Colors.orangeAccent])
-                          : LinearGradient(
-                              colors: appState.isDarkMode
-                                  ? [const Color(0xFF2A2A2A), const Color(0xFF1E1E1E)]
-                                  : [Colors.white, Colors.grey[200]!],
-                            ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isSelected ? Colors.amber : Colors.amber.withOpacity(0.3),
-                        width: 1.5,
+          // 🔍 شريط البحث المنسدل عند الضغط على أيقونة البحث العلوية فقط
+          if (_isSearching)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
+                          ? 'ابحث داخل وجبات $selectedRestaurantName...'
+                          : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
+                      hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                      prefixIcon: const Icon(Icons.search, color: Colors.amber),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 6,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
+                      filled: true,
+                      fillColor: cardBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          story['title']!,
-                          style: TextStyle(
-                            color: isSelected ? Colors.black : textColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          story['subtitle']!,
-                          style: TextStyle(
-                            color: isSelected ? Colors.black87 : Colors.grey,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
+                    onChanged: (val) => setState(() {}),
                   ),
-                );
-              },
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _searchController,
-                  style: TextStyle(color: textColor),
-                  decoration: InputDecoration(
-                    hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
-                        ? 'ابحث داخل وجبات $selectedRestaurantName...'
-                        : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
-                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                    prefixIcon: const Icon(Icons.search, color: Colors.amber),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _quickTags.map((tag) {
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 6.0),
+                          child: ActionChip(
+                            elevation: 0,
+                            backgroundColor: cardBg,
+                            side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                            label: Text('# $tag', style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
                             onPressed: () {
-                              _searchController.clear();
+                              HapticFeedback.selectionClick();
+                              _searchController.text = tag;
                               setState(() {});
                             },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: cardBg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
-                  onChanged: (val) => setState(() {}),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _quickTags.map((tag) {
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 6.0),
-                        child: ActionChip(
-                          elevation: 0,
-                          backgroundColor: cardBg,
-                          side: BorderSide(color: Colors.grey.withOpacity(0.2)),
-                          label: Text('# $tag', style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
-                          onPressed: () {
-                            HapticFeedback.selectionClick();
-                            _searchController.text = tag;
-                            setState(() {});
-                          },
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
+          // 🌟 تم إلغاء المربعات الكبيرة نهائياً وإبقاء شريط الأقسام الأفقية واضحاً وبارزاً
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
@@ -2578,7 +2515,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 1. زر الزيادة والنقصان داخل السلة قبل تأكيد الطلب
   Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile == null) {
       return Center(
@@ -3043,7 +2979,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             children: [
               Text(
-                'الإصدار: 2.0.64',
+                'الإصدار: 2.0.65',
                 style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
