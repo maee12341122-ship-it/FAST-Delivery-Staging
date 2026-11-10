@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/notification_service.dart'; // 👈 استيراد خدمة الإشعارات لإرسال التنبيهات الفورية
+import '../services/notification_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String orderId;
@@ -136,7 +136,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       final text = _msgController.text.trim();
                       if (text.isNotEmpty) {
                         HapticFeedback.lightImpact();
-                        // 1. إرسال وحفظ الرسالة في قاعدة البيانات عبر الـ Provider
+                        
+                        // 1. إرسال وحفظ الرسالة في قاعدة البيانات
                         await appState.sendChatMessage(
                           widget.orderId,
                           widget.userRole,
@@ -148,7 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                         if (!mounted) return;
 
-                        // 2. 👈 إرسال إشعار خارجي عبر OneSignal للطرف الآخر + إشعار محلي داخلي للتتبع
+                        // 2. إرسال الإشعار الخارجي والمحلي
                         try {
                           String? receiverPlayerId = await appState.getReceiverPlayerIdForChat(
                             orderId: widget.orderId,
@@ -160,7 +161,6 @@ class _ChatScreenState extends State<ChatScreen> {
                               ? 'الإدارة' 
                               : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
 
-                          // إرسال الإشعار الخارجي (إذا وجد معرف الجهاز)
                           if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
                             await NotificationService.sendNotificationToUser(
                               targetPlayerId: receiverPlayerId,
@@ -169,10 +169,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                           }
 
-                          // إضافة إشعار محلي داخل مركز الإشعارات للتطبيق
                           appState.addLocalNotification(
-                            title: 'رسالة جديدة في الطلب #${widget.orderId}',
-                            body: '$senderName: $text',
+                            'رسالة جديدة في الطلب #${widget.orderId}',
+                            '$senderName: $text',
                             type: 'chat',
                           );
 
