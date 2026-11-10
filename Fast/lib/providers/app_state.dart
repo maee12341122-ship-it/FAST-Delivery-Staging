@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -19,11 +18,10 @@ import '../services/notification_service.dart';
 /// ===========================================================================
 /// 🚀 مدير حالة التطبيق الشامل (AppState)
 /// يحتوي على كافة منطق العمليات، الاتصال بقاعدة بيانات Supabase، إدارة السلة،
-/// الجلسات، الإشعارات الفورية عبر OneSignal، والدردشة الحية.
+/// والجلسات، الإشعارات الفورية عبر OneSignal، والدردشة الحية.
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   AppState() {
     _initializeApplicationState();
@@ -746,6 +744,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       prefs.setString('userName', name);
       prefs.setString('userAddress', address);
+      prefs.setString('userPhone', phone); // 🔒 ضمان حفظ الهاتف محلياً
 
       try {
         await supabase.from('customers').upsert({
@@ -826,6 +825,7 @@ class AppState extends ChangeNotifier {
     prefs.remove('userPhone');
     prefs.remove('userName');
     prefs.remove('userAddress');
+    prefs.remove('userCity');
     prefs.remove('user_saved_addresses_json');
     notifyListeners();
     debugPrint('🚪 تم تسجيل خروج المستخدم بنجاح');
@@ -1231,7 +1231,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString('userAddress', address);
       await prefs.setString('userCity', currentCity);
       await prefs.setString('fast_last_order_id', order['id'].toString());
-      await _secureStorage.write(key: 'fast_last_order_token', value: trackingCode);
+      await prefs.setString('fast_last_order_token', trackingCode); // 🔒 تم التبديل إلى SharedPreferences للويب
       
       orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
       orders.add(order);
@@ -1329,9 +1329,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _submitCustomerOrderAction(dynamic orderId, String action) async {
-    final token = await _secureStorage.read(key: 'fast_last_order_token');
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('fast_last_order_token');
     final phone = userProfile?['phone'];
-    if (token == null || phone == null) throw Exception('رمز متابعة الطلب غير موجود على هذا الجهاز.');
+    if (phone == null) throw Exception('رمز متابعة الطلب غير موجود أو لم يتم تسجيل الدخول.');
 
     String newStatus = action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
     String adminMsg = action == 'approve' ? 'تم تأكيد السعر من قبل العميل، بانتظار موافقة المندوب ✅' : 'تم إلغاء الطلب من قبل العميل ❌';
