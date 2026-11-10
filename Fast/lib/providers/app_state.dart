@@ -100,7 +100,7 @@ class AppState extends ChangeNotifier {
       final response = await supabase
           .from('customer_addresses')
           .select()
-          .eq('phone', cleanPhone);
+          .eq('customer_phone', cleanPhone);
 
       if (response != null) {
         _userAddresses.clear();
@@ -135,7 +135,7 @@ class AppState extends ChangeNotifier {
       try {
         final cleanPhone = _normalizePhone(userProfile!['phone']!);
         await supabase.from('customer_addresses').insert({
-          'phone': cleanPhone,
+          'customer_phone': cleanPhone,
           'title': address.title.trim(),
           'area': address.area.trim(),
           'details': address.details.trim(),
@@ -637,7 +637,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 📱 بدون تحديد نوع صارم لتجنب مشاكل البناء ---
   Future<dynamic> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
@@ -1347,99 +1346,3 @@ class AppState extends ChangeNotifier {
       adminMsg = 'وصل المندوب إلى موقع العميل 📍';
     } else {
       newStatus = 'delivered';
-      adminMsg = 'تم تسليم الطلب بنجاح ✅';
-    }
-
-    final response = await supabase.from('orders').update({
-      'status': newStatus,
-      'admin_message': adminMsg,
-    }).eq('id', orderId).select().single();
-
-    final updated = Map<String, dynamic>.from(response);
-    final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-    if (index >= 0) orders[index] = updated;
-    else orders.add(updated);
-    _sortOrders();
-    notifyListeners();
-  }
-
-  Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
-    await _submitCourierOrderAction(orderId, accepted ? 'accept' : 'reject');
-  }
-
-  Future<void> courierUpdateArrival(dynamic orderId) async {
-    await _submitCourierOrderAction(orderId, 'arrived');
-  }
-
-  Future<void> markOrderDelivered(dynamic orderId) async {
-    await _submitCourierOrderAction(orderId, 'delivered');
-    addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
-  }
-
-  Future<void> submitCourierRating({
-    required String orderId,
-    required String courierName,
-    required double rating,
-    required String reviewText,
-  }) async {
-    try {
-      await supabase.from('orders').update({
-        'courier_rating': rating,
-        'courier_review': reviewText,
-      }).eq('id', orderId);
-
-      final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      if (index != -1) {
-        orders[index]['courier_rating'] = rating;
-        orders[index]['courier_review'] = reviewText;
-        notifyListeners();
-      }
-
-      String targetCourierName = courierName.trim();
-      if (targetCourierName.isEmpty && index != -1) {
-        targetCourierName = orders[index]['assigned_courier']?.toString() ?? '';
-      }
-
-      if (targetCourierName.isNotEmpty) {
-        String? courierPlayerId = await getCourierPlayerIdByName(targetCourierName);
-        if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
-          await sendAutoNotification(
-            targetPlayerId: courierPlayerId,
-            title: 'تقييم جديد للطلب #$orderId ⭐',
-            body: 'لقد حصلت على تقييم ($rating من 5) من العميل! شكراً لجهودك.',
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ خطأ في تقديم تقييم المندوب: $e');
-    }
-  }
-
-  Future<void> submitRestaurantRating({
-    required String orderId,
-    required double rating,
-    required String reviewText,
-  }) async {
-    try {
-      await supabase.from('orders').update({
-        'restaurant_rating': rating,
-        'restaurant_review': reviewText,
-      }).eq('id', orderId);
-
-      final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      if (index != -1) {
-        orders[index]['restaurant_rating'] = rating;
-        orders[index]['restaurant_review'] = reviewText;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
-    }
-  }
-}
-
-class _UserMock {
-  final String name;
-  final String phone;
-  _UserMock(this.name, this.phone);
-}
