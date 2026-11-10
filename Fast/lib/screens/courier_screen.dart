@@ -177,7 +177,6 @@ class _CourierScreenState extends State<CourierScreen> {
       }
     }
 
-    // حساب نسبة الإدارة (20%) وصافي أرباح المندوب (80%)
     double adminCommission = totalEarnings * 0.20;
     double courierNetEarnings = totalEarnings - adminCommission;
 
@@ -220,7 +219,6 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           const SizedBox(height: 10),
           
-          // 📊 بطاقة تفصيل الأرباح والعمولات للمندوب
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
