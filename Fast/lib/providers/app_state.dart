@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع الكوبونات والتقارير والإضافات
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -27,6 +27,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _initializeApplicationState() async {
+    await checkPrivacyPolicyStatus(); // 🛡️ قراءة حالة الموافقة على سياسة الخصوصية
     _loadAdminSession();
     _loadCourierSession();
     _loadUserSession();
@@ -39,6 +40,34 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener(); 
+  }
+
+  // ==========================================
+  // --- 🛡️ قسم سياسة الخصوصية والاستخدام ---
+  // ==========================================
+  bool hasAcceptedPrivacyPolicy = false;
+
+  /// 1️⃣ قراءة حالة الموافقة محلياً من ذاكرة الهاتف
+  Future<void> checkPrivacyPolicyStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      hasAcceptedPrivacyPolicy = prefs.getBool('privacy_accepted') ?? false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في قراءة حالة سياسة الخصوصية: $e');
+    }
+  }
+
+  /// 2️⃣ حفظ موافقة العميل دائمياً عند الضغط على "موافق واستمرار"
+  Future<void> setPrivacyPolicyAccepted(bool accepted) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('privacy_accepted', accepted);
+      hasAcceptedPrivacyPolicy = accepted;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في حفظ حالة سياسة الخصوصية: $e');
+    }
   }
 
   // ==========================================
@@ -235,7 +264,6 @@ class AppState extends ChangeNotifier {
   // --- 🔔 قسم الإشعارات ---
   // ==========================================
   
-  // 🌟 الجيتر المطلوب لجلب أحدث رسالة إشعار وتفادي خطأ البناء
   String? get latestNotificationMessage {
     if (notifications.isNotEmpty) {
       return notifications.first['body']?.toString() ?? notifications.first['title']?.toString();
@@ -1587,7 +1615,7 @@ class AppState extends ChangeNotifier {
       if (index != -1) {
         orders[index]['restaurant_rating'] = rating;
         orders[index]['restaurant_review'] = reviewText;
-        notifyListeners.call();
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
