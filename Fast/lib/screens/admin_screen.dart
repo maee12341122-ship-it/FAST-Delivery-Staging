@@ -61,6 +61,170 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     }
   }
 
+  // 📢 نافذة إضافة أو تعديل البنر الترويجي
+  void _showAddOrEditBannerDialog(BuildContext context, AppState appState, Map<String, dynamic>? banner) {
+    final titleController = TextEditingController(text: banner?['title'] ?? '');
+    final subtitleController = TextEditingController(text: banner?['subtitle'] ?? '');
+    final codeController = TextEditingController(text: banner?['code'] ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(banner == null ? 'إضافة بنر ترويجي جديد 📢' : 'تعديل البنر الترويجي ✏️', style: const TextStyle(color: Colors.amber)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'عنوان البنر', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: subtitleController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'الوصف أو التفاصيل', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: codeController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(labelText: 'كود الخصم (اختياري)', labelStyle: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+              onPressed: () async {
+                if (titleController.text.isNotEmpty) {
+                  if (banner == null) {
+                    await Supabase.instance.client.from('promo_banners').insert({
+                      'title': titleController.text.trim(),
+                      'subtitle': subtitleController.text.trim(),
+                      'code': codeController.text.trim(),
+                      'is_active': true,
+                    });
+                  } else {
+                    await Supabase.instance.client.from('promo_banners').update({
+                      'title': titleController.text.trim(),
+                      'subtitle': subtitleController.text.trim(),
+                      'code': codeController.text.trim(),
+                    }).eq('id', banner['id']);
+                  }
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ البنر بنجاح ✅')));
+                }
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 📢 نافذة إدارة البنرات الترويجية للمشرف (عرض، إضافة، تعديل، حذف)
+  void _showBannersManagementDialog(BuildContext context, AppState appState) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('إدارة البنرات الترويجية 📢', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('إضافة بنر'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showAddOrEditBannerDialog(context, appState, null);
+                  },
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: FutureBuilder<List<dynamic>>(
+                future: Supabase.instance.client.from('promo_banners').select().order('id', ascending: false),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                  }
+                  final banners = snapshot.data ?? [];
+                  if (banners.isEmpty) {
+                    return const Center(child: Text('لا توجد بنرات مضافة حالياً 📭', style: TextStyle(color: Colors.grey)));
+                  }
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: banners.length,
+                    itemBuilder: (context, index) {
+                      final banner = banners[index];
+                      return Card(
+                        color: const Color(0xFF121212),
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.amber.withOpacity(0.3))),
+                        child: ListTile(
+                          title: Text(banner['title'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          subtitle: Text('${banner['subtitle']}\nكود الخصم: ${banner['code'] ?? "لا يوجد"}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          isThreeLine: true,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showAddOrEditBannerDialog(context, appState, banner);
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                                onPressed: () async {
+                                  await Supabase.instance.client.from('promo_banners').delete().eq('id', banner['id']);
+                                  setDialogState(() {});
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف البنر بنجاح 🗑️')));
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // 🌟 نافذة عرض تقييمات وملاحظات المطاعم للمشرف
   void _showRestaurantRatingsDialog(BuildContext context) {
     showDialog(
@@ -215,8 +379,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         ),
         body: Column(
           children: [
-            _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت اللحظي
-            // 📊 بطاقة إحصائيات عداد الزوار في أعلى لوحة المشرف
+            _buildNetworkStatusBar(appState),
             Container(
               margin: const EdgeInsets.all(12),
               padding: const EdgeInsets.all(16),
@@ -279,7 +442,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  // 📑 إدارة الطلبات مع التبويبات
   Widget _buildOrdersManagementWithTabs(AppState appState) {
     final activeOrders = appState.orders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
     final completedOrders = appState.orders.where((o) => o['status'] == 'delivered').toList();
@@ -788,9 +950,23 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const SizedBox(height: 30),
           const Divider(color: Colors.white24),
           const SizedBox(height: 15),
-          const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('إدارة العروض والتقارير الشاملة', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
           
+          // 📢 زر إدارة البنرات والعروض الترويجية
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[800],
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => _showBannersManagementDialog(context, appState),
+            icon: const Icon(Icons.campaign, size: 22, color: Colors.white),
+            label: const Text('إدارة البنرات والعروض الترويجية 📢', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+          const SizedBox(height: 12),
+
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
