@@ -15,7 +15,8 @@ import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
-import 'customer/notifications_screen.dart'; // 👈 استيراد شاشة مركز الإشعارات الداخلية
+import 'package:fast/services/notification_service.dart';
+ // 👈 استيراد شاشة مركز الإشعارات الداخلية
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
