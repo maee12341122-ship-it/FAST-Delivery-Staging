@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/notification_service.dart'; // 👈 استيراد خدمة الإشعارات لإرسال التنبيهات الفورية
@@ -134,6 +135,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onPressed: () async {
                       final text = _msgController.text.trim();
                       if (text.isNotEmpty) {
+                        HapticFeedback.lightImpact();
                         // 1. إرسال وحفظ الرسالة في قاعدة البيانات عبر الـ Provider
                         await appState.sendChatMessage(
                           widget.orderId,
@@ -146,7 +148,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                         if (!mounted) return;
 
-                        // 2. 👈 جلب معرف الطرف الآخر وإرسال إشعار فوري عبر OneSignal
+                        // 2. 👈 إرسال إشعار خارجي عبر OneSignal للطرف الآخر + إشعار محلي داخلي للتتبع
                         try {
                           String? receiverPlayerId = await appState.getReceiverPlayerIdForChat(
                             orderId: widget.orderId,
@@ -154,17 +156,26 @@ class _ChatScreenState extends State<ChatScreen> {
                             targetChat: widget.targetChat,
                           );
 
-                          if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
-                            String senderName = widget.userRole == 'admin' 
-                                ? 'الإدارة' 
-                                : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
+                          String senderName = widget.userRole == 'admin' 
+                              ? 'الإدارة' 
+                              : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
 
+                          // إرسال الإشعار الخارجي (إذا وجد معرف الجهاز)
+                          if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
                             await NotificationService.sendNotificationToUser(
                               targetPlayerId: receiverPlayerId,
                               title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
                               body: '$senderName: $text',
                             );
                           }
+
+                          // إضافة إشعار محلي داخل مركز الإشعارات للتطبيق
+                          appState.addLocalNotification(
+                            title: 'رسالة جديدة في الطلب #${widget.orderId}',
+                            body: '$senderName: $text',
+                            type: 'chat',
+                          );
+
                         } catch (e) {
                           debugPrint('⚠️ خطأ في إرسال إشعار الشات: $e');
                         }
