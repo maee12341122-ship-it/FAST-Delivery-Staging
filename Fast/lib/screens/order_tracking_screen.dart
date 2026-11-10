@@ -3,41 +3,63 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
-  final Map<String, dynamic> order;
+  // يدعم استقبال Map القديمة أو يمكن تعديله بحسب الاستدعاء
+  final Map<String, dynamic>? orderMap;
+  final String? orderIdParam;
 
-  const OrderTrackingScreen({Key? key, required this.order}) : super(key: key);
-
-  // تحديد رقم المرحلة بناءً على حالة الطلب القادمة من قاعدة البيانات
-  int _getCurrentStep(String status) {
-    switch (status?.trim()) {
-      case 'waitingForPricing': return 0;
-      case 'pricingSentToCustomer': return 1;
-      case 'waitingCourierApproval':
-      case 'approvedByCustomer': return 2;
-      case 'acceptedByCourier':
-      case 'onTheWay': return 3;
-      case 'arrivedToCustomer':
-      case 'arrived': return 4;
-      case 'delivered': return 5;
-      default: return 0;
-    }
-  }
+  const OrderTrackingScreen({Key? key, this.orderMap, this.orderIdParam}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
-    final String orderId = order['id']?.toString() ?? '';
-    final String status = order['status'] ?? 'waitingForPricing';
-    final int currentStep = _getCurrentStep(status);
 
-    final List> steps = [
-      {'title': 'تم استلام طلبك', 'subtitle': 'جارٍ مراجعة الأسعار وتجهيز الأصناف'},
-      {'title': 'تم تحديد التسعيرة', 'subtitle': 'بانتظار موافقتك لإرسال الطلب للمندوب'},
-      {'title': 'تم إسناد الطلب للمندوب', 'subtitle': 'المندوب في طريقه لاستلام الطلب'},
-      {'title': 'المندوب في الطريق إليك', 'subtitle': 'طلبك يتحرك نحو عنوانك الآن 🛵'},
-      {'title': 'وصل المندوب لموقعك', 'subtitle': 'الرجاء الاستعداد لاستلام طلبك 📍'},
-      {'title': 'تم التسليم بنجاح', 'subtitle': 'شكراً لاستخدامك FAST ❤️'},
+    // استخراج معرف الطلب أو بياناته بأمان
+    final String targetId = orderIdParam ?? orderMap?['id']?.toString() ?? '';
+    
+    // البحث عن الطلب المحدث من الـ Provider لضمان جلب الحالة الحالية فورياً
+    final order = appState.orders.firstWhere(
+      (o) => o['id'].toString() == targetId,
+      orElse: () => orderMap ?? {},
+    );
+
+    if (order.isEmpty) {
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Text('تتبع الطلب', style: TextStyle(color: Colors.amber)),
+            iconTheme: const IconThemeData(color: Colors.amber),
+          ),
+          body: const Center(
+            child: Text('عذراً، لم يتم العثور على تفاصيل هذا الطلب ❌', style: TextStyle(color: Colors.grey)),
+          ),
+        ),
+      );
+    }
+
+    final String rawStatus = order['status'] ?? 'waitingForPricing';
+    
+    // تحديد الخطوة الحالية بدقة للمسار الجديد
+    int currentStep = 0;
+    if (rawStatus == 'waitingForPricing') currentStep = 0;
+    else if (rawStatus == 'pricingSentToCustomer' || rawStatus == 'waitingCourierApproval') currentStep = 1;
+    else if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') currentStep = 2;
+    else if (rawStatus == 'arrivedToCustomer' || rawStatus == 'arrived') currentStep = 3;
+    else if (rawStatus == 'delivered') currentStep = 4;
+
+    final steps = [
+      {'title': 'تأسيس الطلب', 'icon': Icons.receipt_long, 'desc': 'تم استلام طلبك وإضافته للسلة'},
+      {'title': 'التسعير وتوصيل العميل', 'icon': Icons.monetization_on, 'desc': 'تحديد رسوم التوصيل والموافقة'},
+      {'title': 'المندوب في الطريق 🛵', 'icon': Icons.two_wheeler, 'desc': 'الكابتن متجه لاستلام الطلب وتوصيله'},
+      {'title': 'وصل المندوب للموقع 📍', 'icon': Icons.location_pin, 'desc': 'المندوب وصل باب منزلك'},
+      {'title': 'تم التسليم بنجاح ✅', 'icon': Icons.check_circle, 'desc': 'بالهناء والشفاء، نتمنى تقييمك'},
     ];
+
+    final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
+    final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+    final double grandTotal = productsTotal + deliveryFee;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -45,37 +67,129 @@ class OrderTrackingScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: Text('تتبع الطلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('تتبع الطلب #$targetId 📦', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(20.0),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 📦 بطاقة ملخص تفاصيل الطلب
+              // 🌟 مسار وتتبع الطلب التفاعلي الحديث
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('🛒 المنتجات: ${order['items_description'] ?? 'لا توجد تفاصيل'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 6),
-                    Text('💰 إجمالي السعر: ${order['total_price'] ?? order['products_total'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'مسار وتتبع الطلب 🛵⚡',
+                          style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'المرحلة ${currentStep + 1} من 5',
+                            style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: steps.length,
+                      itemBuilder: (context, index) {
+                        final isDone = index <= currentStep;
+                        final isCurrent = index == currentStep;
+                        final step = steps[index];
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Column(
+                              children: [
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 400),
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: isCurrent
+                                        ? Colors.amber
+                                        : (isDone ? Colors.amber[800] : const Color(0xFF2A2A2A)),
+                                    shape: BoxShape.circle,
+                                    boxShadow: isCurrent
+                                        ? [BoxShadow(color: Colors.amber.withOpacity(0.6), blurRadius: 8, spreadRadius: 2)]
+                                        : [],
+                                  ),
+                                  child: Icon(
+                                    isCurrent && index == 2 ? Icons.two_wheeler : (step['icon'] as IconData),
+                                    color: isCurrent ? Colors.black : (isDone ? Colors.white : Colors.grey),
+                                    size: 17,
+                                  ),
+                                ),
+                                if (index < steps.length - 1)
+                                  Container(
+                                    width: 3,
+                                    height: 35,
+                                    color: index < currentStep ? Colors.amber : Colors.grey[800],
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 5.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      step['title'].toString(),
+                                      style: TextStyle(
+                                        color: isCurrent ? Colors.amber : (isDone ? Colors.white : Colors.grey),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      step['desc'].toString(),
+                                      style: TextStyle(
+                                        color: isCurrent ? Colors.white70 : Colors.grey[600],
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    if (index < steps.length - 1) const SizedBox(height: 15),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 16),
 
-              // 💰 أزرار موافقة أو إلغاء العميل للسعر (تظهر تلقائياً عندما تكون الحالة بانتظار الموافقة)
-              if (status == 'pricingSentToCustomer') ...[
+              // 💰 أزرار موافقة أو رفض العميل للسعر (إذا أرسلت الإدارة التسعيرة)
+              if (rawStatus == 'pricingSentToCustomer') ...[
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -101,14 +215,14 @@ class OrderTrackingScreen extends StatelessWidget {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
                               onPressed: () async {
-                                await appState.customerApprovePricing(orderId);
+                                await appState.customerConfirmOrder(targetId);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('تم تأكيد السعر بنجاح وجاري إرساله للمندوب ✅')),
                                   );
                                 }
                               },
-                              child: const Text('موافقة على السعر ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -120,14 +234,14 @@ class OrderTrackingScreen extends StatelessWidget {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
                               onPressed: () async {
-                                await appState.customerCancelOrder(orderId);
+                                await appState.customerCancelOrder(targetId);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('تم إلغاء الطلب ❌')),
                                   );
                                 }
                               },
-                              child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text('إلغاء ❌', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                         ],
@@ -135,72 +249,34 @@ class OrderTrackingScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
               ],
 
-              const Text('حالة خط سير الطلب 🚀', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
-              
-              // 📋 قائمة خطوات التتبع التفاعلية
-              Expanded(
-                child: ListView.builder(
-                  itemCount: steps.length,
-                  itemBuilder: (context, index) {
-                    bool isCompleted = index <= currentStep;
-                    bool isCurrent = index == currentStep;
-
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              // 🧾 تفاصيل الفاتورة والمنتجات
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('تفاصيل الطلب 🧾', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                    const Divider(color: Colors.white12, height: 16),
+                    Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                    const Divider(color: Colors.white12, height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: isCompleted ? Colors.amber : Colors.grey[800],
-                                border: Border.all(color: isCurrent ? Colors.white : Colors.transparent, width: 2),
-                              ),
-                              child: Center(
-                                child: isCompleted
-                                    ? const Icon(Icons.check, color: Colors.black, size: 18)
-                                    : Text('${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                              ),
-                            ),
-                            if (index < steps.length - 1)
-                              Container(
-                                width: 2,
-                                height: 45,
-                                color: index < currentStep ? Colors.amber : Colors.grey[800],
-                              ),
-                          ],
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                steps[index]['title']!,
-                                style: TextStyle(
-                                  color: isCompleted ? Colors.white : Colors.grey,
-                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                steps[index]['subtitle']!,
-                                style: const TextStyle(color: Colors.grey, fontSize: 12),
-                              ),
-                              const SizedBox(height: 25),
-                            ],
-                          ),
-                        ),
+                        const Text('الإجمالي الكلي:', style: TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text('$grandTotal ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
                       ],
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
             ],
