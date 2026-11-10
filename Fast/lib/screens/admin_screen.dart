@@ -179,7 +179,53 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ],
         ),
-        body: adminPages[_selectedNavIndex],
+        body: Column(
+          children: [
+            // 📊 بطاقة إحصائيات عداد الزوار في أعلى لوحة المشرف
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.remove_red_eye, color: Colors.amber, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('إجمالي زوار التطبيق والموقع 📊', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          SizedBox(height: 2),
+                          Text('إجمالي مرات الدخول وزيارات العملاء', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${appState.totalVisitorsCount} زائر',
+                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: adminPages[_selectedNavIndex],
+            ),
+          ],
+        ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedNavIndex,
           onTap: (index) => setState(() => _selectedNavIndex = index),
