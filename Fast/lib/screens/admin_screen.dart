@@ -551,14 +551,44 @@ class _AdminScreenState extends State<AdminScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 45), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
-              if (_courierNameController.text.isNotEmpty && _courierUsernameController.text.isNotEmpty) {
-                await appState.addCourier(_courierNameController.text, _courierPhoneController.text, _courierUsernameController.text, _courierPasswordController.text);
+              final name = _courierNameController.text.trim();
+              final phone = _courierPhoneController.text.trim();
+              final username = _courierUsernameController.text.trim();
+              final password = _courierPasswordController.text.trim();
+
+              if (name.isEmpty || username.isEmpty || password.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('الرجاء إدخال الاسم، اسم المستخدم، وكلمة المرور ⚠️')),
+                );
+                return;
+              }
+
+              if (password.length < 6) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف 🔒')),
+                );
+                return;
+              }
+
+              try {
+                await appState.addCourier(name, phone, username, password);
                 
                 _courierNameController.clear();
                 _courierPhoneController.clear();
                 _courierUsernameController.clear();
                 _courierPasswordController.clear();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة المندوب بنجاح! 🛵')));
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تمت إضافة المندوب بنجاح! 🛵🎉')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('فشل إضافة المندوب: $e ❌')),
+                  );
+                }
               }
             },
             child: const Text('حفظ المندوب', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
