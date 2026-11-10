@@ -1130,6 +1130,9 @@ class AppState extends ChangeNotifier {
 
   List orders = [];
   List notifications = [];
+  
+  // 👈 عدد الإشعارات غير المقروءة
+  int get unreadNotificationsCount => notifications.length;
 
   String _normalizePhone(String phone) {
     String clean = phone.trim().replaceAll(' ', '');
@@ -1156,6 +1159,13 @@ class AppState extends ChangeNotifier {
 
   void addNotification(String title, String body) {
     notifications.insert(0, {'title': title, 'body': body, 'time': DateTime.now()});
+    NotificationService.showLocalNotification(title, body);
+    notifyListeners();
+  }
+
+  // 👈 دالة الجسر المحدثة لتقبل معامل type الاختياري
+  void addLocalNotification(String title, String body, {String? type}) {
+    notifications.insert(0, {'title': title, 'body': body, 'time': DateTime.now(), 'type': type ?? 'general'});
     NotificationService.showLocalNotification(title, body);
     notifyListeners();
   }
