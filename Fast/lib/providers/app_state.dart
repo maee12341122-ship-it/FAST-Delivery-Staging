@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع دعم order_items
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -110,7 +110,7 @@ class AppState extends ChangeNotifier {
   }
 
   // ==========================================
-  // --- 🔔 قسم الإشعارات (مع إزالة المفتاح السري حمايةً للنظام) ---
+  // --- 🔔 قسم الإشعارات ---
   // ==========================================
   Future<void> sendAutoNotification({
     required String targetPlayerId,
@@ -708,7 +708,6 @@ class AppState extends ChangeNotifier {
 
   Future<dynamic> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
-    final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
 
     try {
       debugPrint('🚀 جاري التحقق من رقم الهاتف...');
@@ -1194,6 +1193,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// ===========================================================================
+  /// 📦 دالة إنشاء الطلب المحدثة (تدعم جدول orders وجدول order_items الجديد)
+  /// ===========================================================================
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -1221,6 +1223,7 @@ class AppState extends ChangeNotifier {
     try {
       debugPrint('🚀 جاري إرسال الطلب الآمن إلى Supabase...');
 
+      // 1. إدخال الطلب الأساسي في جدول orders
       final response = await supabase.from('orders').insert({
         'customer_name': customerName.trim(),
         'phone': normalizedPhone,
@@ -1234,6 +1237,23 @@ class AppState extends ChangeNotifier {
       }).select().single();
 
       final order = Map<String, dynamic>.from(response);
+      final orderId = order['id'];
+
+      // 2. إدخال تفاصيل المنتجات في جدول order_items الجديد
+      if (_cartItems.isNotEmpty && orderId != null) {
+        final List> orderItemsRows = _cartItems.map((cartItem) {
+          return {
+            'order_id': orderId,
+            'product_name': cartItem.name,
+            'price': cartItem.price,
+            'quantity': cartItem.quantity,
+            'total_price': cartItem.price * cartItem.quantity,
+          };
+        }).toList();
+
+        await supabase.from('order_items').insert(orderItemsRows);
+        debugPrint('✅ تم حفظ تفاصيل المنتجات في جدول order_items بنجاح');
+      }
 
       lastOrderTrackingCode = trackingCode;
       userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
@@ -1243,16 +1263,16 @@ class AppState extends ChangeNotifier {
       await prefs.setString('userName', customerName);
       await prefs.setString('userAddress', address);
       await prefs.setString('userCity', currentCity);
-      await prefs.setString('fast_last_order_id', order['id'].toString());
+      await prefs.setString('fast_last_order_id', orderId.toString());
       await prefs.setString('fast_last_order_token', trackingCode);
       
-      orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
+      orders.removeWhere((o) => o['id'].toString() == orderId.toString());
       orders.add(order);
       _sortOrders();
       
       _cartItems.clear();
       
-      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
