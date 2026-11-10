@@ -67,6 +67,16 @@ class _CourierScreenState extends State<CourierScreen> {
     final appState = Provider.of<AppState>(context);
     final courier = appState.currentCourier;
 
+    // حساب الطلبات التي تنتظر موافقة أو استجابة المندوب
+    final pendingOrdersCount = courier != null 
+        ? appState.orders.where((o) {
+            final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
+            final courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
+            final String orderStatus = o['status'] ?? '';
+            return (assigned == courierName) && (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer');
+          }).length
+        : 0;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -79,17 +89,58 @@ class _CourierScreenState extends State<CourierScreen> {
             style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           actions: [
-            if (courier != null)
+            if (courier != null) ...[
+              // 🛎️ أيقونة الإشعارات مع عداد الطلبات التي بانتظار الكابتن
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
+                    tooltip: 'الطلبات الجديدة بانتظار القبول',
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('لديك طلبات بانتظار الاستجابة في التبويب النشط 🛵')),
+                      );
+                    },
+                  ),
+                  if (pendingOrdersCount > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        child: Text(
+                          '$pendingOrdersCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.redAccent),
                 tooltip: 'تسجيل الخروج',
                 onPressed: () => appState.logoutCourier(),
               ),
+            ],
           ],
         ),
         body: Column(
           children: [
-            _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت يظهر لحظياً في أعلى الشاشة
+            _buildNetworkStatusBar(appState),
             Expanded(
               child: courier == null
                   ? Padding(
@@ -189,7 +240,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  // 📂 دالة عرض الطلبات بنظام التبويبات الثلاثة (النشطة، المكتملة، الملغية) تماماً مثل المشرف
   Widget _buildCourierOrdersListWithTabs(AppState appState, Map<String, dynamic> courier) {
     final String courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
     final String courierId = (courier['id'] ?? '').toString().trim();
@@ -298,7 +348,6 @@ class _CourierScreenState extends State<CourierScreen> {
             ),
             const SizedBox(height: 15),
 
-            // 📑 شريط التبويبات (النشطة، المكتملة، الملغية) تماماً مثل المشرف
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
@@ -332,7 +381,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  // 📋 دالة عرض القائمة لكل تبويب
   Widget _buildOrdersListView(AppState appState, List ordersList, String emptyMessage) {
     if (ordersList.isEmpty) {
       return Center(child: Text(emptyMessage, style: const TextStyle(color: Colors.grey, fontSize: 14)));
