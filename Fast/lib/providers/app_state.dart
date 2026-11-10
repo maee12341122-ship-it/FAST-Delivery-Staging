@@ -234,6 +234,15 @@ class AppState extends ChangeNotifier {
   // ==========================================
   // --- 🔔 قسم الإشعارات ---
   // ==========================================
+  
+  // 🌟 الجيتر المطلوب لجلب أحدث رسالة إشعار وتفادي خطأ البناء
+  String? get latestNotificationMessage {
+    if (notifications.isNotEmpty) {
+      return notifications.first['body']?.toString() ?? notifications.first['title']?.toString();
+    }
+    return null;
+  }
+
   Future<void> sendAutoNotification({
     required String targetPlayerId,
     required String title,
@@ -1361,7 +1370,6 @@ class AppState extends ChangeNotifier {
 
       final orderId = order['id'];
       if (_cartItems.isNotEmpty && orderId != null) {
-        // 🌟 تم تعديل إسناد الأنواع هنا بدون أقواس حادة تسبب مشاكل الويب
         final List orderItemsRows = _cartItems.map((cartItem) {
           return {
             'order_id': orderId,
@@ -1579,7 +1587,7 @@ class AppState extends ChangeNotifier {
       if (index != -1) {
         orders[index]['restaurant_rating'] = rating;
         orders[index]['restaurant_review'] = reviewText;
-        notifyListeners();
+        notifyListeners.call();
       }
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
