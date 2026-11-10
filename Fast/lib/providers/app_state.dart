@@ -118,9 +118,6 @@ class AppState extends ChangeNotifier {
     required String body,
   }) async {
     if (targetPlayerId.isEmpty) return;
-
-    // تم إزالة مفتاح REST API السري من هنا لأسباب أمنية.
-    // يتم إرسال الإشعارات عبر الخادم الآمن أو باستخدام معرفات OneSignal العامة المسموحة.
     debugPrint('ℹ️ تنبيه: تم تعطيل الإرسال المباشر للمفاتيح السرية من التطبيق لأسباب أمنية.');
   }
 
@@ -589,7 +586,7 @@ class AppState extends ChangeNotifier {
   }
 
   // ==========================================
-  // --- 👤 إدارة جلسة المستخدم / العميل (تم إزالة الأكواد الوهمية وتأمين التحقق) ---
+  // --- 👤 إدارة جلسة المستخدم / العميل ---
   // ==========================================
   Map<String, dynamic>? userProfile;
   dynamic generatedDynamicOtp;
@@ -709,18 +706,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// طلب رمز التحقق الآمن بدون الاعتماد على رموز وهمية ثابتة مثل 1234
   Future<dynamic> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
 
     try {
       debugPrint('🚀 جاري التحقق من رقم الهاتف...');
-      
-      // توليد رمز OTP ديناميكي حقيقي عشوائي مكون من 4 أرقام آمنة
       generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
       
-      // إرسال الرمز عبر واتساب للمستخدم بشكل آمن
       await openFastWhatsApp(
         message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
       );
@@ -734,10 +727,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// التحقق من صحة الرمز المدخل دون السماح بأي تجاوزات وهمية
   bool verifyOtpAndLogin(String phone, String enteredOtp) {
     if (enteredOtp.trim().isEmpty) return false;
-    // تم إزالة الثغرة التي تقبل '1234' نهائياً لضمان الأمان التام
     if (generatedDynamicOtp != null && enteredOtp.trim() == generatedDynamicOtp.toString()) {
       checkAndLoginCustomer(phone);
       return true;
@@ -1261,7 +1252,7 @@ class AppState extends ChangeNotifier {
       
       _cartItems.clear();
       
-      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
