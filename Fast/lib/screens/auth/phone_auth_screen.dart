@@ -72,7 +72,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       String clean = phone.replaceAll(' ', '');
       if (clean.startsWith('0')) clean = clean.substring(1);
       if (clean.startsWith('967')) clean = clean.substring(3);
-      _cleanPhoneInput = clean; // مثل 775145534
+      _cleanPhoneInput = clean;
       _formattedPhone = '+967$clean';
 
       // فحص هل العميل موجود مسبقاً في جدول customers بناءً على عمود phone
@@ -279,7 +279,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       keyboardType: TextInputType.phone,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'رقم الهاتف (مثال: 775145534)',
+                        labelText: 'رقم الهاتف', // تم إزالة التلميح الرقمي بناءً على طلبك
                         labelStyle: const TextStyle(color: Colors.grey),
                         prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
                         filled: true,
@@ -473,28 +473,35 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         final address = _addressController.text.trim();
 
                         if (name.isNotEmpty && address.isNotEmpty) {
-                          // حفظ بيانات العميل في جدول customers باستخدام الأعمدة الصحيحة (phone, name, address)
+                          final cleanPhone = _cleanPhoneInput.isNotEmpty 
+                              ? _cleanPhoneInput 
+                              : _formattedPhone;
+
+                          // 1️⃣ حفظ بيانات العميل في جدول customers
                           await _supabase.from('customers').upsert({
-                            'phone': _cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : _formattedPhone,
+                            'phone': cleanPhone,
                             'name': name,
                             'address': address,
                           }, onConflict: 'phone');
 
-                          await appState.saveUserProfileDetails(
-                            name,
-                            address,
+                          // 2️⃣ الاعتماد على setUser لحفظ الجلسة فوراً في SharedPreferences والذاكرة
+                          appState.setUser(
+                            name: name,
+                            phone: cleanPhone,
+                            address: address,
                           );
 
+                          // 3️⃣ طلب أذونات الموقع والإشعارات
                           await appState.requestLocationAndNotificationPermissions();
 
+                          // 4️⃣ ربط OneSignal Player ID
                           try {
-                            String? playerId =
-                                OneSignal.User.pushSubscription.id;
+                            String? playerId = OneSignal.User.pushSubscription.id;
                             if (playerId != null && playerId.isNotEmpty) {
                               await _supabase
                                   .from('customers')
                                   .update({'onesignal_player_id': playerId})
-                                  .eq('phone', _cleanPhoneInput);
+                                  .eq('phone', cleanPhone);
                             }
                           } catch (e) {
                             debugPrint('خطأ في حفظ Player ID: $e');
