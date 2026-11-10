@@ -231,14 +231,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _previousUnreadCount = 0;
   bool _showPopupBadge = false;
 
-  final List _heroStories = [
+  final List> _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
     {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
     {'title': 'خضار وطازج 🥦', 'subtitle': 'أسعار يومية', 'category': 'الخضار والفواكه'},
     {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
   ];
 
-  // 🌟 قائمة العروض الترويجية المتحركة (البانرات)
+  // 🌟 قائمة العروض الترويجية المتحركة (البانرات) - تم تصحيح النوع بدقة للويب
   final List> _promoBanners = [
     {
       'title': 'عروض العيد والخصومات الكبرى 🚀',
@@ -257,13 +257,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     },
   ];
 
-  final List _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
+  final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
 
   @override
   void initState() {
     super.initState();
     
-    // تهيئة متحكم الإشعار المنبثق المتحرك
     _popupAnimController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
@@ -314,7 +313,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 📢 دالة فتح واتساب حجز المساحة الإعلانية
   Future<void> _launchWhatsAppForAd() async {
     final Uri url = Uri.parse('https://wa.me/967775145534?text=مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
     if (await canLaunchUrl(url)) {
@@ -402,7 +400,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 🍔 دالة إظهار نافذة إضافات وخصائص الوجبة قبل إضافتها للسلة
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) async {
     await appState.fetchProductModifiers(product.id);
     
