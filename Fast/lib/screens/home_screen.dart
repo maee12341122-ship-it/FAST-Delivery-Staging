@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
+import '../widgets/empty_state_widget.dart'; // 🌟 استدعاء ودجت الحالات الفارغة الجديد
 import '../services/notification_service.dart';
 import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
@@ -311,6 +312,152 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     }
+  }
+
+  // 🍔 دالة إظهار نافذة إضافات وخصائص الوجبة قبل إضافتها للسلة
+  void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) async {
+    await appState.fetchProductModifiers(product.id);
+    
+    final Set<String> selectedModifiers = {};
+    double additionalTotalPrice = 0.0;
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 16,
+            right: 16,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'خصائص وإضافات: ${product.name}',
+                      style: TextStyle(
+                        color: appState.isDarkMode ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.grey),
+              const SizedBox(height: 8),
+              
+              appState.productModifiers.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          'لا توجد إضافات خاصة لهذه الوجبة. يمكنك إضافتها مباشرة 🛒',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  : ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 250),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: appState.productModifiers.length,
+                        itemBuilder: (context, index) {
+                          final mod = appState.productModifiers[index];
+                          final modName = mod['option_name']?.toString() ?? '';
+                          final double modPrice = double.tryParse(mod['additional_price']?.toString() ?? '0') ?? 0.0;
+                          final bool isSelected = selectedModifiers.contains(modName);
+
+                          return CheckboxListTile(
+                            activeColor: Colors.amber,
+                            checkColor: Colors.black,
+                            title: Text(
+                              modName,
+                              style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
+                            ),
+                            subtitle: modPrice > 0
+                                ? Text('+$modPrice ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
+                                : null,
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setModalState(() {
+                                if (value == true) {
+                                  selectedModifiers.add(modName);
+                                  additionalTotalPrice += modPrice;
+                                } else {
+                                  selectedModifiers.remove(modName);
+                                  additionalTotalPrice -= modPrice;
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+              
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'السعر الإجمالي: ${product.price + additionalTotalPrice} ر.ي',
+                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () {
+                      String finalProductName = product.name;
+                      if (selectedModifiers.isNotEmpty) {
+                        finalProductName += ' (الإضافات: ${selectedModifiers.join(', ')})';
+                      }
+
+                      appState.addToCart(CartItemModel(
+                        id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
+                        name: finalProductName,
+                        price: product.price + additionalTotalPrice,
+                        quantity: 1,
+                        restaurantId: product.restaurantName,
+                        imageUrl: product.imageUrl,
+                      ));
+
+                      Navigator.pop(context);
+                      HapticFeedback.lightImpact();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('تمت إضافة ${product.name} مع إضافاته للسلة بنجاح ✅')),
+                      );
+                    },
+                    child: const Text('إضافة للسلة 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showContactUsDialog(BuildContext context, Color cardBg, Color textColor) {
@@ -780,7 +927,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         .map((item) => '${item.name} (x${item.quantity})')
                         .join(', ');
 
-                    // حساب المبلغ النهائي بعد الخصم
                     final double finalAmountToPay = appState.totalAmount - appState.couponDiscountAmount;
 
                     try {
@@ -1060,7 +1206,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 🌐 شريط تنبيه انقطاع الإنترنت العائم
   Widget _buildNetworkStatusBar(AppState appState) {
     if (appState.isConnectedToInternet) {
       return const SizedBox.shrink();
@@ -1087,7 +1232,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
 
-    // 🌟 تفعيل ظهور الإشعار المنبثق المتحرك بجوار الجرس مع كل حركة/تنبيه جديد
     if (appState.unreadNotificationsCount > _previousUnreadCount) {
       _popupAnimController.forward(from: 0.0);
       setState(() {
@@ -1658,7 +1802,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // 🌟 قسم البانرات والعروض الترويجية المتحركة (PageView)
           SizedBox(
             height: 130,
             child: PageView.builder(
@@ -2077,14 +2220,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                 onPressed: appState.isStoreOpen
                                                     ? () {
                                                         HapticFeedback.lightImpact();
-                                                        appState.addToCart(CartItemModel(
-                                                          id: product.id,
-                                                          name: product.name,
-                                                          price: product.price,
-                                                          quantity: 1,
-                                                          restaurantId: product.restaurantName,
-                                                          imageUrl: product.imageUrl,
-                                                        ));
+                                                        // إذا كان المنتج تابع للمطاعم، افتح نافذة الإضافات
+                                                        if (product.category.trim() == 'المطاعم') {
+                                                          _showProductModifiersDialog(context, appState, product);
+                                                        } else {
+                                                          appState.addToCart(CartItemModel(
+                                                            id: product.id,
+                                                            name: product.name,
+                                                            price: product.price,
+                                                            quantity: 1,
+                                                            restaurantId: product.restaurantName,
+                                                            imageUrl: product.imageUrl,
+                                                          ));
+                                                        }
                                                       }
                                                     : null,
                                                 child: const Text('إضافة', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
@@ -2177,6 +2325,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // 🛒 تبويب السلة مع ربط ودجت الحالة الفارغة (EmptyStateWidget)
   Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile == null) {
       return Center(
@@ -2216,6 +2365,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
     }
 
+    if (appState.cartItems.isEmpty) {
+      return EmptyStateWidget(
+        icon: Icons.shopping_cart_outlined,
+        title: 'سلة المشتريات فارغة!',
+        subtitle: 'لم تقم بإضافة أي وجبات أو منتجات إلى السلة بعد. تصفح الأقسام واطلب ما تحب 🍔🛒',
+        buttonText: 'تصفح الأقسام والوجبات 🚀',
+        onButtonPressed: () {
+          setState(() => _currentIndex = 0);
+        },
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -2224,9 +2385,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           const Text('سلة المشتريات والطلبات المجمعة', style: TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           Expanded(
-            child: appState.cartItems.isEmpty
-                ? const Center(child: Text('السلة فارغة حالياً 🛒', style: TextStyle(color: Colors.grey, fontSize: 15)))
-                : ListView.builder(
+            child: ListView.builder(
               itemCount: appState.cartItems.length,
               itemBuilder: (context, index) {
                 final CartItemModel item = appState.cartItems[index];
@@ -2246,28 +2405,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               },
             ),
           ),
-          if (appState.cartItems.isNotEmpty) ...[
-            const Divider(color: Colors.grey, height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('إجمالي السلة المجمعة:', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-                Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
+          const Divider(color: Colors.grey, height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('إجمالي السلة المجمعة:', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+              Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          const SizedBox(height: 15),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            const SizedBox(height: 15),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () {
-                _showCheckoutDialog(context, appState, cardBg, textColor);
-              },
-              child: Text('الانتقال لتأكيد الطلب المجمع (${appState.totalAmount} ر.ي) 🚀', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-          ],
+            onPressed: () {
+              _showCheckoutDialog(context, appState, cardBg, textColor);
+            },
+            child: Text('الانتقال لتأكيد الطلب المجمع (${appState.totalAmount} ر.ي) 🚀', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+          ),
         ],
       ),
     );
@@ -2294,12 +2451,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // 📦 تبويب الطلبات مع ربط ودجت الحالة الفارغة (EmptyStateWidget)
   Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
     final customerOrders = appState.customerOrders;
 
     if (customerOrders.isEmpty) {
-      return const Center(
-        child: Text('لا توجد طلبات سابقة خاصة بك 📦', style: TextStyle(color: Colors.grey, fontSize: 15)),
+      return EmptyStateWidget(
+        icon: Icons.receipt_long_outlined,
+        title: 'لا توجد طلبات سابقة!',
+        subtitle: 'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز ⚡',
+        buttonText: 'اطلب الآن 🛵',
+        onButtonPressed: () {
+          setState(() => _currentIndex = 0);
+        },
       );
     }
 
