@@ -18,16 +18,33 @@ class NotificationService {
       // إعدادات الإشعارات المحلية للصوت والاهتزاز
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
+      
+      const DarwinInitializationSettings initializationSettingsIOS =
+          DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
+
       const InitializationSettings initializationSettings =
-          InitializationSettings(android: initializationSettingsAndroid);
-      await _localNotificationsPlugin.initialize(initializationSettings);
+          InitializationSettings(
+        android: initializationSettingsAndroid,
+        iOS: initializationSettingsIOS,
+      );
+
+      await _localNotificationsPlugin.initialize(
+        initializationSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          debugPrint('🚀 [النقر على الإشعار المحلي]: ${response.payload}');
+        },
+      );
 
       // طلب إذن الإشعارات من المستخدم نظامياً
       await OneSignal.Notifications.requestPermission(true);
 
-      // الاستماع للنقر على الإشعار من المستخدم
+      // الاستماع للنقر على الإشعار من المستخدم (OneSignal)
       OneSignal.Notifications.addClickListener((event) {
-        debugPrint('🚀 [النقر على الإشعار]: ${event.notification.title}');
+        debugPrint('🚀 [النقر على إشعار OneSignal]: ${event.notification.title}');
       });
 
       // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
@@ -38,7 +55,7 @@ class NotificationService {
       String? playerId = OneSignal.User.pushSubscription.id;
       debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
 
-      debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal) بنجاح');
+      debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal & Local) بنجاح');
     } catch (e) {
       debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
     }
@@ -68,7 +85,7 @@ class NotificationService {
     }
   }
 
-  /// 3. إرسال الإشعار الفوري (للشات أو التنبيهات) عبر OneSignal REST API
+  /// 3. إرسال الإشعار الفوري (للشات أو التنبيهات) عبر OneSignal REST API (خارجي)
   static Future<void> sendNotificationToUser({
     required String targetPlayerId,
     required String title,
@@ -88,47 +105,74 @@ class NotificationService {
           'include_player_ids': [targetPlayerId],
           'headings': {'en': title, 'ar': title},
           'contents': {'en': body, 'ar': body},
-          'android_sound': 'default', // 👈 التأكد من تشغيل صوت أندرويد الافتراضي
-          'ios_sound': 'default',     // 👈 التأكد من تشغيل صوت آيفون الافتراضي
+          'android_sound': 'default', 
+          'ios_sound': 'default',     
         }),
       );
 
       if (response.statusCode == 200) {
-        debugPrint('✅ تم إرسال إشعار الشات بنجاح عبر NotificationService');
+        debugPrint('✅ تم إرسال الإشعار الخارجي بنجاح عبر OneSignal');
       } else {
-        debugPrint('⚠️ فشل إرسال إشعار الشات: ${response.body}');
+        debugPrint('⚠️ فشل إرسال الإشعار الخارجي: ${response.body}');
       }
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار عبر NotificationService: $e');
     }
   }
 
-  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز عند الحاجة داخل التطبيق
-  static Future<void> showLocalNotification(String title, String body) async {
+  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز (داخلي - يعمل عندما التطبيق مفتوح)
+  static Future<void> showLocalNotification(String title, String body, {String? payload}) async {
     try {
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
           AndroidNotificationDetails(
         'fast_delivery_sound_channel_v3',
         'تنبيهات صوتية - Fast Delivery',
-        channelDescription: 'قناة مخصصة لتنبيهات الطلبات مع الصوت والاهتزاز',
+        channelDescription: 'قناة مخصصة لتنبيهات الطلبات والشات مع الصوت والاهتزاز',
         importance: Importance.max,
         priority: Priority.high,
-        playSound: true, // 👈 تفعيل الصوت
-        enableVibration: true, // 👈 تفعيل الاهتزاز
+        playSound: true, 
+        enableVibration: true, 
+      );
+
+      const DarwinNotificationDetails iOSPlatformChannelSpecifics =
+          DarwinNotificationDetails(
+        presentSound: true,
+        presentAlert: true,
+        presentBadge: true,
       );
 
       const NotificationDetails platformChannelSpecifics =
-          NotificationDetails(android: androidPlatformChannelSpecifics);
+          NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: iOSPlatformChannelSpecifics,
+      );
 
       await _localNotificationsPlugin.show(
         DateTime.now().millisecond,
         title,
         body,
         platformChannelSpecifics,
+        payload: payload,
       );
       debugPrint('📢 [تم عرض الإشعار المحلي الصوتي]: $title - $body');
     } catch (e) {
       debugPrint('❌ خطأ في إظهار الإشعار المحلي: $e');
+    }
+  }
+
+  /// 5. دالة شاملة مخصصة للشات (ترسل إشعار خارجي عبر OneSignal + تظهر محلياً إذا تطلب الأمر)
+  static Future<void> sendChatMessageNotification({
+    required String targetPlayerId,
+    required String senderName,
+    required String messageBody,
+  }) async {
+    // 1. إرسال الإشعار الخارجي للطرف الآخر عبر OneSignal
+    if (targetPlayerId.isNotEmpty) {
+      await sendNotificationToUser(
+        targetPlayerId: targetPlayerId,
+        title: 'رسالة جديدة من $senderName 💬',
+        body: messageBody,
+      );
     }
   }
 }
