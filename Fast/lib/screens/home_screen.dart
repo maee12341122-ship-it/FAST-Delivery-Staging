@@ -1007,7 +1007,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen()));
                   } else {
                     final passwordController = TextEditingController();
-                    final usernameController = TextEditingController(text: 'admin');
+                    final usernameController = TextEditingController(); // 👈 تم إزالة القيمة الافتراضية 'admin' هنا
+
 
                     showDialog(
                       context: context,
