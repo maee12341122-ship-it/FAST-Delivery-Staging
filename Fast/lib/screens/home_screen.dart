@@ -219,6 +219,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final Set<String> _shownPricingDialogs = {};
 
+  // عروض وقصص تفاعلية سريعة
+  final List> _heroStories = [
+    {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
+    {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
+    {'title': 'خضار وطازج 🥦', 'subtitle': 'أسعار يومية', 'category': 'الخضار والفواكه'},
+    {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
+  ];
+
+  final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
+
   @override
   void initState() {
     super.initState();
@@ -526,6 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ));
 
                   Navigator.pop(context);
+                  HapticFeedback.lightImpact();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('تمت إضافة ${product.name} بسعر $enteredPrice ر.ي إلى السلة بنجاح ✅')),
                   );
@@ -1088,76 +1099,71 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _currentIndex,
                 children: pages,
               ),
+              // 🌟 شريط سلة المشتريات العائم بالتصميم التفاعلي العصري
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
                   right: 16,
                   bottom: 16,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _currentIndex = 1);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.green[700],
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutBack,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.mediumImpact();
+                        setState(() => _currentIndex = 1);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.amber[800]!, Colors.amber[600]!],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Row(
-                            children: appState.cartItems.take(3).map((item) {
-                              return Container(
-                                width: 32,
-                                height: 32,
-                                margin: const EdgeInsets.only(left: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: ClipOval(
-                                  child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                                      ? Image.network(
-                                          item.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag, size: 16, color: Colors.green),
-                                        )
-                                      : const Icon(Icons.shopping_bag, size: 16, color: Colors.green),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${appState.totalCartItemsCount} عناصر في السلة',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.4),
+                              blurRadius: 15,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Colors.black,
+                                shape: BoxShape.circle,
                               ),
-                              Text(
-                                '${appState.totalAmount} ر.ي',
-                                style: const TextStyle(color: Colors.white70, fontSize: 11),
-                              ),
-                            ],
-                          ),
-                          const Spacer(),
-                          const Text(
-                            'عرض السلة 🛒',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14),
-                        ],
+                              child: const Icon(Icons.shopping_bag_outlined, color: Colors.amber, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${appState.totalCartItemsCount} منتجات بالسلة',
+                                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                Text(
+                                  '${appState.totalAmount} ر.ي',
+                                  style: const TextStyle(color: Colors.black87, fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            const Text(
+                              'إتمام الطلب',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_forward_ios, color: Colors.black, size: 14),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1167,6 +1173,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) {
+              HapticFeedback.selectionClick();
               if (index == 1 && appState.userProfile == null) {
                 Navigator.push(
                   context,
@@ -1191,7 +1198,7 @@ class _HomeScreenState extends State<HomeScreen> {
             unselectedItemColor: Colors.grey,
             type: BottomNavigationBarType.fixed,
             items: [
-              const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
+              const BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'الرئيسية'),
               BottomNavigationBarItem(
                 icon: Stack(
                   children: [
@@ -1328,10 +1335,8 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> uniqueRestaurants = [];
     List<ProductModel> filteredProducts = [];
 
-    // 🟢 التعديل الجذري هنا لفصل المطاعم عن البقالات والمستودع بدقة
     if (selectedCategory == 'المطاعم') {
       if (selectedRestaurantName == null) {
-        // جلب المطاعم التي تصنيفها 'المطاعم' حصراً
         uniqueRestaurants = (appState.products as List)
             .map((e) => e as ProductModel)
             .where((p) => p.category.trim() == 'المطاعم')
@@ -1339,7 +1344,6 @@ class _HomeScreenState extends State<HomeScreen> {
             .toSet()
             .toList();
       } else {
-        // جلب وجبات المطعم المختار فقط ضمن تصنيف المطاعم
         filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
           final matchesCategory = p.category.trim() == 'المطاعم';
           final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
@@ -1348,7 +1352,6 @@ class _HomeScreenState extends State<HomeScreen> {
         }).toList();
       }
     } else {
-      // باقي الأقسام (البقالات، الخضار، إلخ) أو 'الكل'
       filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
         final matchesCategory = selectedCategory == 'الكل' || p.category.trim() == selectedCategory.trim();
         final matchesSearch = searchQuery.isEmpty ||
@@ -1368,9 +1371,10 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          // 🟢 شريط حالة التوفر والدوام
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
             color: cardBg,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1391,27 +1395,140 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: TextField(
-              controller: _searchController,
-              style: TextStyle(color: textColor),
-              decoration: InputDecoration(
-                hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
-                    ? 'ابحث داخل وجبات $selectedRestaurantName...'
-                    : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
-                hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                prefixIcon: const Icon(Icons.search, color: Colors.amber),
-                filled: true,
-                fillColor: cardBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
-              ),
-              onChanged: (val) => setState(() {}),
+
+          // 🌟 1. شريط عروض وقصص تفاعلي (Interactive Stories Slider)
+          SizedBox(
+            height: 95,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              itemCount: _heroStories.length,
+              itemBuilder: (context, index) {
+                final story = _heroStories[index];
+                final bool isSelected = selectedCategory == story['category'];
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      selectedCategory = story['category']!;
+                      selectedRestaurantName = null;
+                    });
+                  },
+                  child: Container(
+                    width: 140,
+                    margin: const EdgeInsets.only(left: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: isSelected
+                          ? const LinearGradient(colors: [Colors.amber, Colors.orangeAccent])
+                          : LinearGradient(
+                              colors: appState.isDarkMode
+                                  ? [const Color(0xFF2A2A2A), const Color(0xFF1E1E1E)]
+                                  : [Colors.white, Colors.grey[200]!],
+                            ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? Colors.amber : Colors.amber.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          story['title']!,
+                          style: TextStyle(
+                            color: isSelected ? Colors.black : textColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          story['subtitle']!,
+                          style: TextStyle(
+                            color: isSelected ? Colors.black87 : Colors.grey,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-          _buildInteractiveCategoriesBar(appState, textColor, cardBg),
-          const SizedBox(height: 15),
 
+          // 🌟 2. شريط البحث التفاعلي والوسوم السريعة (Search Bar & Quick Tags)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _searchController,
+                  style: TextStyle(color: textColor),
+                  decoration: InputDecoration(
+                    hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
+                        ? 'ابحث داخل وجبات $selectedRestaurantName...'
+                        : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
+                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: Colors.amber),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: cardBg,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: Colors.grey.withOpacity(0.3))),
+                  ),
+                  onChanged: (val) => setState(() {}),
+                ),
+
+                // الوسوم السريعة تحت البحث
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _quickTags.map((tag) {
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 6.0),
+                        child: ActionChip(
+                          elevation: 0,
+                          backgroundColor: cardBg,
+                          side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                          label: Text('# $tag', style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            _searchController.text = tag;
+                            setState(() {});
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          _buildInteractiveCategoriesBar(appState, textColor, cardBg),
+          const SizedBox(height: 10),
+
+          // 🟢 قسم عرض المطاعم / الوجبات
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
@@ -1428,19 +1545,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: uniqueRestaurants.length,
                     itemBuilder: (context, index) {
                       final restaurantName = uniqueRestaurants[index];
-                      return Card(
-                        color: cardBg,
+                      return Container(
                         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.amber.withOpacity(0.2)),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 3)),
+                          ],
+                        ),
                         child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.amber,
-                            child: Icon(Icons.restaurant, color: Colors.black),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              color: Colors.amber,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.restaurant_menu, color: Colors.black, size: 22),
                           ),
-                          title: Text(restaurantName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                          title: Text(restaurantName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
                           subtitle: const Text('اضغط لعرض الوجبات الخاصة بهذا المطعم فقط 📋', style: TextStyle(color: Colors.grey, fontSize: 12)),
                           trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
                           onTap: () {
+                            HapticFeedback.selectionClick();
                             setState(() {
                               selectedRestaurantName = restaurantName;
                             });
@@ -1470,6 +1599,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
+
+            // 🌟 3. شبكة منتجات عصرية بتأثيرات بصرية (Modern Grid Cards)
             filteredProducts.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(50.0),
@@ -1481,7 +1612,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.70,
+                      childAspectRatio: 0.68,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
                     ),
@@ -1496,13 +1627,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       return Container(
                         decoration: BoxDecoration(
                           color: cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.amber.withOpacity(0.15)),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
@@ -1514,14 +1645,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               Stack(
                                 children: [
                                   Container(
-                                    height: 85,
+                                    height: 95,
                                     width: double.infinity,
                                     decoration: BoxDecoration(
-                                      color: appState.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[200],
-                                      borderRadius: BorderRadius.circular(12),
+                                      color: appState.isDarkMode ? const Color(0xFF252525) : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
                                     child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(14),
                                       child: product.imageUrl.isNotEmpty
                                           ? Image.network(
                                               product.imageUrl,
@@ -1539,6 +1670,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         final bool isFav = state.isProductFavorite(product.id);
                                         return InkWell(
                                           onTap: () {
+                                            HapticFeedback.lightImpact();
                                             state.toggleFavorite(product.id);
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               SnackBar(
@@ -1548,7 +1680,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             );
                                           },
                                           child: Container(
-                                            padding: const EdgeInsets.all(4),
+                                            padding: const EdgeInsets.all(6),
                                             decoration: const BoxDecoration(
                                               color: Colors.black54,
                                               shape: BoxShape.circle,
@@ -1556,7 +1688,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             child: Icon(
                                               isFav ? Icons.favorite : Icons.favorite_border,
                                               color: Colors.redAccent,
-                                              size: 18,
+                                              size: 16,
                                             ),
                                           ),
                                         );
@@ -1599,12 +1731,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   isVariable
                                       ? SizedBox(
-                                          height: 30,
+                                          height: 32,
                                           child: ElevatedButton(
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: Colors.amber,
-                                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                             ),
                                             onPressed: appState.isStoreOpen
                                                 ? () => _showEnterPriceDialog(context, appState, product)
@@ -1614,15 +1746,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                         )
                                       : (qtyInCart == 0
                                           ? SizedBox(
-                                              height: 30,
+                                              height: 32,
                                               child: ElevatedButton(
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: Colors.amber,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                                 ),
                                                 onPressed: appState.isStoreOpen
                                                     ? () {
+                                                        HapticFeedback.lightImpact();
                                                         appState.addToCart(CartItemModel(
                                                           id: product.id,
                                                           name: product.name,
@@ -1633,22 +1766,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                                         ));
                                                       }
                                                     : null,
-                                                child: const Text('ADD', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                                child: const Text('إضافة', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
                                               ),
                                             )
                                           : Container(
-                                              height: 30,
+                                              height: 32,
                                               decoration: BoxDecoration(
                                                 color: Colors.amber,
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius: BorderRadius.circular(10),
                                               ),
                                               child: Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   InkWell(
-                                                    onTap: () => appState.updateQuantity(product.id, -1),
+                                                    onTap: () {
+                                                      HapticFeedback.lightImpact();
+                                                      appState.updateQuantity(product.id, -1);
+                                                    },
                                                     child: const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 5),
+                                                      padding: EdgeInsets.symmetric(horizontal: 6),
                                                       child: Icon(Icons.remove, size: 14, color: Colors.black),
                                                     ),
                                                   ),
@@ -1657,9 +1793,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
                                                   ),
                                                   InkWell(
-                                                    onTap: () => appState.updateQuantity(product.id, 1),
+                                                    onTap: () {
+                                                      HapticFeedback.lightImpact();
+                                                      appState.updateQuantity(product.id, 1);
+                                                    },
                                                     child: const Padding(
-                                                      padding: EdgeInsets.symmetric(horizontal: 5),
+                                                      padding: EdgeInsets.symmetric(horizontal: 6),
                                                       child: Icon(Icons.add, size: 14, color: Colors.black),
                                                     ),
                                                   ),
@@ -1675,6 +1814,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
           ],
+          const SizedBox(height: 70),
         ],
       ),
     );
@@ -1698,10 +1838,11 @@ class _HomeScreenState extends State<HomeScreen> {
               selectedColor: Colors.amber,
               backgroundColor: cardBg,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.3)),
               ),
               onSelected: (val) {
+                HapticFeedback.selectionClick();
                 setState(() {
                   selectedCategory = cat;
                   selectedRestaurantName = null;
