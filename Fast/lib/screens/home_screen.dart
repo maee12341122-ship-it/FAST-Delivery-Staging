@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
+import '../services/notification_service.dart'; // 👈 مسار استيراد خدمة الإشعارات الصحيح
 import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
 import 'courier_screen.dart';
@@ -16,7 +17,6 @@ import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
 import 'package:fast/services/notification_service.dart';
- // 👈 استيراد شاشة مركز الإشعارات الداخلية
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
@@ -224,7 +224,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final Set<String> _shownPricingDialogs = {};
 
-  // عروض وقصص تفاعلية سريعة (بدون أقواس أنواع List نهائياً)
   final List _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
     {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
@@ -1024,7 +1023,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Navigator.push(
                         context,
                         PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
+                          pageBuilder: (context, animation, secondaryAnimation) => NotificationsScreen(),
                           transitionsBuilder: (context, animation, secondaryAnimation, child) {
                             return FadeTransition(opacity: animation, child: child);
                           },
