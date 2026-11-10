@@ -25,12 +25,25 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
 
   // 🗺️ دالة محسنة لاستخراج الإحداثيات بدقة عالية وتجاوز الأقواس والأسطر
   LatLng? _extractLatLng(String addressText) {
-    final regExp = RegExp(r'الإحداثيات:\s*[^0-9\-]*(\-?[0-9\.]+)[^0-9\-]+(\-?[0-9\.]+)');
-    final match = regExp.firstMatch(addressText);
-    if (match != null) {
-      final lat = double.tryParse(match.group(1) ?? '');
-      final lng = double.tryParse(match.group(2) ?? '');
-      if (lat != null && lng != null) {
+    final regExp = RegExp(r'([0-9]+\.[0-9]+)');
+    final matches = regExp.allMatches(addressText).toList();
+    
+    if (matches.length >= 2) {
+      double? num1 = double.tryParse(matches[0].group(0) ?? '');
+      double? num2 = double.tryParse(matches[1].group(0) ?? '');
+      
+      if (num1 != null && num2 != null) {
+        double lat, lng;
+        if (num1 >= 13.0 && num1 < 15.0 && num2 >= 43.0 && num2 < 46.0) {
+          lat = num1;
+          lng = num2;
+        } else if (num2 >= 13.0 && num2 < 15.0 && num1 >= 43.0 && num1 < 46.0) {
+          lat = num2;
+          lng = num1;
+        } else {
+          lat = num1;
+          lng = num2;
+        }
         return LatLng(lat, lng);
       }
     }
@@ -285,10 +298,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleOutlinedFrom(
-                                        foregroundColor: AppConstants.gold,
-                                        side: const BorderSide(color: AppConstants.gold),
-                                      ) ?? OutlinedButton.styleFrom(
+                                      style: OutlinedButton.styleFrom(
                                         foregroundColor: AppConstants.gold,
                                         side: const BorderSide(color: AppConstants.gold),
                                       ),
@@ -310,7 +320,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // أزرار التحكم بالطلب
+                                  // أزرار التحكم بالطلب (مصححة الترتيب)
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
@@ -318,15 +328,15 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                                           onPressed: () => appState.courierRespondToOrder(orderId, false),
-                                          icon: const Text('رفض الطلب'),
-                                          label: const Icon(Icons.close, size: 16),
+                                          icon: const Icon(Icons.close, size: 16),
+                                          label: const Text('رفض الطلب'),
                                         ),
                                         const SizedBox(width: 8),
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                                           onPressed: () => appState.courierRespondToOrder(orderId, true),
-                                          icon: const Text('قبول الطلب'),
-                                          label: const Icon(Icons.check, size: 16),
+                                          icon: const Icon(Icons.check, size: 16),
+                                          label: const Text('قبول الطلب'),
                                         ),
                                       ],
                                       if (status == 'onTheWay')
