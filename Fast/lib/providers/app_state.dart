@@ -9,7 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
-import 'package:connectivity_plus/connectivity_plus.dart'; // 👈 استيراد حزمة مراقبة الإنترنت
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -35,11 +35,11 @@ class AppState extends ChangeNotifier {
     await fetchStoreSettings();
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
-    await recordVisitorVisit(); // 📊 تسجيل زيارة جديدة عند بدء التطبيق
-    await fetchTotalVisitorsCount(); // 📊 جلب إجمالي عدد الزوار
+    await recordVisitorVisit(); 
+    await fetchTotalVisitorsCount(); 
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
-    initializeInternetListener(); // 🌐 تفعيل مراقبة الإنترنت لحظياً
+    initializeInternetListener(); 
   }
 
   // ==========================================
@@ -1175,7 +1175,6 @@ class AppState extends ChangeNotifier {
   List orders = [];
   List notifications = [];
   
-  // 👈 عدد الإشعارات غير المقروءة
   int get unreadNotificationsCount => notifications.length;
 
   String _normalizePhone(String phone) {
@@ -1207,7 +1206,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 👈 دالة الجسر المحدثة لتقبل معامل type الاختياري
   void addLocalNotification(String title, String body, {String? type}) {
     notifications.insert(0, {'title': title, 'body': body, 'time': DateTime.now(), 'type': type ?? 'general'});
     NotificationService.showLocalNotification(title, body);
@@ -1227,6 +1225,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  // 🔄 تم تحديث دالة الاستماع الفوري للطلبات لضمان استقبال التحديثات الحية والإشعارات الداخلية
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
@@ -1234,15 +1233,41 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       notifyListeners();
 
-      supabase.from('orders').stream(primaryKey: ['id']).listen((data) {
-        orders = List.from(data);
-        _sortOrders();
-        notifyListeners();
-      }, onError: (error) {
-        debugPrint('⚠️ خطأ في الاستماع للطلبات: $error');
-      });
+      supabase
+          .channel('public_orders_realtime_channel')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'orders',
+            callback: (payload) {
+              debugPrint('🔄 حدث تغيير في جدول الطلبات عبر Realtime: ${payload.eventType}');
+              
+              if (payload.eventType == PostgresChangeEvent.insert) {
+                orders.add(payload.newRecord);
+                addLocalNotification('طلب جديد 📦', 'تم إضافة طلب جديد إلى النظام');
+              } else if (payload.eventType == PostgresChangeEvent.update) {
+                final index = orders.indexWhere((o) => o['id'].toString() == payload.newRecord['id'].toString());
+                if (index != -1) {
+                  orders[index] = payload.newRecord;
+                } else {
+                  orders.add(payload.newRecord);
+                }
+                
+                // إظهار إشعار داخلي عند تغير الحالة
+                String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
+                addLocalNotification('تحديث الطلب #${payload.newRecord['id']} 🔔', 'الحالة الجديدة: $newStatus');
+              } else if (payload.eventType == PostgresChangeEvent.delete) {
+                orders.removeWhere((o) => o['id'].toString() == payload.oldRecord['id'].toString());
+              }
+
+              _sortOrders();
+              notifyListeners();
+            },
+          )
+          .subscribe();
+
     } catch (e) {
-      debugPrint('❌ خطأ في جلب الطلبات: $e');
+      debugPrint('❌ خطأ في تفعيل Realtime للطلبات: $e');
     }
   }
 
@@ -1301,7 +1326,7 @@ class AppState extends ChangeNotifier {
       
       _cartItems.clear();
       
-      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
