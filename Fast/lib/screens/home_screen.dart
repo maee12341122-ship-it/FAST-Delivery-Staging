@@ -16,7 +16,8 @@ import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
-import 'package:fast/services/notification_service.dart';
+import '../services/notification_service.dart';
+
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
