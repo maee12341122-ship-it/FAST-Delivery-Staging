@@ -1,11 +1,9 @@
 workflows:
   fast-taiz-web-pwa:
     name: FAST Delivery - Web PWA 🌐
-    max_build_duration: 30
+    max_build_duration: 15
     environment:
       flutter: stable
-    cache:
-      cache_paths: []
     scripts:
       - name: Check Flutter environment
         script: |
@@ -16,15 +14,13 @@ workflows:
           set -e
           flutter config --enable-web
       - name: Get Flutter packages
-        script: flutter pub get
-      - name: Generate App Launcher Icon 🖼️
         script: |
           set -e
-          flutter pub run flutter_launcher_icons || true
-      - name: Build Web Release (PWA) 🚀
+          flutter pub get
+      - name: Build Web Release 🚀
         script: |
           set -e
-          flutter build web --release --pwa-strategy=offline-first
+          flutter build web --release --no-pub
       - name: Compress Web Artifacts 📦
         script: |
           set -e
