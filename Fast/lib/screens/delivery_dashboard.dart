@@ -23,16 +23,26 @@ class DeliveryDashboard extends StatefulWidget {
 class _DeliveryDashboardState extends State<DeliveryDashboard> {
   String _status = 'available';
 
-  // 🗺️ دالة لفتح خرائط جوجل الخارجية وإرشاد المندوب للإحداثيات المستهدفة
-  Future<void> _openNavigation(String addressText) async {
-    final regExp = RegExp(r'الإحداثيات:\s*([0-9\.]+),\s*([0-9\.]+)');
+  // 🗺️ دالة محسنة لاستخراج الإحداثيات بدقة عالية وتجاوز الأقواس والأسطر
+  LatLng? _extractLatLng(String addressText) {
+    final regExp = RegExp(r'الإحداثيات:\s*[^0-9\-]*(\-?[0-9\.]+)[^0-9\-]+(\-?[0-9\.]+)');
     final match = regExp.firstMatch(addressText);
-
-    Uri url;
     if (match != null) {
-      final lat = match.group(1);
-      final lng = match.group(2);
-      url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+      final lat = double.tryParse(match.group(1) ?? '');
+      final lng = double.tryParse(match.group(2) ?? '');
+      if (lat != null && lng != null) {
+        return LatLng(lat, lng);
+      }
+    }
+    return const LatLng(13.5779, 44.0219); // افتراضي لتعز
+  }
+
+  // 🧭 دالة فتح خرائط جوجل بالإحداثيات الدقيقة المباشرة
+  Future<void> _openNavigation(String addressText) async {
+    final latLng = _extractLatLng(addressText);
+    Uri url;
+    if (latLng != null) {
+      url = Uri.parse('https://www.google.com/maps/search/?api=1&query=${latLng.latitude},${latLng.longitude}');
     } else {
       url = Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(addressText)}');
     }
@@ -46,20 +56,6 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
         );
       }
     }
-  }
-
-  // 📍 دالة مساعدة لاستخراج خطوط الطول والعرض من نص العنوان لعرضها في الخريطة المصغرة
-  LatLng? _extractLatLng(String addressText) {
-    final regExp = RegExp(r'الإحداثيات:\s*([0-9\.]+),\s*([0-9\.]+)');
-    final match = regExp.firstMatch(addressText);
-    if (match != null) {
-      final lat = double.tryParse(match.group(1) ?? '');
-      final lng = double.tryParse(match.group(2) ?? '');
-      if (lat != null && lng != null) {
-        return LatLng(lat, lng);
-      }
-    }
-    return const LatLng(13.5779, 44.0219); // افتراضي لتعز
   }
 
   @override
@@ -171,13 +167,18 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                           final phone = order['phone']?.toString() ?? '';
                           final address = order['address']?.toString() ?? '';
                           final itemsDesc = order['items_description']?.toString() ?? '';
+                          
+                          // الأسعار مفصولة للمندوب
                           final totalPrice = order['total_price']?.toString() ?? '0';
+                          final itemsPrice = order['items_price']?.toString() ?? order['subtotal']?.toString() ?? 'غير متوفر';
+                          final deliveryFee = order['delivery_fee']?.toString() ?? order['delivery_cost']?.toString() ?? '0';
+
                           final status = order['status']?.toString() ?? '';
 
                           final paymentMethod = order['payment_method']?.toString() ?? 'cash';
                           final paymentAccount = order['payment_account']?.toString() ?? '';
                           final paymentDisplay = (paymentMethod == 'cash' || paymentMethod == 'cash_on_delivery')
-                              ? '💵 تحصيل نقدي عند الاستلام ($totalPrice ر.ي)'
+                              ? '💵 تحصيل نقدي عند الاستلام (الإجمالي: $totalPrice ر.ي)'
                               : '💳 مدفوع مسبقاً عبر ($paymentMethod) - حساب: $paymentAccount (لا تحصل نقداً)';
 
                           final orderLatLng = _extractLatLng(address);
@@ -198,10 +199,19 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text('طلب #$orderId', style: const TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 15)),
-                                      Text('$totalPrice ر.ي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                      Text('الإجمالي: $totalPrice ر.ي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                                     ],
                                   ),
                                   const Divider(color: Colors.white12),
+                                  // فصل سعر المنتجات عن سعر التوصيل للمندوب
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('🛍️ سعر المنتجات: $itemsPrice ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                      Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: AppConstants.gold, fontSize: 13, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
                                   Text('العميل: $customerName', style: const TextStyle(color: Colors.white70)),
                                   Text('الهاتف: $phone', style: const TextStyle(color: Colors.white70)),
                                   Text('العنوان: $address', style: const TextStyle(color: Colors.white70)),
@@ -235,7 +245,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // زر التوجيه عبر الخريطة
+                                  // زر التوجيه عبر الخريطة بدقة إحداثيات
                                   SizedBox(
                                     width: double.infinity,
                                     child: OutlinedButton.icon(
@@ -246,7 +256,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                       ),
                                       onPressed: () => _openNavigation(address),
                                       icon: const Icon(Icons.navigation, size: 16),
-                                      label: const Text('التوجيه إلى موقع العميل عبر الخريطة 🧭', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      label: const Text('التوجيه الدقيق إلى موقع العميل عبر الخريطة 🧭', style: TextStyle(fontWeight: FontWeight.bold)),
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -275,7 +285,10 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
+                                      style: OutlinedButton.styleOutlinedFrom(
+                                        foregroundColor: AppConstants.gold,
+                                        side: const BorderSide(color: AppConstants.gold),
+                                      ) ?? OutlinedButton.styleFrom(
                                         foregroundColor: AppConstants.gold,
                                         side: const BorderSide(color: AppConstants.gold),
                                       ),
@@ -297,25 +310,23 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // أزرار التحكم بالطلب (قبول / رفض / وصلت / تم التسليم)
+                                  // أزرار التحكم بالطلب
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
                                       if (status == 'waitingCourierApproval') ...[
-                                        // زر رفض الطلب
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                          onPressed: () => appState.courierRespondToOrder(orderId, false), // false لرفض الطلب
-                                          icon: const Icon(Icons.close, size: 16),
-                                          label: const Text('رفض الطلب'),
+                                          onPressed: () => appState.courierRespondToOrder(orderId, false),
+                                          icon: const Text('رفض الطلب'),
+                                          label: const Icon(Icons.close, size: 16),
                                         ),
                                         const SizedBox(width: 8),
-                                        // زر قبول الطلب
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                                          onPressed: () => appState.courierRespondToOrder(orderId, true), // true لقبول الطلب
-                                          icon: const Icon(Icons.check, size: 16),
-                                          label: const Text('قبول الطلب'),
+                                          onPressed: () => appState.courierRespondToOrder(orderId, true),
+                                          icon: const Text('قبول الطلب'),
+                                          label: const Icon(Icons.check, size: 16),
                                         ),
                                       ],
                                       if (status == 'onTheWay')
