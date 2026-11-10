@@ -314,6 +314,94 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // 📢 دالة فتح واتساب حجز المساحة الإعلانية
+  Future<void> _launchWhatsAppForAd() async {
+    final Uri url = Uri.parse('https://wa.me/967775145534?text=مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  // 📢 بطاقة المساحة الإعلانية المتاحة للمحلات والمطاعم
+  Widget _buildAdBannerWidget(Color cardBg, Color textColor) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.amber.withOpacity(0.15), Colors.orangeAccent.withOpacity(0.05)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.withOpacity(0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.campaign_rounded, color: Colors.amber, size: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'مساحتك الإعلانية هنا 📢',
+                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.amber,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('متاح', style: TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'هل لديك مطعم أو متجر؟ أعلن معنا واوصل لآلاف العملاء في تعز يومياً!',
+                  style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            onPressed: () {
+              _launchWhatsAppForAd();
+            },
+            child: const Text('احجز إعلانك', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // 🍔 دالة إظهار نافذة إضافات وخصائص الوجبة قبل إضافتها للسلة
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) async {
     await appState.fetchProductModifiers(product.id);
@@ -1866,6 +1954,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
 
+          // 🌟 إدراج المساحة الإعلانية بذكاء واحترافية هنا
+          _buildAdBannerWidget(cardBg, textColor),
+
           SizedBox(
             height: 95,
             child: ListView.builder(
@@ -2220,7 +2311,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                 onPressed: appState.isStoreOpen
                                                     ? () {
                                                         HapticFeedback.lightImpact();
-                                                        // إذا كان المنتج تابع للمطاعم، افتح نافذة الإضافات
                                                         if (product.category.trim() == 'المطاعم') {
                                                           _showProductModifiersDialog(context, appState, product);
                                                         } else {
