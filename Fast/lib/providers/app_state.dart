@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
+import 'package:connectivity_plus/connectivity_plus.dart'; // 👈 استيراد حزمة مراقبة الإنترنت
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -38,6 +39,49 @@ class AppState extends ChangeNotifier {
     await fetchTotalVisitorsCount(); // 📊 جلب إجمالي عدد الزوار
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
+    initializeInternetListener(); // 🌐 تفعيل مراقبة الإنترنت لحظياً
+  }
+
+  // ==========================================
+  // --- 🌐 قسم مراقبة اتصال الإنترنت لحظياً ---
+  // ==========================================
+  bool isConnectedToInternet = true;
+  final Connectivity _connectivity = Connectivity();
+
+  void initializeInternetListener() {
+    _connectivity.checkConnectivity().then((result) {
+      _updateConnectionStatus(result);
+    });
+
+    _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      _updateConnectionStatus(results);
+    });
+  }
+
+  void _updateConnectionStatus(dynamic result) {
+    bool previousState = isConnectedToInternet;
+    
+    if (result is List<ConnectivityResult>) {
+      isConnectedToInternet = !result.contains(ConnectivityResult.none);
+    } else if (result is ConnectivityResult) {
+      isConnectedToInternet = result != ConnectivityResult.none;
+    }
+
+    if (previousState && !isConnectedToInternet) {
+      addLocalNotification(
+        '⚠️ انقطاع الاتصال بالإنترنت',
+        'تم فقدان الاتصال بالشبكة! يرجى التحقق من الإنترنت لتحديث بيانات الطلبات والمراسلات.',
+        type: 'network_alert',
+      );
+    } else if (!previousState && isConnectedToInternet) {
+      addLocalNotification(
+        '🟢 عودة الاتصال بالإنترنت',
+        'تم استعادة الاتصال بالشبكة بنجاح.',
+        type: 'network_success',
+      );
+    }
+    
+    notifyListeners();
   }
 
   // ==========================================
