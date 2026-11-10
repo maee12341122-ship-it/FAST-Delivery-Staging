@@ -237,6 +237,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
   ];
 
+  // 🌟 قائمة العروض الترويجية المتحركة (البانرات)
+  final List> _promoBanners = [
+    {
+      'title': 'عروض العيد والخصومات الكبرى 🚀',
+      'subtitle': 'توصيل سريع لجميع مطاعم تعز بأسعار مناسبة',
+      'code': 'FAST2026',
+    },
+    {
+      'title': 'خصم خاص على الوجبات السريعة 🍔',
+      'subtitle': 'اطلب الآن واستفيد من أسرع خدمة توصيل',
+      'code': 'TAIZ50',
+    },
+    {
+      'title': 'طازج ويوصل لباب بيتك 🥦',
+      'subtitle': 'خضار وفواكه يومية بأفضل الأسعار في تعز',
+      'code': 'FRESH',
+    },
+  ];
+
   final List _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
 
   @override
@@ -580,6 +599,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _addressDescriptionController.text = appState.userProfile?['address'] ?? '';
     }
 
+    final TextEditingController couponController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -666,6 +687,58 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       validator: (v) => v == null || v.isEmpty ? 'يرجى إدخال العنوان أو تحديده من الخريطة' : null,
                     ),
                     const SizedBox(height: 16),
+
+                    // 🎟️ قسم إدخال وتطبيق كوبون الخصم
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: couponController,
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
+                              labelText: 'كود الخصم (اختياري)',
+                              labelStyle: const TextStyle(color: Colors.grey),
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () async {
+                            String msg = await appState.applyCouponCode(couponController.text, appState.totalAmount);
+                            setDialogState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                          },
+                          child: const Text('تطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    if (appState.activeCouponCode != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('تم تطبيق الكوبون: ${appState.activeCouponCode} (خصم: ${appState.couponDiscountAmount} ر.ي)', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                          TextButton(
+                            onPressed: () {
+                              appState.removeCoupon();
+                              setDialogState(() {});
+                            },
+                            child: const Text('إزالة', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
                     const Text('اختر طريقة الدفع:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
@@ -707,13 +780,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         .map((item) => '${item.name} (x${item.quantity})')
                         .join(', ');
 
+                    // حساب المبلغ النهائي بعد الخصم
+                    final double finalAmountToPay = appState.totalAmount - appState.couponDiscountAmount;
+
                     try {
                       await appState.createOrder(
                         customerName: _nameController.text.trim(),
                         phone: _phoneController.text.trim(),
                         address: _addressDescriptionController.text.trim(),
                         itemsDesc: itemsDescription.isNotEmpty ? itemsDescription : 'طلب عام من السلة',
-                        productsTotal: appState.totalAmount,
+                        productsTotal: finalAmountToPay > 0 ? finalAmountToPay : 0.0,
                         paymentMethod: _selectedPaymentMethod,
                         paymentAccount: 'نقدي',
                       );
@@ -1017,7 +1093,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() {
         _showPopupBadge = true;
       });
-      // إخفاء الـ Popup تلقائياً بعد 4 ثواني
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted) {
           _popupAnimController.reverse().then((_) {
@@ -1073,7 +1148,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
-              // 🌟 إشعار منبثق متحرك يظهر بجوار أيقونة الجرس مع كل حركة جديدة
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1581,6 +1655,71 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   textAlign: TextAlign.center,
                 ),
               ],
+            ),
+          ),
+
+          // 🌟 قسم البانرات والعروض الترويجية المتحركة (PageView)
+          SizedBox(
+            height: 130,
+            child: PageView.builder(
+              controller: PageController(viewportFraction: 0.9),
+              itemCount: _promoBanners.length,
+              itemBuilder: (context, index) {
+                final banner = _promoBanners[index];
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.amber[800]!, Colors.amber[600]!, Colors.orangeAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              banner['title']!,
+                              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              banner['subtitle']!,
+                              style: const TextStyle(color: Colors.black87, fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'كود الخصم: ${banner['code']}',
+                                style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.local_offer, color: Colors.black54, size: 45),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
 
