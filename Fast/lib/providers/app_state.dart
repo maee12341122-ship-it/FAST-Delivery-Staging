@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع الكوبونات والتقارير
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع الكوبونات والتقارير والإضافات
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -210,6 +210,25 @@ class AppState extends ChangeNotifier {
     activeCouponCode = null;
     couponDiscountAmount = 0.0;
     notifyListeners();
+  }
+
+  // ==========================================
+  // --- 🍔 قسم إضافات وخصائص المنتجات (Modifiers) ---
+  // ==========================================
+  List productModifiers = [];
+
+  Future<void> fetchProductModifiers(String productId) async {
+    try {
+      final response = await supabase
+          .from('product_modifiers')
+          .select()
+          .eq('product_id', productId);
+      
+      productModifiers = response;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب إضافات المنتج: $e');
+    }
   }
 
   // ==========================================
