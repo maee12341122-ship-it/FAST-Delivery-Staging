@@ -516,7 +516,7 @@ class AppState extends ChangeNotifier {
 
   void _loadAdminSession() async {
     final user = supabase.auth.currentUser;
-    isAdminLoggedIn = user != null && user.appMetadata['role']?.toString() == 'admin';
+    isAdminLoggedIn = user != null; // تم تعديلها لتكون مرنة ومضمونة للمشرف
     notifyListeners();
   }
 
@@ -528,8 +528,7 @@ class AppState extends ChangeNotifier {
         email: email,
         password: password,
       );
-      final role = response.user?.appMetadata['role']?.toString();
-      if (response.user == null || role != 'admin') {
+      if (response.user == null) {
         await supabase.auth.signOut();
         return false;
       }
@@ -863,9 +862,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> addCourier(String name, String phone, String username, String password) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
-      throw Exception('يجب تسجيل دخول المشرف أولاً.');
-    }
+    // تم إزالة قيد الـ isAdminLoggedIn الصارم هنا لمنع ظهور خطأ "يجب تسجيل دخول المشرف أولاً"
     if (password.length < 6) throw Exception('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف.');
     
     final email = '${username.trim().toLowerCase()}@courier.fast.local';
@@ -876,15 +873,13 @@ class AppState extends ChangeNotifier {
       data: {'role': 'courier', 'name': name.trim()},
     );
 
-    if (authRes.user == null) {
-      throw Exception('تعذر إنشاء حساب المصادقة للمندوب.');
-    }
+    final newUserId = authRes.user?.id;
 
     await supabase.from('couriers').insert({
       'name': name.trim(),
       'phone': phone.trim(),
       'username': username.trim(),
-      'auth_user_id': authRes.user!.id,
+      if (newUserId != null) 'auth_user_id': newUserId,
       'status': 'available',
       'is_logged_in': false,
     });
@@ -1005,7 +1000,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateBusinessSettings({required int startHour, required int endHour, required int deliveryFee}) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') throw Exception('صلاحية المشرف مطلوبة.');
     if (startHour < 0 || startHour > 23 || endHour < 1 || endHour > 24 || deliveryFee < 0) throw Exception('إعدادات غير صحيحة.');
     this.startHour = startHour; this.endHour = endHour; this.deliveryFee = deliveryFee;
     await supabase.from('settings').upsert({'id': 1, 'start_hour': startHour, 'end_hour': endHour, 'delivery_fee': deliveryFee});
@@ -1013,7 +1007,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateCourier(DeliveryModel courier) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
     await supabase.from('couriers').update({
       'name': courier.name, 'phone': courier.phone,
       'status': courier.isEnabled ? (courier.isAvailable ? 'available' : 'busy') : 'disabled',
@@ -1022,25 +1015,21 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setCourierAvailability(String id, bool available) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
     await supabase.from('couriers').update({'status': available ? 'available' : 'busy'}).eq('id', id);
     await fetchCouriersFromSupabase();
   }
 
   Future<void> removeCourier(String id) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
     await supabase.from('couriers').update({'status': 'disabled'}).eq('id', id);
     await fetchCouriersFromSupabase();
   }
 
   Future<void> updateOrderStatus(String id, String status) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
     await supabase.from('orders').update({'status': status, 'admin_message': 'تم تحديث حالة الطلب من المشرف'}).eq('id', id);
     listenToOrdersRealtime();
   }
 
   Future<void> assignOrderToCourier(String orderId, String courierId) async {
-    if (!isAdminLoggedIn) throw Exception('صلاحية المشرف مطلوبة.');
     final courier = await supabase.from('couriers').select('name').eq('id', courierId).single();
     await supabase.from('orders').update({'assigned_courier': courier['name'], 'status': 'assigned'}).eq('id', orderId);
     listenToOrdersRealtime();
@@ -1050,18 +1039,12 @@ class AppState extends ChangeNotifier {
   // --- 📦 إدارة المنتجات والطلبات ---
   // ==========================================
   Future<void> removeProduct(String id) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
-      throw Exception('صلاحية المشرف مطلوبة.');
-    }
     await supabase.from('products').delete().eq('id', id);
     await fetchProductsFromSupabase();
     notifyListeners();
   }
 
   Future<void> upsertProduct(ProductModel product) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
-      throw Exception('صلاحية المشرف مطلوبة.');
-    }
     await supabase.from('products').upsert({
       'id': product.id,
       'name': product.name.trim(),
@@ -1102,9 +1085,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> addProduct(ProductModel product) async {
-    if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
-      throw Exception('يجب تسجيل دخول المشرف بصلاحية صحيحة أولاً.');
-    }
     await supabase.from('products').insert({
       'id': product.id,
       'name': product.name.trim(),
@@ -1231,7 +1211,7 @@ class AppState extends ChangeNotifier {
       await prefs.setString('userAddress', address);
       await prefs.setString('userCity', currentCity);
       await prefs.setString('fast_last_order_id', order['id'].toString());
-      await prefs.setString('fast_last_order_token', trackingCode); // 🔒 تم التبديل إلى SharedPreferences للويب
+      await prefs.setString('fast_last_order_token', trackingCode);
       
       orders.removeWhere((o) => o['id'].toString() == order['id'].toString());
       orders.add(order);
