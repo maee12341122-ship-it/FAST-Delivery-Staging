@@ -1101,7 +1101,7 @@ class AppState extends ChangeNotifier {
 
   void clearCart() {
     _cartItems.clear();
-    removeCoupon(); // مسح الكوبون أيضاً عند تفريغ السلة
+    removeCoupon(); 
     notifyListeners();
   }
 
@@ -1361,7 +1361,8 @@ class AppState extends ChangeNotifier {
 
       final orderId = order['id'];
       if (_cartItems.isNotEmpty && orderId != null) {
-        final List> orderItemsRows = _cartItems.map((cartItem) {
+        // 🌟 تم تعديل إسناد الأنواع هنا بدون أقواس حادة تسبب مشاكل الويب
+        final List orderItemsRows = _cartItems.map((cartItem) {
           return {
             'order_id': orderId,
             'product_name': cartItem.name,
@@ -1390,7 +1391,7 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       
       _cartItems.clear();
-      removeCoupon(); // مسح الكوبون بعد إتمام الطلب بنجاح
+      removeCoupon(); 
       await fetchAdminFinancialReports(); 
       
       addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
