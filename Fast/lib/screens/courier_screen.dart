@@ -39,6 +39,29 @@ class _CourierScreenState extends State<CourierScreen> {
     }
   }
 
+  // 🌐 شريط تنبيه انقطاع الإنترنت العائم
+  Widget _buildNetworkStatusBar(AppState appState) {
+    if (appState.isConnectedToInternet) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      color: Colors.red[800],
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.wifi_off, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text(
+            'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
+            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -64,97 +87,104 @@ class _CourierScreenState extends State<CourierScreen> {
               ),
           ],
         ),
-        body: courier == null
-            ? Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                            ),
-                            child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
-                          ),
-                          const SizedBox(height: 24),
-                          const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                          const SizedBox(height: 30),
-                          TextField(
-                            controller: _usernameController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'اسم المستخدم',
-                              labelStyle: TextStyle(color: Colors.grey),
-                              filled: true,
-                              fillColor: Color(0xFF1E1E1E),
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'كلمة السر',
-                              labelStyle: TextStyle(color: Colors.grey),
-                              filled: true,
-                              fillColor: Color(0xFF1E1E1E),
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber, 
-                              minimumSize: const Size(double.infinity, 48),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: () async {
-                              bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
-                              if (success) {
-                                try {
-                                  String? playerId = OneSignal.User.pushSubscription.id;
-                                  if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
-                                    String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
-                                    if (courierId.isNotEmpty) {
-                                      await Supabase.instance.client
-                                          .from('couriers')
-                                          .update({'onesignal_player_id': playerId})
-                                          .eq('id', courierId);
+        body: Column(
+          children: [
+            _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت يظهر لحظياً في أعلى الشاشة
+            Expanded(
+              child: courier == null
+                  ? Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 400),
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                                  ),
+                                  child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
+                                ),
+                                const SizedBox(height: 24),
+                                const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                const SizedBox(height: 30),
+                                TextField(
+                                  controller: _usernameController,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: const InputDecoration(
+                                    labelText: 'اسم المستخدم',
+                                    labelStyle: TextStyle(color: Colors.grey),
+                                    filled: true,
+                                    fillColor: Color(0xFF1E1E1E),
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                TextField(
+                                  controller: _passwordController,
+                                  obscureText: true,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: const InputDecoration(
+                                    labelText: 'كلمة السر',
+                                    labelStyle: TextStyle(color: Colors.grey),
+                                    filled: true,
+                                    fillColor: Color(0xFF1E1E1E),
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber, 
+                                    minimumSize: const Size(double.infinity, 48),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  onPressed: () async {
+                                    bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
+                                    if (success) {
+                                      try {
+                                        String? playerId = OneSignal.User.pushSubscription.id;
+                                        if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
+                                          String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
+                                          if (courierId.isNotEmpty) {
+                                            await Supabase.instance.client
+                                                .from('couriers')
+                                                .update({'onesignal_player_id': playerId})
+                                                .eq('id', courierId);
+                                          }
+                                        }
+                                      } catch (e) {
+                                        debugPrint('⚠️ خطأ: $e');
+                                      }
+                                    } else {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
+                                        );
+                                      }
                                     }
-                                  }
-                                } catch (e) {
-                                  debugPrint('⚠️ خطأ: $e');
-                                }
-                              } else {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
-                                  );
-                                }
-                              }
-                            },
-                            child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                                  },
+                                  child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              )
-            : _buildCourierOrdersList(appState, courier),
+                    )
+                  : _buildCourierOrdersList(appState, courier),
+            ),
+          ],
+        ),
       ),
     );
   }
