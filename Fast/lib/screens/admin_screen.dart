@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
-import 'package:fast/screens/chat_screen.dart';
+import 'chat_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
@@ -160,6 +160,29 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
+  // 🌐 شريط تنبيه انقطاع الإنترنت العائم
+  Widget _buildNetworkStatusBar(AppState appState) {
+    if (appState.isConnectedToInternet) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      color: Colors.red[800],
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.wifi_off, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text(
+            'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
+            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -192,6 +215,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         ),
         body: Column(
           children: [
+            _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت اللحظي
             // 📊 بطاقة إحصائيات عداد الزوار في أعلى لوحة المشرف
             Container(
               margin: const EdgeInsets.all(12),
@@ -309,7 +333,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final paymentMethod = order['payment_method'] ?? 'cash';
         final paymentAccount = order['payment_account'] ?? '';
         final paymentDisplay = (paymentMethod == 'cash' || paymentMethod == 'cash_on_delivery')
-            ? '💵 نقداً عند الاستلام'
+            ? '💵 نقداً عند الاستلاستلام'
             : '💳 محفظة ($paymentMethod) - حساب: $paymentAccount';
 
         final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
