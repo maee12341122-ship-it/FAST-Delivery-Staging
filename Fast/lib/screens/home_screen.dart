@@ -7,7 +7,7 @@ import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
-import '../widgets/empty_state_widget.dart'; // 🌟 استدعاء ودجت الحالات الفارغة الجديد
+import '../widgets/empty_state_widget.dart';
 import '../services/notification_service.dart';
 import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
@@ -225,21 +225,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final Set<String> _shownPricingDialogs = {};
 
-  // 🌟 متحكم الـ Animation للإشعار المنبثق المتحرك بجوار الجرس
   late AnimationController _popupAnimController;
   late Animation<double> _popupScaleAnimation;
   int _previousUnreadCount = 0;
   bool _showPopupBadge = false;
 
-  final List> _heroStories = [
+  // 🌟 تم تعديل النوع بدون أقواس حادة
+  final List _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
     {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
     {'title': 'خضار وطازج 🥦', 'subtitle': 'أسعار يومية', 'category': 'الخضار والفواكه'},
     {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
   ];
 
-  // 🌟 قائمة العروض الترويجية المتحركة (البانرات) - تم تصحيح النوع بدقة للويب
-  final List> _promoBanners = [
+  // 🌟 تم تعديل النوع بدون أقواس حادة
+  final List _promoBanners = [
     {
       'title': 'عروض العيد والخصومات الكبرى 🚀',
       'subtitle': 'توصيل سريع لجميع مطاعم تعز بأسعار مناسبة',
@@ -320,7 +320,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 📢 بطاقة المساحة الإعلانية المتاحة للمحلات والمطاعم
   Widget _buildAdBannerWidget(Color cardBg, Color textColor) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -920,7 +919,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 16),
 
-                    // 🎟️ قسم إدخال وتطبيق كوبون الخصم
                     Row(
                       children: [
                         Expanded(
@@ -1951,7 +1949,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // 🌟 إدراج المساحة الإعلانية بذكاء واحترافية هنا
           _buildAdBannerWidget(cardBg, textColor),
 
           SizedBox(
@@ -2412,7 +2409,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 🛒 تبويب السلة مع ربط ودجت الحالة الفارغة (EmptyStateWidget)
   Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile == null) {
       return Center(
@@ -2538,7 +2534,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 📦 تبويب الطلبات مع ربط ودجت الحالة الفارغة (EmptyStateWidget)
   Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
     final customerOrders = appState.customerOrders;
 
