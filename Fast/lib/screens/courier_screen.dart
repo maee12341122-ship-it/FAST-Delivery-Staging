@@ -90,16 +90,56 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           actions: [
             if (courier != null) ...[
-              // 🛎️ أيقونة الإشعارات مع عداد الطلبات التي بانتظار الكابتن
+              // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب
               Stack(
                 alignment: Alignment.center,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
-                    tooltip: 'الطلبات الجديدة بانتظار القبول',
+                    tooltip: 'سجل الإشعارات الفورية',
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('لديك طلبات بانتظار الاستجابة في التبويب النشط 🛵')),
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E1E),
+                            title: const Row(
+                              children: [
+                                Icon(Icons.notifications, color: Colors.amber),
+                                SizedBox(width: 8),
+                                Text('إشعارات المندوب 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                              ],
+                            ),
+                            content: SizedBox(
+                              width: double.maxFinite,
+                              height: 350,
+                              child: appState.notifications.isEmpty
+                                  .isEmpty // Fixed syntax check
+                                  ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
+                                  : ListView.builder(
+                                      itemCount: appState.notifications.length,
+                                      itemBuilder: (_, idx) {
+                                        final notif = appState.notifications[idx];
+                                        return Card(
+                                          color: const Color(0xFF121212),
+                                          margin: const EdgeInsets.symmetric(vertical: 4),
+                                          child: ListTile(
+                                            title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+                                            subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -394,6 +434,11 @@ class _CourierScreenState extends State<CourierScreen> {
         final String customerAddress = order['address'] ?? '';
         final String orderStatus = order['status'] ?? '';
 
+        // فصل الأسعار بوضوح للمندوب: سعر المنتجات + رسوم التوصيل
+        final String productsPrice = order['total_price']?.toString() ?? '0';
+        final String deliveryFee = order['delivery_fee']?.toString() ?? '0';
+        final double finalTotal = (double.tryParse(productsPrice) ?? 0.0) + (double.tryParse(deliveryFee) ?? 0.0);
+
         return Card(
           color: const Color(0xFF1E1E1E),
           margin: const EdgeInsets.symmetric(vertical: 8),
@@ -459,9 +504,22 @@ class _CourierScreenState extends State<CourierScreen> {
                     Expanded(child: Text('المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
                   ],
                 ),
+                const SizedBox(height: 8),
+                // عرض الأسعار مفصولة للمندوب
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('🛍️ سعر المنتجات: $productsPrice ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Divider(color: Colors.white12, height: 8),
+                      Text('💰 الإجمالي الكلي المطلوب من العميل: ${finalTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 6),
-                Text('💰 الإجمالي: ${order['total_price'] ?? 0} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 4),
                 Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                 const Divider(color: Colors.white12, height: 20),
 
