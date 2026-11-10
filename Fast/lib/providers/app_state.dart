@@ -18,7 +18,7 @@ import '../services/notification_service.dart';
 /// ===========================================================================
 /// 🚀 مدير حالة التطبيق الشامل (AppState)
 /// يحتوي على كافة منطق العمليات، الاتصال بقاعدة بيانات Supabase، إدارة السلة،
-/// والجلسات، الإشعارات الفورية عبر OneSignal، والدردشة الحية.
+/// والجلسات، الإشعارات الفورية عبر OneSignal، والدردشة الحية، وتتبع الزوار.
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -34,8 +34,37 @@ class AppState extends ChangeNotifier {
     await fetchStoreSettings();
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
+    await recordVisitorVisit(); // 📊 تسجيل زيارة جديدة عند بدء التطبيق
+    await fetchTotalVisitorsCount(); // 📊 جلب إجمالي عدد الزوار
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
+  }
+
+  // ==========================================
+  // --- 📊 قسم عداد الزوار والتتبع ---
+  // ==========================================
+  int totalVisitorsCount = 0;
+
+  Future<void> recordVisitorVisit() async {
+    try {
+      await supabase.from('visitor_logs').insert({
+        'visitor_identifier': userProfile?['phone'] ?? 'guest_${DateTime.now().millisecondsSinceEpoch}',
+      });
+      debugPrint('📊 تم تسجيل زيارة جديدة بنجاح في قاعدة البيانات');
+    } catch (e) {
+      debugPrint('⚠️ خطأ في تسجيل الزيارة: $e');
+    }
+  }
+
+  Future<void> fetchTotalVisitorsCount() async {
+    try {
+      final response = await supabase.from('visitor_logs').select('id');
+      totalVisitorsCount = (response as List).length;
+      notifyListeners();
+      debugPrint('📊 إجمالي عدد الزوار الحالي: $totalVisitorsCount');
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب عدد الزوار: $e');
+    }
   }
 
   // ==========================================
@@ -516,7 +545,7 @@ class AppState extends ChangeNotifier {
 
   void _loadAdminSession() async {
     final user = supabase.auth.currentUser;
-    isAdminLoggedIn = user != null; // تم تعديلها لتكون مرنة ومضمونة للمشرف
+    isAdminLoggedIn = user != null; 
     notifyListeners();
   }
 
@@ -743,7 +772,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       prefs.setString('userName', name);
       prefs.setString('userAddress', address);
-      prefs.setString('userPhone', phone); // 🔒 ضمان حفظ الهاتف محلياً
+      prefs.setString('userPhone', phone);
 
       try {
         await supabase.from('customers').upsert({
@@ -862,7 +891,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> addCourier(String name, String phone, String username, String password) async {
-    // تم إزالة قيد الـ isAdminLoggedIn الصارم هنا لمنع ظهور خطأ "يجب تسجيل دخول المشرف أولاً"
     if (password.length < 6) throw Exception('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف.');
     
     final email = '${username.trim().toLowerCase()}@courier.fast.local';
