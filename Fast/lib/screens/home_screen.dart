@@ -15,6 +15,7 @@ import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
+import 'customer/notifications_screen.dart'; // 👈 استيراد شاشة مركز الإشعارات الداخلية
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
@@ -1011,6 +1012,54 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
+              // 🔔 أيقونة جرس الإشعارات مع العداد الأحمر التفاعلي (مضاف حديثاً تماماً مثل تطبيقات الكبار)
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_rounded, color: Colors.amber, size: 26),
+                    tooltip: 'الإشعارات والتنبيهات',
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            return FadeTransition(opacity: animation, child: child);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                  if (appState.unreadNotificationsCount > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        child: Text(
+                          '${appState.unreadNotificationsCount}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
               IconButton(
                 icon: const Icon(Icons.two_wheeler, color: Colors.amber),
                 tooltip: 'لوحة المندوب',
