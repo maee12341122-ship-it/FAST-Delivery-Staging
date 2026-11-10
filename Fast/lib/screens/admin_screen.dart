@@ -445,7 +445,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           final cName = courier['name'].toString();
                           final cStatus = courier['status']?.toString() ?? 'available';
                           
-                          // حساب عدد الطلبات النشطة الحالية لهذا المندوب لمعرفته إذا كان مشغولاً
                           int activeCount = appState.orders.where((o) {
                             return o['assigned_courier'] == cName && 
                                    o['status'] != 'delivered' && 
@@ -485,7 +484,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       return;
                     }
 
-                    // 🔍 التحقق إذا كان المندوب لديه طلبات نشطة كثيرة وتنبيه المشرف مع إمكانية التحذير
                     int courierActiveOrders = appState.orders.where((o) {
                       return o['assigned_courier'] == courierName && 
                              o['status'] != 'delivered' && 
@@ -494,7 +492,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     }).length;
 
                     if (courierActiveOrders >= 2) {
-                      // تنبيه مرن للمشرف بأن المندوب لديه طلبات قيد التنفيذ
                       bool? confirmAssign = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => Directionality(
@@ -770,7 +767,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
           
-          ButtonIcon helper ...
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
