@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع دعم order_items
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع التقارير
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -35,6 +35,7 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
     await recordVisitorVisit(); 
     await fetchTotalVisitorsCount(); 
+    await fetchAdminFinancialReports(); // 👈 جلب التقارير المالية عند الإقلاع
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener(); 
@@ -106,6 +107,49 @@ class AppState extends ChangeNotifier {
       debugPrint('📊 إجمالي عدد الزوار الحالي: $totalVisitorsCount');
     } catch (e) {
       debugPrint('❌ خطأ في جلب عدد الزوار: $e');
+    }
+  }
+
+  // ==========================================
+  // --- 📈 قسم تقارير المبيعات والأرباح للمشرف ---
+  // ==========================================
+  double totalRevenue = 0.0;
+  int completedOrdersCount = 0;
+  int pendingOrdersCount = 0;
+  int cancelledOrdersCount = 0;
+
+  Future<void> fetchAdminFinancialReports() async {
+    try {
+      final response = await supabase.from('orders').select('total_price, status');
+      
+      double revenue = 0.0;
+      int completed = 0;
+      int pending = 0;
+      int cancelled = 0;
+
+      for (var order in response) {
+        final status = order['status']?.toString().trim();
+        final price = double.tryParse(order['total_price'].toString()) ?? 0.0;
+
+        if (status == 'delivered') {
+          revenue += price;
+          completed++;
+        } else if (status == 'cancelled' || status == 'cancelledByCustomer') {
+          cancelled++;
+        } else {
+          pending++;
+        }
+      }
+
+      totalRevenue = revenue;
+      completedOrdersCount = completed;
+      pendingOrdersCount = pending;
+      cancelledOrdersCount = cancelled;
+      
+      notifyListeners();
+      debugPrint('📊 تم تحديث تقارير المبيعات بنجاح: إجمالي الأرباح = $revenue');
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب تقارير المبيعات: $e');
     }
   }
 
@@ -1157,6 +1201,7 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
       _sortOrders();
+      await fetchAdminFinancialReports(); // تحديث التقارير عند جلب الطلبات
       notifyListeners();
 
       supabase
@@ -1183,6 +1228,7 @@ class AppState extends ChangeNotifier {
               }
 
               _sortOrders();
+              fetchAdminFinancialReports(); // تحديث التقارير فوراً عند أي تغيير لحظي
               notifyListeners();
             },
           )
@@ -1193,9 +1239,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// ===========================================================================
-  /// 📦 دالة إنشاء الطلب المحدثة (تدعم جدول orders وجدول order_items الجديد)
-  /// ===========================================================================
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -1223,7 +1266,6 @@ class AppState extends ChangeNotifier {
     try {
       debugPrint('🚀 جاري إرسال الطلب الآمن إلى Supabase...');
 
-      // 1. إدخال الطلب الأساسي في جدول orders
       final response = await supabase.from('orders').insert({
         'customer_name': customerName.trim(),
         'phone': normalizedPhone,
@@ -1237,9 +1279,9 @@ class AppState extends ChangeNotifier {
       }).select().single();
 
       final order = Map<String, dynamic>.from(response);
-      final orderId = order['id'];
 
-      // 2. إدخال تفاصيل المنتجات في جدول order_items الجديد
+      // حفظ تفاصيل المنتجات في جدول order_items الجديد
+      final orderId = order['id'];
       if (_cartItems.isNotEmpty && orderId != null) {
         final List> orderItemsRows = _cartItems.map((cartItem) {
           return {
@@ -1252,7 +1294,6 @@ class AppState extends ChangeNotifier {
         }).toList();
 
         await supabase.from('order_items').insert(orderItemsRows);
-        debugPrint('✅ تم حفظ تفاصيل المنتجات في جدول order_items بنجاح');
       }
 
       lastOrderTrackingCode = trackingCode;
@@ -1271,6 +1312,7 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       
       _cartItems.clear();
+      await fetchAdminFinancialReports(); // تحديث التقارير
       
       addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
@@ -1312,6 +1354,7 @@ class AppState extends ChangeNotifier {
         _sortOrders();
       }
 
+      await fetchAdminFinancialReports();
       addNotification('تم تسعير الطلب #$orderId 💰', 'تم تحديد رسوم التوصيل ($fee ر.ي).');
       notifyListeners();
     } catch (e) {
@@ -1352,6 +1395,7 @@ class AppState extends ChangeNotifier {
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) orders[index] = updated; else orders.add(updated);
     _sortOrders();
+    await fetchAdminFinancialReports();
     notifyListeners();
   }
 
@@ -1400,6 +1444,7 @@ class AppState extends ChangeNotifier {
     if (index >= 0) orders[index] = updated;
     else orders.add(updated);
     _sortOrders();
+    await fetchAdminFinancialReports();
     notifyListeners();
   }
 
