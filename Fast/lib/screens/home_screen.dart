@@ -132,12 +132,15 @@ class OrderTrackingScreen extends StatelessWidget {
                         onPressed: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
                                 orderId: orderId,
                                 userRole: 'customer',
                                 targetChat: 'admin_courier',
                               ),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
                             ),
                           );
                         },
@@ -201,7 +204,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   String selectedCategory = 'الكل';
   String? selectedRestaurantName;
@@ -611,7 +614,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: () async {
                           final result = await Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const MapLocationScreen()),
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => const MapLocationScreen(),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                            ),
                           );
                           if (result != null && result is Map) {
                             setDialogState(() {
@@ -1007,7 +1015,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.two_wheeler, color: Colors.amber),
                 tooltip: 'لوحة المندوب',
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const CourierScreen()));
+                  Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const CourierScreen(),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ),
+                  );
                 },
               ),
               IconButton(
@@ -1015,7 +1031,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: 'لوحة المشرف',
                 onPressed: () {
                   if (appState.isAdminLoggedIn) {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen()));
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const AdminScreen(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(opacity: animation, child: child);
+                        },
+                      ),
+                    );
                   } else {
                     final passwordController = TextEditingController();
                     final usernameController = TextEditingController();
@@ -1072,7 +1096,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
                               if (loginSuccess) {
                                 if (!context.mounted) return;
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen()));
+                                Navigator.push(
+                                  context,
+                                  PageRouteBuilder(
+                                    pageBuilder: (context, animation, secondaryAnimation) => const AdminScreen(),
+                                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                      return FadeTransition(opacity: animation, child: child);
+                                    },
+                                  ),
+                                );
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('مرحباً بك، تم تسجيل دخول المشرف بنجاح! 🚀')),
                                 );
@@ -1099,7 +1131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _currentIndex,
                 children: pages,
               ),
-              // 🌟 شريط سلة المشتريات العائم بالتصميم التفاعلي العصري
+              // 🌟 شريط سلة المشتريات العائم بالتصميم التفاعلي العصري مع اهتزاز ملموس
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -1177,13 +1209,16 @@ class _HomeScreenState extends State<HomeScreen> {
               if (index == 1 && appState.userProfile == null) {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => PhoneAuthScreen(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) => PhoneAuthScreen(
                       onLoginSuccess: () {
                         Navigator.pop(context);
                         setState(() => _currentIndex = 1);
                       },
                     ),
+                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
                   ),
                 );
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1371,7 +1406,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          // 🟢 شريط حالة التوفر والدوام
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
@@ -1396,7 +1430,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // 🌟 1. شريط عروض وقصص تفاعلي (Interactive Stories Slider)
+          // شريط عروض وقصص تفاعلي
           SizedBox(
             height: 95,
             child: ListView.builder(
@@ -1467,7 +1501,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // 🌟 2. شريط البحث التفاعلي والوسوم السريعة (Search Bar & Quick Tags)
+          // شريط البحث الذكي والوسوم السريعة
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
             child: Column(
@@ -1497,8 +1531,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   onChanged: (val) => setState(() {}),
                 ),
-
-                // الوسوم السريعة تحت البحث
                 const SizedBox(height: 8),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -1528,7 +1560,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          // 🟢 قسم عرض المطاعم / الوجبات
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
@@ -1600,7 +1631,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
 
-            // 🌟 3. شبكة منتجات عصرية بتأثيرات بصرية (Modern Grid Cards)
             filteredProducts.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(50.0),
@@ -1877,10 +1907,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => PhoneAuthScreen(
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => PhoneAuthScreen(
                         onLoginSuccess: () => Navigator.pop(context),
                       ),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                     ),
                   );
                 },
@@ -2011,8 +2044,11 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => OrderTrackingScreen(orderId: order['id'].toString()),
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderId: order['id'].toString()),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
                 ),
               );
             },
@@ -2050,12 +2086,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             onPressed: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (context) => ChatScreen(
+                                PageRouteBuilder(
+                                  pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
                                     orderId: order['id'].toString(),
                                     userRole: 'customer',
                                     targetChat: 'admin_customer',
                                   ),
+                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                    return FadeTransition(opacity: animation, child: child);
+                                  },
                                 ),
                               );
                             },
@@ -2206,7 +2245,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) => const PhoneAuthScreen(),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ),
                   );
                 },
                 child: const Text('تسجيل الدخول برقم الهاتف 📱', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
@@ -2253,21 +2297,36 @@ class _HomeScreenState extends State<HomeScreen> {
         _buildProfileItem(Icons.edit, 'تعديل البيانات الشخصية', cardBg, textColor, () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const EditProfileScreen(),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+            ),
           );
         }),
 
         _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const AddressesScreen()),
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const AddressesScreen(),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+            ),
           );
         }),
 
         _buildProfileItem(Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const FavoritesScreen()),
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const FavoritesScreen(),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+            ),
           );
         }),
 
