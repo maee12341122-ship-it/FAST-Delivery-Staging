@@ -637,7 +637,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 📱 [تم التحديث: التحقق من قاعدة البيانات وطلب واتساب عبر دالة super-task] ---
+  // --- 📱 [تم التصحيح والضبط نهائياً] ---
   Future> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
