@@ -162,7 +162,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
 
                           if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
-                            await NotificationService.sendNotificationToUser(
+                            await appState.sendAutoNotification(
                               targetPlayerId: receiverPlayerId,
                               title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
                               body: '$senderName: $text',
