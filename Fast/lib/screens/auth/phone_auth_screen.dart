@@ -56,7 +56,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر الـ Edge Function (`super-task`) وفحص قاعدة البيانات أولاً
+  // 1️⃣ إرسال كود OTP عبر الـ Edge Function (`super-task`) وفحص قاعدة البيانات أولاً مع حماية الـ finally
   Future<void> _sendSupabaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -101,32 +101,39 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           debugPrint('✅ تم إرسال الرمز للرقم الجديد.');
         }
 
-        setState(() {
-          _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
+          });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(data['exists'] == true 
-                ? 'أهلاً بك مجدداً! تم إرسال رمز التحقق إلى $_formattedPhone 💬' 
-                : 'تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
-            duration: const Duration(seconds: 5),
-          ),
-        );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['exists'] == true 
+                  ? 'أهلاً بك مجدداً! تم إرسال رمز التحقق إلى $_formattedPhone 💬' 
+                  : 'تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       } else {
         throw Exception(data?['message'] ?? 'فشل في الاتصال بالسيرفر');
       }
     } catch (e) {
-      setState(() => _isLoading = false);
       debugPrint('❌ خطأ في إرسال الرمز عبر واتساب: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فشل إرسال رمز واتساب: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل إرسال رمز واتساب: $e')),
+        );
+      }
+    } finally {
+      // 🔑 إيقاف مؤشر التحميل في كل الظروف لكي لا يعلق الزر
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل
+  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل مع حماية الـ finally
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -148,36 +155,42 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .eq('phone', _formattedPhone)
             .maybeSingle();
 
-        setState(() => _isLoading = false);
-
-        if (existingCustomer != null) {
-          // العميل موجود مسبقاً، نملأ البيانات للانتقال للمرحلة الأخيرة
-          _nameController.text = existingCustomer['name'] ?? '';
-          _addressController.text =
-              existingCustomer['address'] ?? 'تعز - ديلوكس';
-          setState(() {
-            _currentStep = 2;
-          });
-        } else {
-          // عميل جديد
-          appState.continueWithoutPhoneVerification(_formattedPhone);
-          setState(() {
-            _currentStep = 2;
-          });
+        if (mounted) {
+          if (existingCustomer != null) {
+            // العميل موجود مسبقاً، نملأ البيانات للانتقال للمرحلة الأخيرة
+            _nameController.text = existingCustomer['name'] ?? '';
+            _addressController.text =
+                existingCustomer['address'] ?? 'تعز - ديلوكس';
+            setState(() {
+              _currentStep = 2;
+            });
+          } else {
+            // عميل جديد
+            appState.continueWithoutPhoneVerification(_formattedPhone);
+            setState(() {
+              _currentStep = 2;
+            });
+          }
         }
       } else {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
+          );
+        }
       }
     } catch (e) {
-      setState(() => _isLoading = false);
       debugPrint('❌ خطأ في التحقق من OTP: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('حدث خطأ أثناء التحقق: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ أثناء التحقق: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -297,7 +310,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                       onPressed: _isLoading ? null : _sendSupabaseOTP,
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.black)
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                            )
                           : const Text('إرسال رمز التحقق عبر واتساب 💬',
                               style: TextStyle(
                                   color: Colors.black,
@@ -359,7 +376,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ? null
                           : () => _verifyOTPAndProceed(appState),
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.black)
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                            )
                           : const Text('تأكيد الرمز والمتابعة 🔑',
                               style: TextStyle(
                                   color: Colors.black,
