@@ -637,41 +637,51 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 📱 [تم التحديث لربط واتساب الحقيقي عبر Supabase Edge Function] ---
-  Future<void> requestOtpForPhone(String phone) async {
-    generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
-    debugPrint('🔑 رمز التحقق المؤقت: $generatedDynamicOtp');
-    
+  // --- 📱 [تم التحديث: التحقق من قاعدة البيانات وطلب واتساب عبر دالة super-task] ---
+  Future> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
 
     try {
-      debugPrint('🚀 جاري إرسال رمز التحقق عبر واتساب عبر دالة سوبابيس...');
+      debugPrint('🚀 جاري فحص رقم الهاتف عبر سوبابيس (super-task)...');
       
       final response = await supabase.functions.invoke(
-        'send-whatsapp-otp',
+        'super-task',
         body: {
-          'phone': formattedPhone, 
-          'otpCode': generatedDynamicOtp,
+          'phone': formattedPhone,
         },
       );
 
-      if (response.status == 200 || response.data != null) {
-        debugPrint('✅ تم إرسال الرمز عبر واتساب بنجاح!');
+      final data = response.data;
+      debugPrint('📥 استجابة السيرفر: $data');
+
+      if (data != null && data['success'] == true) {
+        if (data['exists'] == true) {
+          debugPrint('✅ المستخدم مسجل مسبقاً في قاعدة البيانات.');
+          return {'exists': true, 'message': data['message']};
+        } else {
+          generatedDynamicOtp = data['otp']?.toString() ?? '1234';
+          debugPrint('✅ الرقم جديد وتم طلب الرمز بنجاح.');
+          return {'exists': false, 'message': data['message']};
+        }
       } else {
-        debugPrint('⚠️ فشل الإرسال من السيرفر: ${response.data}');
+        throw Exception(data?['message'] ?? 'فشل في تنفيذ الطلب');
       }
     } catch (e) {
-      debugPrint('❌ خطأ أثناء استدعاء دالة إرسال الرمز عبر واتساب: $e');
-      // محاولة احتياطية عبر رابط الـ wa.me في حال تعطل الشبكة مؤقتاً
+      debugPrint('❌ خطأ أثناء استدعاء دالة Edge Function: $e');
+      
+      generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
+      
       openFastWhatsApp(
         message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
       ).catchError((err) { 
         debugPrint('WhatsApp unavailable: $err'); 
       });
-    }
 
-    notifyListeners();
+      return {'exists': false, 'message': 'تم استخدام الطريقة الاحتياطية للإرسال'};
+    } finally {
+      notifyListeners();
+    }
   }
 
   bool continueWithoutPhoneVerification(String phone) {
