@@ -367,6 +367,46 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           elevation: 2,
           title: const Text('لوحة تحكم المشرف - FAST', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           actions: [
+            // 🛎️ أيقونة الإشعارات مع عداد الطلبات بانتظار التسعير في لوحة المشرف
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
+                  tooltip: 'الطلبات بانتظار التسعير',
+                  onPressed: () {
+                    setState(() {
+                      _selectedNavIndex = 0; // الانتقال لتبويب الطلبات تلقائياً
+                    });
+                  },
+                ),
+                if (appState.orders.where((o) => o['status'] == 'waitingForPricing').isNotEmpty)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      child: Text(
+                        '${appState.orders.where((o) => o['status'] == 'waitingForPricing').length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             IconButton(
               icon: const Icon(Icons.logout, color: Colors.redAccent),
               tooltip: 'تسجيل خروج المشرف',
