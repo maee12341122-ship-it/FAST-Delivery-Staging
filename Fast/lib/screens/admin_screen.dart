@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -133,7 +133,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  // 📢 نافذة إدارة البنرات الترويجية للمشرف (عرض، إضافة، تعديل، حذف)
+  // 📢 نافذة إدارة البنرات الترويجية للمشرف
   void _showBannersManagementDialog(BuildContext context, AppState appState) {
     showDialog(
       context: context,
@@ -367,17 +367,57 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           elevation: 2,
           title: const Text('لوحة تحكم المشرف - FAST', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           actions: [
-            // 🛎️ أيقونة الإشعارات مع عداد الطلبات بانتظار التسعير في لوحة المشرف
+            // 🛎️ أيقونة الإشعارات المنبثقة والتنبيه الفوري للمشرف عند وجود طلبات جديدة
             Stack(
               alignment: Alignment.center,
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
-                  tooltip: 'الطلبات بانتظار التسعير',
+                  tooltip: 'سجل الإشعارات والطلبات الجديدة',
                   onPressed: () {
-                    setState(() {
-                      _selectedNavIndex = 0; // الانتقال لتبويب الطلبات تلقائياً
-                    });
+                    // إظهار نافذة منبثقة بسجل الإشعارات الفورية للمشرف
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: AlertDialog(
+                          backgroundColor: const Color(0xFF1E1E1E),
+                          title: const Row(
+                            children: [
+                              Icon(Icons.notifications, color: Colors.amber),
+                              SizedBox(width: 8),
+                              Text('إشعارات النظام الفورية 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                            ],
+                          ),
+                          content: SizedBox(
+                            width: double.maxFinite,
+                            height: 350,
+                            child: appState.notifications.isEmpty
+                                ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
+                                : ListView.builder(
+                                    itemCount: appState.notifications.length,
+                                    itemBuilder: (_, idx) {
+                                      final notif = appState.notifications[idx];
+                                      return Card(
+                                        color: const Color(0xFF121212),
+                                        margin: const EdgeInsets.symmetric(vertical: 4),
+                                        child: ListTile(
+                                          title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   },
                 ),
                 if (appState.orders.where((o) => o['status'] == 'waitingForPricing').isNotEmpty)
@@ -535,7 +575,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final paymentMethod = order['payment_method'] ?? 'cash';
         final paymentAccount = order['payment_account'] ?? '';
         final paymentDisplay = (paymentMethod == 'cash' || paymentMethod == 'cash_on_delivery')
-            ? '💵 نقداً عند الاستلاستلام'
+            ? '💵 نقداً عند الاستلام'
             : '💳 محفظة ($paymentMethod) - حساب: $paymentAccount';
 
         final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
@@ -579,7 +619,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 const SizedBox(height: 4),
                 Text('🛒 المنتجات: ${order['items_description']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 4),
-                Text('💰 سعر المنتجات: ${order['products_total']} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                Text('💰 سعر المنتجات: ${order['total_price']} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 4),
                 Container(
                   margin: const EdgeInsets.symmetric(vertical: 4),
