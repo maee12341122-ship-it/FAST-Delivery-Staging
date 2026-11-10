@@ -1,31 +1,92 @@
 workflows:
-  fast-taiz-web-pwa:
-    name: FAST Delivery - Web PWA 🌐
-    max_build_duration: 15
+  fast-taiz-android-apk:
+    name: FAST Delivery - Android APK 🚀
+    max_build_duration: 90
     environment:
       flutter: stable
+      vars:
+        PACKAGE_NAME: "com.example.taiz_express"
+    cache:
+      cache_paths: []
     scripts:
       - name: Check Flutter environment
         script: |
           set -e
           flutter --version
-      - name: Enable Flutter Web
+          java -version
+      - name: Prepare official Gradle wrapper
         script: |
           set -e
-          flutter config --enable-web
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            SEED_DIR="$(mktemp -d)"
+            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
+            cp "$SEED_DIR/seed/android/gradlew.bat" android/gradlew.bat
+            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            rm -rf "$SEED_DIR"
+          fi
+          chmod +x android/gradlew
+      - name: Configure Android SDK paths
+        script: |
+          set -e
+          FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}"
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$ANDROID_SDK" ]; then
+            echo "ANDROID_SDK_ROOT/ANDROID_HOME is not configured on the build machine."
+            exit 1
+          fi
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
       - name: Get Flutter packages
-        script: |
-          set -e
-          flutter pub get
-      - name: Build Web Release 🚀
-        script: |
-          set -e
-          flutter build web --release --no-pub
-      - name: Compress Web Artifacts 📦
-        script: |
-          set -e
-          cd build/web
-          zip -r ../web_pwa_release.zip .
+        script: flutter pub get
+      - name: Generate App Launcher Icon 🖼️
+        script: flutter pub run flutter_launcher_icons
+      - name: Build release APK
+        script: flutter build apk --release --android-skip-build-dependency-validation
     artifacts:
-      - build/web_pwa_release.zip
-      - build/web/**
+      - build/app/outputs/flutter-apk/*.apk
+      - flutter_drive.log
+
+  fast-taiz-google-play-aab:
+    name: FAST Delivery - Google Play AAB (signed)
+    max_build_duration: 90
+    environment:
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "com.example.taiz_express"
+    cache:
+      cache_paths: []
+    scripts:
+      - name: Check signing secrets
+        script: |
+          set -e
+          for name in CM_KEYSTORE_PATH CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
+          done
+          if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
+      - name: Prepare Android Gradle wrapper
+        script: |
+          set -e
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            SEED_DIR="$(mktemp -d)"
+            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
+            rm -rf "$SEED_DIR"
+          fi
+          chmod +x android/gradlew
+      - name: Configure Android SDK
+        script: |
+          set -e
+          FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}" 
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
+      - name: Get packages
+        script: flutter pub get
+      - name: Build signed Google Play bundle
+        script: |
+          set -e
+          flutter build appbundle --release --android-skip-build-dependency-validation
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
