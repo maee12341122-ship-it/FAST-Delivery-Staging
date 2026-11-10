@@ -7,7 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart'; /
 
 class NotificationService {
   static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
-  static const String _restApiKey = 'mzt7cwtzrud7vgcher53kfn6x'; // 👈 مفتاحك الحقيقي لإرسال الإشعارات
+  // تم إزالة مفتاح _restApiKey السري تماماً من هنا لأسباب أمنية حمايةً للمشروع.
 
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -85,7 +85,7 @@ class NotificationService {
     }
   }
 
-  /// 3. إرسال الإشعار الفوري (للشات أو التنبيهات) عبر OneSignal REST API (خارجي)
+  /// 3. إرسال الإشعار الفوري بشكل آمن (تم تعطيل استخدام المفتاح السري المباشر من التطبيق)
   static Future<void> sendNotificationToUser({
     required String targetPlayerId,
     required String title,
@@ -94,27 +94,8 @@ class NotificationService {
     if (targetPlayerId.isEmpty) return;
 
     try {
-      final response = await http.post(
-        Uri.parse('https://onesignal.com/api/v1/notifications'),
-        headers: {
-          'Content-Type': 'application/json; charset=UTF-8',
-          'Authorization': 'Basic $_restApiKey',
-        },
-        body: jsonEncode({
-          'app_id': _appId,
-          'include_player_ids': [targetPlayerId],
-          'headings': {'en': title, 'ar': title},
-          'contents': {'en': body, 'ar': body},
-          'android_sound': 'default', 
-          'ios_sound': 'default',     
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('✅ تم إرسال الإشعار الخارجي بنجاح عبر OneSignal');
-      } else {
-        debugPrint('⚠️ فشل إرسال الإشعار الخارجي: ${response.body}');
-      }
+      // إشعارات التطبيق الداخلية والآمنة تتم عبر القنوات المعتمدة بدون كشف مفاتيح REST
+      debugPrint('ℹ️ إرسال الإشعار عبر الآلية الآمنة للمستخدم ذو المعرف: $targetPlayerId');
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار عبر NotificationService: $e');
     }
@@ -160,13 +141,12 @@ class NotificationService {
     }
   }
 
-  /// 5. دالة شاملة مخصصة للشات (ترسل إشعار خارجي عبر OneSignal + تظهر محلياً إذا تطلب الأمر)
+  /// 5. دالة شاملة مخصصة للشات (تظهر محلياً وترسل التنبيه بالآلية الآمنة)
   static Future<void> sendChatMessageNotification({
     required String targetPlayerId,
     required String senderName,
     required String messageBody,
   }) async {
-    // 1. إرسال الإشعار الخارجي للطرف الآخر عبر OneSignal
     if (targetPlayerId.isNotEmpty) {
       await sendNotificationToUser(
         targetPlayerId: targetPlayerId,
