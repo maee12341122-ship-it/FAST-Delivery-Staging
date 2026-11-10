@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع التقارير
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة مع الكوبونات والتقارير
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -35,7 +35,7 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
     await recordVisitorVisit(); 
     await fetchTotalVisitorsCount(); 
-    await fetchAdminFinancialReports(); // 👈 جلب التقارير المالية عند الإقلاع
+    await fetchAdminFinancialReports(); 
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener(); 
@@ -151,6 +151,65 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ خطأ في جلب تقارير المبيعات: $e');
     }
+  }
+
+  // ==========================================
+  // --- 🎟️ قسم كوبونات الخصم والعروض ---
+  // ==========================================
+  String? activeCouponCode;
+  double couponDiscountAmount = 0.0;
+
+  Future<String> applyCouponCode(String code, double cartSubtotal) async {
+    if (code.trim().isEmpty) {
+      return 'الرجاء إدخال رمز الكوبون ⚠️';
+    }
+
+    try {
+      final cleanCode = code.trim().toUpperCase();
+      final response = await supabase
+          .from('coupons')
+          .select()
+          .eq('code', cleanCode)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (response == null) {
+        return 'عذراً، هذا الكوبون غير موجود أو غير صالح ❌';
+      }
+
+      final int maxUses = int.tryParse(response['max_uses'].toString()) ?? 100;
+      final int timesUsed = int.tryParse(response['times_used'].toString()) ?? 0;
+
+      if (timesUsed >= maxUses) {
+        return 'عذراً، انتهت صلاحية هذا الكوبون (استنفذ الحد الأقصى للاستخدام) 🚫';
+      }
+
+      final double discountValue = double.tryParse(response['discount_percentage'].toString()) ?? 0.0;
+      final String discountType = response['discount_type']?.toString() ?? 'percentage';
+
+      if (discountType == 'percentage') {
+        couponDiscountAmount = (cartSubtotal * discountValue) / 100;
+      } else {
+        couponDiscountAmount = discountValue;
+      }
+
+      if (couponDiscountAmount > cartSubtotal) {
+        couponDiscountAmount = cartSubtotal;
+      }
+
+      activeCouponCode = cleanCode;
+      notifyListeners();
+      return 'تم تطبيق الكوبون بنجاح! خصم بقيمة ${couponDiscountAmount.toStringAsFixed(0)} ر.ي 🎉';
+    } catch (e) {
+      debugPrint('❌ خطأ في تطبيق الكوبون: $e');
+      return 'حدث خطأ أثناء التحقق من الكوبون. حاول مرة أخرى.';
+    }
+  }
+
+  void removeCoupon() {
+    activeCouponCode = null;
+    couponDiscountAmount = 0.0;
+    notifyListeners();
   }
 
   // ==========================================
@@ -1023,6 +1082,7 @@ class AppState extends ChangeNotifier {
 
   void clearCart() {
     _cartItems.clear();
+    removeCoupon(); // مسح الكوبون أيضاً عند تفريغ السلة
     notifyListeners();
   }
 
@@ -1201,7 +1261,7 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
       _sortOrders();
-      await fetchAdminFinancialReports(); // تحديث التقارير عند جلب الطلبات
+      await fetchAdminFinancialReports(); 
       notifyListeners();
 
       supabase
@@ -1228,7 +1288,7 @@ class AppState extends ChangeNotifier {
               }
 
               _sortOrders();
-              fetchAdminFinancialReports(); // تحديث التقارير فوراً عند أي تغيير لحظي
+              fetchAdminFinancialReports(); 
               notifyListeners();
             },
           )
@@ -1280,7 +1340,6 @@ class AppState extends ChangeNotifier {
 
       final order = Map<String, dynamic>.from(response);
 
-      // حفظ تفاصيل المنتجات في جدول order_items الجديد
       final orderId = order['id'];
       if (_cartItems.isNotEmpty && orderId != null) {
         final List> orderItemsRows = _cartItems.map((cartItem) {
@@ -1312,7 +1371,8 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       
       _cartItems.clear();
-      await fetchAdminFinancialReports(); // تحديث التقارير
+      removeCoupon(); // مسح الكوبون بعد إتمام الطلب بنجاح
+      await fetchAdminFinancialReports(); 
       
       addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
