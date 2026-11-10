@@ -404,6 +404,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _addressDescriptionController.text = appState.userProfile?['address'] ?? '';
       }
       _previousUnreadCount = appState.unreadNotificationsCount;
+
+      // 🔒 فحص وإظهار نافذة سياسة الخصوصية إذا لم يوافق عليها المستخدم بعد
+      _checkAndShowPrivacyPolicyDialog(context, appState);
     });
   }
 
@@ -418,6 +421,98 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _addressDescriptionController.dispose();
     _paymentAccountController.dispose();
     super.dispose();
+  }
+
+  // 📢 نافذة سياسة الخصوصية والاستخدام التي تظهر فور فتح التطبيق
+  void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
+    // يمكنك تعديل الشرط حسب حفظ حالة الموافقة محلياً
+    bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy ?? false;
+
+    if (!hasAcceptedPrivacy) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // يمنع إغلاق النافذة بدون موافقة أو خروج
+        builder: (context) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: Colors.amber.withOpacity(0.5), width: 1.5),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.shield_outlined, color: Colors.amber, size: 26),
+                SizedBox(width: 8),
+                Text(
+                  'سياسة الخصوصية والاستخدام 🛡️',
+                  style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'مرحباً بك في تطبيق FAST – تعز! نحن نحرص على حماية بياناتك وتقديم أسرع خدمة توصيل.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.4),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPrivacyPoint('1️⃣ جمع البيانات:', 'نجمع اسمك، رقم هاتفك، وعنوانك لغرض إتمام التوصيل والتواصل معك بشأن الطلب.'),
+                    const SizedBox(height: 8),
+                    _buildPrivacyPoint('2️⃣ بيانات الموقع (GPS):', 'نستخدم موقعك الجغرافي لتحديد مكان التسليم بدقة وتسهيل الوصول إليك عبر الكابتن.'),
+                    const SizedBox(height: 8),
+                    _buildPrivacyPoint('3️⃣ سرية البيانات:', 'بياناتك الشخصية مشفرة وآمنة تماماً ولن يتم مشاركتها مع أي طرف ثالث خارج إطار خدمة التوصيل.'),
+                    const SizedBox(height: 8),
+                    _buildPrivacyPoint('4️⃣ الدفع والأسعار:', 'يتم تحديد رسوم التوصيل بشفافية بعد مراجعة الإدارة، والدفع يتم نقداً عند الاستلام.'),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'باستخدامك للتطبيق، فإنك توافق على الشروط وسياسة الخصوصية الموضحة أعلاه.',
+                      style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  SystemNavigator.pop(); // خروج من التطبيق عند الرفض
+                },
+                child: const Text('رفض وخروج ❌', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  appState.setPrivacyPolicyAccepted(true);
+                  Navigator.pop(context);
+                },
+                child: const Text('موافق واستمرار 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildPrivacyPoint(String title, String desc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+        const SizedBox(height: 2),
+        Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 12, height: 1.3)),
+      ],
+    );
   }
 
   Future<void> _launchWhatsApp() async {
@@ -2967,6 +3062,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, () {
           _showHowToUseDialog(context, cardBg, textColor);
+        }),
+
+        // 🛡️ زر إعادة فتح وقراءة سياسة الخصوصية من صفحة الحساب الشخصي
+        _buildProfileItem(Icons.privacy_tip_outlined, 'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, () {
+          appState.setPrivacyPolicyAccepted(false);
+          _checkAndShowPrivacyPolicyDialog(context, appState);
         }),
 
         _buildProfileItem(Icons.dark_mode, 'مظهر التطبيق (${appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})', cardBg, textColor, () {
