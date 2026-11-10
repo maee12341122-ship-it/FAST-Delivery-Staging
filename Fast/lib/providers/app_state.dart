@@ -520,7 +520,7 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, dynamic>? userProfile;
-  String? generatedDynamicOtp;
+  dynamic generatedDynamicOtp;
   String? lastOrderTrackingCode;
 
   dynamic get user => userProfile == null ? null : _UserMock(userProfile!['name'] ?? '', userProfile!['phone'] ?? '');
@@ -637,8 +637,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 📱 [تم التصحيح والضبط نهائياً] ---
-  Future> requestOtpForPhone(String phone) async {
+  // --- 📱 بدون تحديد نوع صارم لتجنب مشاكل البناء ---
+  Future<dynamic> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     final formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
 
