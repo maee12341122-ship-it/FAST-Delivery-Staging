@@ -56,7 +56,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP الفعلي عبر WhatsApp Edge Function في Supabase
+  // 1️⃣ إرسال كود OTP عبر الـ Edge Function (`super-task`) وفحص قاعدة البيانات أولاً
   Future<void> _sendSupabaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -80,29 +80,43 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
       _formattedPhone = formattedPhone;
 
-      // توليد رمز عشوائي مكون من 4 أرقام للإرسال
-      _generatedOtp = (1000 + Random().nextInt(9000)).toString();
-
-      // استدعاء دالة Supabase Edge Function لإرسال الرمز عبر واتساب
+      // استدعاء دالة Supabase Edge Function (`super-task`) لفحص القاعدة وطلب الرمز
       final response = await _supabase.functions.invoke(
-        'send-whatsapp-otp',
+        'super-task',
         body: {
-          'phone': _formattedPhone, 
-          'otpCode': _generatedOtp,
+          'phone': _formattedPhone,
         },
       );
 
-      setState(() {
-        _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
-        _isLoading = false;
-      });
+      final data = response.data;
+      debugPrint('📥 استجابة فحص السيرفر: $data');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      if (data != null && data['success'] == true) {
+        if (data['exists'] == true) {
+          // المستخدم مسجل مسبقاً في قاعدة البيانات
+          debugPrint('✅ العميل مسجل مسبقاً.');
+        } else {
+          // عميل جديد، تم توليد الرمز وإرساله
+          _generatedOtp = data['otp']?.toString() ?? '1234';
+          debugPrint('✅ تم إرسال الرمز للرقم الجديد.');
+        }
+
+        setState(() {
+          _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['exists'] == true 
+                ? 'أهلاً بك مجدداً! تم إرسال رمز التحقق إلى $_formattedPhone 💬' 
+                : 'تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        throw Exception(data?['message'] ?? 'فشل في الاتصال بالسيرفر');
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       debugPrint('❌ خطأ في إرسال الرمز عبر واتساب: $e');
@@ -126,7 +140,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
     try {
       // التحقق من صحة الرمز (المطابقة مع الرمز المُولد أو الرمز التجريبي 1234)
-      if (otpCode == _generatedOtp || otpCode == '1234') {
+      if (otpCode == _generatedOtp || otpCode == '1234' || otpCode == appState.generatedDynamicOtp) {
         // فحص السجل في قاعدة بيانات Supabase جدول customers
         final existingCustomer = await _supabase
             .from('customers')
