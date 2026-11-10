@@ -223,15 +223,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final Set<String> _shownPricingDialogs = {};
 
-  // عروض وقصص تفاعلية سريعة
-  final List> _heroStories = [
+  // عروض وقصص تفاعلية سريعة (بدون أقواس أنواع List نهائياً)
+  final List _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
     {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
     {'title': 'خضار وطازج 🥦', 'subtitle': 'أسعار يومية', 'category': 'الخضار والفواكه'},
     {'title': 'الصيدلية 💊', 'subtitle': 'توصيل آمن', 'category': 'الصيدلية الآمنة'},
   ];
 
-  final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
+  final List _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
 
   @override
   void initState() {
@@ -1012,7 +1012,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
-              // 🔔 أيقونة جرس الإشعارات مع العداد الأحمر التفاعلي (مضاف حديثاً تماماً مثل تطبيقات الكبار)
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -1180,7 +1179,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 index: _currentIndex,
                 children: pages,
               ),
-              // 🌟 شريط سلة المشتريات العائم بالتصميم التفاعلي العصري مع اهتزاز ملموس
               if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
                 Positioned(
                   left: 16,
@@ -1416,19 +1414,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final searchQuery = _searchController.text.trim().toLowerCase();
 
-    List<String> uniqueRestaurants = [];
-    List<ProductModel> filteredProducts = [];
+    List uniqueRestaurants = [];
+    List filteredProducts = [];
 
     if (selectedCategory == 'المطاعم') {
       if (selectedRestaurantName == null) {
-        uniqueRestaurants = (appState.products as List)
-            .map((e) => e as ProductModel)
+        uniqueRestaurants = appState.products
             .where((p) => p.category.trim() == 'المطاعم')
             .map((p) => p.restaurantName)
             .toSet()
             .toList();
       } else {
-        filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
+        filteredProducts = appState.products.where((p) {
           final matchesCategory = p.category.trim() == 'المطاعم';
           final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
           final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
@@ -1436,7 +1433,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         }).toList();
       }
     } else {
-      filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
+      filteredProducts = appState.products.where((p) {
         final matchesCategory = selectedCategory == 'الكل' || p.category.trim() == selectedCategory.trim();
         final matchesSearch = searchQuery.isEmpty ||
             p.name.toLowerCase().contains(searchQuery) ||
@@ -1479,7 +1476,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // شريط عروض وقصص تفاعلي
           SizedBox(
             height: 95,
             child: ListView.builder(
@@ -1550,7 +1546,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
 
-          // شريط البحث الذكي والوسوم السريعة
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
             child: Column(
