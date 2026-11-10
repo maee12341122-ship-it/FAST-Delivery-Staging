@@ -15,8 +15,9 @@ class AdminScreen extends StatefulWidget {
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> {
+class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
   int _selectedNavIndex = 0;
+  late TabController _ordersTabController;
 
   final TextEditingController _courierNameController = TextEditingController();
   final TextEditingController _courierPhoneController = TextEditingController();
@@ -26,7 +27,14 @@ class _AdminScreenState extends State<AdminScreen> {
   final Map<String, TextEditingController> _feeControllers = {};
 
   @override
+  void initState() {
+    super.initState();
+    _ordersTabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
   void dispose() {
+    _ordersTabController.dispose();
     _courierNameController.dispose();
     _courierPhoneController.dispose();
     _courierUsernameController.dispose();
@@ -42,15 +50,18 @@ class _AdminScreenState extends State<AdminScreen> {
       case 'waitingForPricing': return '⏳ بانتظار التسعير';
       case 'pricingSentToCustomer': return '🔔 بانتظار موافقة العميل';
       case 'waitingCourierApproval': return '🛵 بانتظار قبول المندوب';
+      case 'acceptedByCourier': return '🚀 وافق المندوب';
       case 'onTheWay': return '🟢 المندوب في الطريق';
-      case 'arrived': return '📍 المندوب وصل لموقع العميل';
+      case 'arrived':
+      case 'arrivedToCustomer': return '📍 وصل المندوب للموقع';
       case 'delivered': return '✅ تم التسليم';
-      case 'cancelledByCustomer': return '❌ ملغى من العميل';
+      case 'cancelled':
+      case 'cancelledByCustomer': return '❌ ملغى';
       default: return status;
     }
   }
 
-  // 🌟 نافذة عرض تقييمات وملاحظات المطاعم للمشرف (نسخة مضمونة 100%)
+  // 🌟 نافذة عرض تقييمات وملاحظات المطاعم للمشرف
   void _showRestaurantRatingsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -154,7 +165,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final appState = context.watch<AppState>();
 
     final List<Widget> adminPages = [
-      _buildOrdersManagement(appState),
+      _buildOrdersManagementWithTabs(appState),
       _buildProductsManagement(appState),
       _buildCouriersManagement(appState),
       _buildSettingsTab(appState),
@@ -244,16 +255,52 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  Widget _buildOrdersManagement(AppState appState) {
-    if (appState.orders.isEmpty) {
-      return const Center(child: Text('لا توجد طلبات جديدة حالياً 📦', style: TextStyle(color: Colors.grey, fontSize: 15)));
+  // 📑 إدارة الطلبات مع التبويبات
+  Widget _buildOrdersManagementWithTabs(AppState appState) {
+    final activeOrders = appState.orders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
+    final completedOrders = appState.orders.where((o) => o['status'] == 'delivered').toList();
+    final cancelledOrders = appState.orders.where((o) => o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer').toList();
+
+    return Column(
+      children: [
+        Container(
+          color: const Color(0xFF1E1E1E),
+          child: TabBar(
+            controller: _ordersTabController,
+            labelColor: Colors.amber,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.amber,
+            tabs: [
+              Tab(text: 'النشطة (${activeOrders.length})'),
+              Tab(text: 'المكتملة (${completedOrders.length})'),
+              Tab(text: 'الملغية (${cancelledOrders.length})'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _ordersTabController,
+            children: [
+              _buildOrdersList(appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
+              _buildOrdersList(appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
+              _buildOrdersList(appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOrdersList(AppState appState, List ordersList, String emptyMessage) {
+    if (ordersList.isEmpty) {
+      return Center(child: Text(emptyMessage, style: const TextStyle(color: Colors.grey, fontSize: 15)));
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: appState.orders.length,
+      itemCount: ordersList.length,
       itemBuilder: (context, index) {
-        final order = appState.orders[index];
+        final order = ordersList[index];
         final orderId = order['id'].toString();
         final rawStatus = order['status'] ?? '';
         final arabicStatus = _getArabicStatus(rawStatus);
@@ -395,9 +442,22 @@ class _AdminScreenState extends State<AdminScreen> {
                             ? order['assigned_courier']
                             : null,
                         items: appState.couriers.map<DropdownMenuItem<String>>((courier) {
+                          final cName = courier['name'].toString();
+                          final cStatus = courier['status']?.toString() ?? 'available';
+                          
+                          // حساب عدد الطلبات النشطة الحالية لهذا المندوب لمعرفته إذا كان مشغولاً
+                          int activeCount = appState.orders.where((o) {
+                            return o['assigned_courier'] == cName && 
+                                   o['status'] != 'delivered' && 
+                                   o['status'] != 'cancelled' && 
+                                   o['status'] != 'cancelledByCustomer';
+                          }).length;
+
+                          String statusLabel = cStatus == 'busy' || activeCount >= 2 ? ' 🔴 (مشغول - لديه $activeCount طلب)' : ' 🟢 (متاح)';
+
                           return DropdownMenuItem<String>(
-                            value: courier['name'].toString(),
-                            child: Text(courier['name'].toString(), style: const TextStyle(color: Colors.white)),
+                            value: cName,
+                            child: Text('$cName$statusLabel', style: TextStyle(color: activeCount >= 2 ? Colors.orangeAccent : Colors.white, fontSize: 12)),
                           );
                         }).toList(),
                         onChanged: isLocked ? null : (val) {
@@ -419,9 +479,42 @@ class _AdminScreenState extends State<AdminScreen> {
                   onPressed: isLocked ? null : () async {
                     final fee = double.tryParse(_feeControllers[orderId]?.text ?? '0') ?? 0.0;
                     final courierName = order['assigned_courier'] ?? 'لم يتم التعيين';
+                    
                     if (courierName == 'لم يتم التعيين') {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار مندوب أولاً')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار مندوب أولاً ⚠️')));
                       return;
+                    }
+
+                    // 🔍 التحقق إذا كان المندوب لديه طلبات نشطة كثيرة وتنبيه المشرف مع إمكانية التحذير
+                    int courierActiveOrders = appState.orders.where((o) {
+                      return o['assigned_courier'] == courierName && 
+                             o['status'] != 'delivered' && 
+                             o['status'] != 'cancelled' && 
+                             o['status'] != 'cancelledByCustomer';
+                    }).length;
+
+                    if (courierActiveOrders >= 2) {
+                      // تنبيه مرن للمشرف بأن المندوب لديه طلبات قيد التنفيذ
+                      bool? confirmAssign = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E1E),
+                            title: const Text('تنبيه: المندوب مشغول! ⚠️', style: TextStyle(color: Colors.amber)),
+                            content: Text('الكابتن ($courierName) لديه بالفعل ($courierActiveOrders) طلبات نشطة حالياً. هل أنت متأكد من إسناد طلب إضافي له أم تود اختيار مندوب آخر؟', style: const TextStyle(color: Colors.white70)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('اختيار غيره ❌', style: TextStyle(color: Colors.grey))),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                                onPressed: () => Navigator.pop(ctx, true), 
+                                child: const Text('إسناد رغم ذلك 🚀', style: TextStyle(color: Colors.black)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      if (confirmAssign != true) return;
                     }
                     
                     appState.setOrderDeliveryFee(orderId, fee, courierName);
@@ -442,7 +535,9 @@ class _AdminScreenState extends State<AdminScreen> {
                       debugPrint('⚠️ خطأ في إرسال الإشعار التلقائي للعميل: $e');
                     }
 
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديد الرسوم وإرسال الإشعار للعميل بنجاح! ✅')));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديد الرسوم وإسناد الطلب للمندوب بنجاح! ✅')));
+                    }
                   },
                   child: Text(
                     isLocked ? 'الطلب مؤكد ومقفل 🔒' : 'إرسال التسعيرة وإسناد الطلب للمندوب 🚀',
@@ -675,6 +770,7 @@ class _AdminScreenState extends State<AdminScreen> {
           const Text('تقارير وأرباح المتجر والتوصيل', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
           
+          ButtonIcon helper ...
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
