@@ -224,6 +224,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final Set<String> _shownPricingDialogs = {};
 
+  // 🌟 متحكم الـ Animation للإشعار المنبثق المتحرك بجوار الجرس
+  late AnimationController _popupAnimController;
+  late Animation<double> _popupScaleAnimation;
+  int _previousUnreadCount = 0;
+  bool _showPopupBadge = false;
+
   final List _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
     {'title': 'مستودع البقالة 🛒', 'subtitle': 'توصيل مباشر', 'category': 'البقالات'},
@@ -236,6 +242,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    
+    // تهيئة متحكم الإشعار المنبثق المتحرك
+    _popupAnimController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _popupScaleAnimation = CurvedAnimation(
+      parent: _popupAnimController,
+      curve: Curves.elasticOut,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final appState = Provider.of<AppState>(context, listen: false);
       appState.fetchStoreSettings();
@@ -246,11 +263,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _phoneController.text = appState.userProfile?['phone'] ?? '';
         _addressDescriptionController.text = appState.userProfile?['address'] ?? '';
       }
+      _previousUnreadCount = appState.unreadNotificationsCount;
     });
   }
 
   @override
   void dispose() {
+    _popupAnimController.dispose();
     _searchController.dispose();
     _customItemNameController.dispose();
     _customItemPriceController.dispose();
@@ -992,6 +1011,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
 
+    // 🌟 تفعيل ظهور الإشعار المنبثق المتحرك بجوار الجرس مع كل حركة/تنبيه جديد
+    if (appState.unreadNotificationsCount > _previousUnreadCount) {
+      _popupAnimController.forward(from: 0.0);
+      setState(() {
+        _showPopupBadge = true;
+      });
+      // إخفاء الـ Popup تلقائياً بعد 4 ثواني
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) {
+          _popupAnimController.reverse().then((_) {
+            if (mounted) setState(() => _showPopupBadge = false);
+          });
+        }
+      });
+      _previousUnreadCount = appState.unreadNotificationsCount;
+    } else if (appState.unreadNotificationsCount < _previousUnreadCount) {
+      _previousUnreadCount = appState.unreadNotificationsCount;
+    }
+
     final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
@@ -1035,50 +1073,90 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
-              Stack(
-                alignment: Alignment.center,
+              // 🌟 إشعار منبثق متحرك يظهر بجوار أيقونة الجرس مع كل حركة جديدة
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_rounded, color: Colors.amber, size: 26),
-                    tooltip: 'الإشعارات والتنبيهات',
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      Navigator.push(
-                        context,
-                        PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
-                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                            return FadeTransition(opacity: animation, child: child);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                  if (appState.unreadNotificationsCount > 0)
-                    Positioned(
-                      top: 8,
-                      right: 8,
+                  if (_showPopupBadge)
+                    ScaleTransition(
+                      scale: _popupScaleAnimation,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        margin: const EdgeInsets.only(left: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.5),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          '${appState.unreadNotificationsCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.bolt, size: 12, color: Colors.black),
+                            SizedBox(width: 2),
+                            Text(
+                              'إشعار جديد!',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_rounded, color: Colors.amber, size: 26),
+                        tooltip: 'الإشعارات والتنبيهات',
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          Navigator.push(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                      if (appState.unreadNotificationsCount > 0)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              '${appState.unreadNotificationsCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
 
@@ -1198,7 +1276,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           body: Column(
             children: [
-              _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت يظهر هنا لحظياً
+              _buildNetworkStatusBar(appState),
               Expanded(
                 child: Stack(
                   children: [
