@@ -375,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late Animation<double> _popupScaleAnimation;
   int _previousUnreadCount = 0;
   bool _showPopupBadge = false;
+  String _latestNotificationText = 'إشعار جديد!';
 
   final List _heroStories = [
     {'title': 'وجبة اليوم 🍔', 'subtitle': 'خصومات المطاعم', 'category': 'المطاعم'},
@@ -625,129 +626,149 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // 4. تعديل نافذة تفاصيل ومواصفات المنتج المنبثقة لتظهر في المنتصف كـ Dialog أنيق
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 16,
-            right: 16,
-            top: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      'خصائص وإضافات: ${product.name}',
-                      style: TextStyle(
-                        color: appState.isDarkMode ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+        builder: (context, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+            ),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    product.name,
+                    style: TextStyle(
+                      color: appState.isDarkMode ? Colors.white : Colors.black87,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.grey),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const Divider(color: Colors.grey),
-              const SizedBox(height: 8),
-              
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 250),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: appState.productModifiers.length,
-                  itemBuilder: (context, index) {
-                    final mod = appState.productModifiers[index];
-                    final modName = mod['option_name']?.toString() ?? '';
-                    final double modPrice = double.tryParse(mod['additional_price']?.toString() ?? '0') ?? 0.0;
-                    final bool isSelected = selectedModifiers.contains(modName);
-
-                    return CheckboxListTile(
-                      activeColor: Colors.amber,
-                      checkColor: Colors.black,
-                      title: Text(
-                        modName,
-                        style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (product.imageUrl.isNotEmpty)
+                      Center(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(product.imageUrl, height: 110, width: 110, fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => const Icon(Icons.fastfood, size: 50, color: Colors.amber),
+                          ),
+                        ),
                       ),
-                      subtitle: modPrice > 0
-                          ? Text('+$modPrice ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
-                          : null,
-                      value: isSelected,
-                      onChanged: (bool? value) {
-                        setModalState(() {
-                          if (value == true) {
-                            selectedModifiers.add(modName);
-                            additionalTotalPrice += modPrice;
-                          } else {
-                            selectedModifiers.remove(modName);
-                            additionalTotalPrice -= modPrice;
-                          }
-                        });
-                      },
-                    );
-                  },
+                    const SizedBox(height: 12),
+                    Text(
+                      product.description.isNotEmpty ? product.description : 'اختر الإضافات المناسبة:',
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    const Divider(color: Colors.grey, height: 20),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: appState.productModifiers.length,
+                        itemBuilder: (context, index) {
+                          final mod = appState.productModifiers[index];
+                          final modName = mod['option_name']?.toString() ?? '';
+                          final double modPrice = double.tryParse(mod['additional_price']?.toString() ?? '0') ?? 0.0;
+                          final bool isSelected = selectedModifiers.contains(modName);
+
+                          return CheckboxListTile(
+                            activeColor: Colors.amber,
+                            checkColor: Colors.black,
+                            title: Text(
+                              modName,
+                              style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
+                            ),
+                            subtitle: modPrice > 0
+                                ? Text('+$modPrice ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
+                                : null,
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  selectedModifiers.add(modName);
+                                  additionalTotalPrice += modPrice;
+                                } else {
+                                  selectedModifiers.remove(modName);
+                                  additionalTotalPrice -= modPrice;
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('السعر الإجمالي:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        Text(
+                          '${product.price + additionalTotalPrice} ر.ي',
+                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'السعر الإجمالي: ${product.price + additionalTotalPrice} ر.ي',
-                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: () {
-                      String finalProductName = product.name;
-                      if (selectedModifiers.isNotEmpty) {
-                        finalProductName += ' (الإضافات: ${selectedModifiers.join(', ')})';
-                      }
-
-                      appState.addToCart(CartItemModel(
-                        id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
-                        name: finalProductName,
-                        price: product.price + additionalTotalPrice,
-                        quantity: 1,
-                        restaurantId: product.restaurantName,
-                        imageUrl: product.imageUrl,
-                      ));
-
-                      Navigator.pop(context);
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('تمت إضافة ${product.name} مع إضافاته للسلة بنجاح ✅')),
-                      );
-                    },
-                    child: const Text('إضافة للسلة 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
               ),
-              const SizedBox(height: 20),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  String finalProductName = product.name;
+                  if (selectedModifiers.isNotEmpty) {
+                    finalProductName += ' (الإضافات: ${selectedModifiers.join(', ')})';
+                  }
+
+                  appState.addToCart(CartItemModel(
+                    id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
+                    name: finalProductName,
+                    price: product.price + additionalTotalPrice,
+                    quantity: 1,
+                    restaurantId: product.restaurantName,
+                    imageUrl: product.imageUrl,
+                  ));
+
+                  Navigator.pop(context);
+                  HapticFeedback.lightImpact();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('تمت إضافة ${product.name} مع الإضافات للسلة بنجاح ✅')),
+                  );
+                },
+                child: const Text('أضف للسلة 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
         ),
@@ -1527,6 +1548,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final appState = Provider.of<AppState>(context);
 
     if (appState.unreadNotificationsCount > _previousUnreadCount) {
+      // 3. جلب نص الإشعار الحقيقي الفعلي وعرضه بدلاً من النص الثابت
+      _latestNotificationText = appState.latestNotificationMessage ?? 'لديك إشعار جديد!';
       _popupAnimController.forward(from: 0.0);
       setState(() {
         _showPopupBadge = true;
@@ -1593,11 +1616,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ScaleTransition(
                       scale: _popupScaleAnimation,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         margin: const EdgeInsets.only(left: 4),
                         decoration: BoxDecoration(
                           color: Colors.amber,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.amber.withOpacity(0.5),
@@ -1606,17 +1629,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             ),
                           ],
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.bolt, size: 12, color: Colors.black),
-                            SizedBox(width: 2),
-                            Text(
-                              'إشعار جديد!',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                            const Icon(Icons.bolt, size: 14, color: Colors.black),
+                            const SizedBox(width: 4),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 150),
+                              child: Text(
+                                _latestNotificationText,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -2551,6 +2578,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // 1. زر الزيادة والنقصان داخل السلة قبل تأكيد الطلب
   Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile == null) {
       return Center(
@@ -2618,12 +2646,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   color: cardBg,
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    title: Text(item.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-                    subtitle: Text('السعر: ${item.price} ر.ي | الكمية: ${item.quantity} | الإجمالي: ${item.price * item.quantity} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                      onPressed: () => appState.removeFromCart(item.id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                              const SizedBox(height: 4),
+                              Text('السعر: ${item.price} ر.ي | الإجمالي: ${item.price * item.quantity} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: Colors.amber, size: 22),
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                appState.updateQuantity(item.id, -1);
+                              },
+                            ),
+                            Text('${item.quantity}', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline, color: Colors.amber, size: 22),
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                appState.updateQuantity(item.id, 1);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                              onPressed: () => appState.removeFromCart(item.id),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 );
