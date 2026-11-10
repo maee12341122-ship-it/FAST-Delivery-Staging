@@ -16,22 +16,33 @@ import '../models/address_model.dart';
 import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
+/// ===========================================================================
+/// 🚀 مدير حالة التطبيق الشامل (AppState)
+/// يحتوي على كافة منطق العمليات، الاتصال بقاعدة بيانات Supabase، إدارة السلة،
+/// الجلسات، الإشعارات الفورية عبر OneSignal، والدردشة الحية.
+/// ===========================================================================
 class AppState extends ChangeNotifier {
-  final supabase = Supabase.instance.client;
+  final SupabaseClient supabase = Supabase.instance.client;
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   AppState() {
+    _initializeApplicationState();
+  }
+
+  Future<void> _initializeApplicationState() async {
     _loadAdminSession();
     _loadCourierSession();
     _loadUserSession();
-    fetchStoreSettings();
-    fetchProductsFromSupabase();
-    fetchCouriersFromSupabase();
+    await fetchStoreSettings();
+    await fetchProductsFromSupabase();
+    await fetchCouriersFromSupabase();
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
   }
 
-  // --- 🔔 إرسال الإشعارات التلقائية الفورية عبر OneSignal REST API ---
+  // ==========================================
+  // --- 🔔 قسم الإشعارات والتواصل (OneSignal) ---
+  // ==========================================
   Future<void> sendAutoNotification({
     required String targetPlayerId,
     required String title,
@@ -43,7 +54,7 @@ class AppState extends ChangeNotifier {
     const String oneSignalRestApiKey = 'mzt7cwtzrud7vgcher53kfn6x';
 
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
         headers: {
           'Content-Type': 'application/json; charset=UTF-8',
@@ -56,13 +67,19 @@ class AppState extends ChangeNotifier {
           'contents': {'en': body, 'ar': body},
         }),
       );
-      debugPrint('✅ تم إرسال الإشعار التلقائي بنجاح عبر OneSignal');
+      if (response.statusCode == 200) {
+        debugPrint('✅ تم إرسال الإشعار التلقائي بنجاح عبر OneSignal');
+      } else {
+        debugPrint('⚠️ فشل إرسال الإشعار، الكود: ${response.statusCode}');
+      }
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار التلقائي: $e');
     }
   }
 
+  // ==========================================
   // --- ❤️ إدارة المنتجات المفضلة ---
+  // ==========================================
   final List<String> _favoriteProductIds = [];
   List<String> get favoriteProductIds => _favoriteProductIds;
 
@@ -82,10 +99,15 @@ class AppState extends ChangeNotifier {
   }
 
   List<ProductModel> get favoriteProducts {
-    return products.where((p) => _favoriteProductIds.contains(p.id)).toList().cast<ProductModel>();
+    return products
+        .where((p) => _favoriteProductIds.contains(p.id))
+        .toList()
+        .cast<ProductModel>();
   }
 
-  // --- 🏠 قائمة وعناوين العميل المحفوظة (مرتبطة بقاعدة البيانات سحابياً) ---
+  // ==========================================
+  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
+  // ==========================================
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
@@ -217,7 +239,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // --- 🗺️ ترجمة حالات الطلبات إلى العربية ---
+  // ==========================================
+  // --- 🗺️ ترجمة الحالات ومعرفات المشرفين ---
+  // ==========================================
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -350,6 +374,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==========================================
+  // --- 💬 إدارة المحادثات والشات ---
+  // ==========================================
   Stream getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -391,6 +418,9 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  // ==========================================
+  // --- 📍 الأذونات والإعدادات والدوام ---
+  // ==========================================
   Future<void> requestLocationAndNotificationPermissions() async {
     try {
       LocationPermission locationPermission = await Geolocator.checkPermission();
@@ -481,6 +511,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ==========================================
+  // --- 👑 إدارة جلسة المشرف (Admin Session) ---
+  // ==========================================
   bool isAdminLoggedIn = false;
 
   void _loadAdminSession() async {
@@ -519,6 +552,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==========================================
+  // --- 👤 إدارة جلسة المستخدم / العميل ---
+  // ==========================================
   Map<String, dynamic>? userProfile;
   dynamic generatedDynamicOtp;
   String? lastOrderTrackingCode;
@@ -795,6 +831,9 @@ class AppState extends ChangeNotifier {
     debugPrint('🚪 تم تسجيل خروج المستخدم بنجاح');
   }
 
+  // ==========================================
+  // --- 🛵 إدارة المناديب وعملياتهم ---
+  // ==========================================
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -903,6 +942,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ==========================================
+  // --- 🛒 إدارة سلة المشتريات (Cart) ---
+  // ==========================================
   final List<CartItemModel> _cartItems = [];
   List<CartItemModel> get cartItems => _cartItems;
 
@@ -1004,6 +1046,9 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
   }
 
+  // ==========================================
+  // --- 📦 إدارة المنتجات والطلبات ---
+  // ==========================================
   Future<void> removeProduct(String id) async {
     if (!isAdminLoggedIn || supabase.auth.currentUser?.appMetadata['role'] != 'admin') {
       throw Exception('صلاحية المشرف مطلوبة.');
@@ -1346,3 +1391,99 @@ class AppState extends ChangeNotifier {
       adminMsg = 'وصل المندوب إلى موقع العميل 📍';
     } else {
       newStatus = 'delivered';
+      adminMsg = 'تم تسليم الطلب بنجاح ✅';
+    }
+
+    final response = await supabase.from('orders').update({
+      'status': newStatus,
+      'admin_message': adminMsg,
+    }).eq('id', orderId).select().single();
+
+    final updated = Map<String, dynamic>.from(response);
+    final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+    if (index >= 0) orders[index] = updated;
+    else orders.add(updated);
+    _sortOrders();
+    notifyListeners();
+  }
+
+  Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
+    await _submitCourierOrderAction(orderId, accepted ? 'accept' : 'reject');
+  }
+
+  Future<void> courierUpdateArrival(dynamic orderId) async {
+    await _submitCourierOrderAction(orderId, 'arrived');
+  }
+
+  Future<void> markOrderDelivered(dynamic orderId) async {
+    await _submitCourierOrderAction(orderId, 'delivered');
+    addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
+  }
+
+  Future<void> submitCourierRating({
+    required String orderId,
+    required String courierName,
+    required double rating,
+    required String reviewText,
+  }) async {
+    try {
+      await supabase.from('orders').update({
+        'courier_rating': rating,
+        'courier_review': reviewText,
+      }).eq('id', orderId);
+
+      final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      if (index != -1) {
+        orders[index]['courier_rating'] = rating;
+        orders[index]['courier_review'] = reviewText;
+        notifyListeners();
+      }
+
+      String targetCourierName = courierName.trim();
+      if (targetCourierName.isEmpty && index != -1) {
+        targetCourierName = orders[index]['assigned_courier']?.toString() ?? '';
+      }
+
+      if (targetCourierName.isNotEmpty) {
+        String? courierPlayerId = await getCourierPlayerIdByName(targetCourierName);
+        if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
+          await sendAutoNotification(
+            targetPlayerId: courierPlayerId,
+            title: 'تقييم جديد للطلب #$orderId ⭐',
+            body: 'لقد حصلت على تقييم ($rating من 5) من العميل! شكراً لجهودك.',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في تقديم تقييم المندوب: $e');
+    }
+  }
+
+  Future<void> submitRestaurantRating({
+    required String orderId,
+    required double rating,
+    required String reviewText,
+  }) async {
+    try {
+      await supabase.from('orders').update({
+        'restaurant_rating': rating,
+        'restaurant_review': reviewText,
+      }).eq('id', orderId);
+
+      final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      if (index != -1) {
+        orders[index]['restaurant_rating'] = rating;
+        orders[index]['restaurant_review'] = reviewText;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
+    }
+  }
+}
+
+class _UserMock {
+  final String name;
+  final String phone;
+  _UserMock(this.name, this.phone);
+}
