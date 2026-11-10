@@ -1007,8 +1007,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen()));
                   } else {
                     final passwordController = TextEditingController();
-                    final usernameController = TextEditingController(); // 👈 تم إزالة القيمة الافتراضية 'admin' هنا
-
+                    final usernameController = TextEditingController();
 
                     showDialog(
                       context: context,
@@ -1329,24 +1328,29 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> uniqueRestaurants = [];
     List<ProductModel> filteredProducts = [];
 
+    // 🟢 التعديل الجذري هنا لفصل المطاعم عن البقالات والمستودع بدقة
     if (selectedCategory == 'المطاعم') {
       if (selectedRestaurantName == null) {
+        // جلب المطاعم التي تصنيفها 'المطاعم' حصراً
         uniqueRestaurants = (appState.products as List)
             .map((e) => e as ProductModel)
-            .where((p) => p.category == 'المطاعم')
+            .where((p) => p.category.trim() == 'المطاعم')
             .map((p) => p.restaurantName)
             .toSet()
             .toList();
       } else {
+        // جلب وجبات المطعم المختار فقط ضمن تصنيف المطاعم
         filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
+          final matchesCategory = p.category.trim() == 'المطاعم';
           final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
           final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
-          return matchesRestaurant && matchesSearch;
+          return matchesCategory && matchesRestaurant && matchesSearch;
         }).toList();
       }
     } else {
+      // باقي الأقسام (البقالات، الخضار، إلخ) أو 'الكل'
       filteredProducts = (appState.products as List).map((e) => e as ProductModel).where((p) {
-        final matchesCategory = selectedCategory == 'الكل' || p.category == selectedCategory;
+        final matchesCategory = selectedCategory == 'الكل' || p.category.trim() == selectedCategory.trim();
         final matchesSearch = searchQuery.isEmpty ||
             p.name.toLowerCase().contains(searchQuery) ||
             p.restaurantName.toLowerCase().contains(searchQuery);
@@ -1574,7 +1578,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                isVariable ? 'حدد السعر' : (product.restaurantName.isNotEmpty ? product.restaurantName : 'متجر عام'),
+                                isVariable ? 'حدد السعر' : (product.restaurantName.isNotEmpty ? product.restaurantName : 'مستودع عام'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Colors.grey, fontSize: 11),
