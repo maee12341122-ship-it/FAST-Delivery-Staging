@@ -358,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String selectedCategory = 'الكل';
   String? selectedRestaurantName;
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false; // تفعيل وإخفاء شريط البحث العلوي المصغر
+  bool _isSearching = false;
 
   final TextEditingController _customItemNameController = TextEditingController();
   final TextEditingController _customItemPriceController = TextEditingController();
@@ -620,6 +620,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // 🌟 دالة الإضافات المنبثقة المنظمة والمرتبة باتجاه RTL الصحيح
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
@@ -665,19 +666,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Center(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.network(product.imageUrl, height: 110, width: 110, fit: BoxFit.cover,
+                          child: Image.network(
+                            product.imageUrl,
+                            height: 100,
+                            width: 100,
+                            fit: BoxFit.cover,
                             errorBuilder: (c, e, s) => const Icon(Icons.fastfood, size: 50, color: Colors.amber),
                           ),
                         ),
                       ),
                     const SizedBox(height: 12),
-                    Text(
-                      product.description.isNotEmpty ? product.description : 'اختر الإضافات المناسبة:',
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    Center(
+                      child: Text(
+                        product.description.isNotEmpty ? product.description : 'اختر الإضافات المناسبة:',
+                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                     const Divider(color: Colors.grey, height: 20),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 180),
                       child: ListView.builder(
                         shrinkWrap: true,
                         itemCount: appState.productModifiers.length,
@@ -690,6 +698,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           return CheckboxListTile(
                             activeColor: Colors.amber,
                             checkColor: Colors.black,
+                            controlAffinity: ListTileControlAffinity.leading, // 👈 ضبط المربع ليظهر على اليمين تماماً
                             title: Text(
                               modName,
                               style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
@@ -713,7 +722,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         },
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Colors.grey, height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -728,6 +737,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ),
             ),
+            actionsAlignment: MainAxisAlignment.spaceBetween,
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -1601,7 +1611,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
             actions: [
-              // 🔍 زر البحث المصغر بجانب الإشعارات
               IconButton(
                 icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.amber, size: 24),
                 tooltip: 'البحث السريع',
@@ -2132,7 +2141,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
           _buildAdBannerWidget(cardBg, textColor),
 
-          // 🔍 شريط البحث المنسدل عند الضغط على أيقونة البحث العلوية فقط
           if (_isSearching)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
@@ -2188,7 +2196,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
 
-          // 🌟 تم إلغاء المربعات الكبيرة نهائياً وإبقاء شريط الأقسام الأفقية واضحاً وبارزاً
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
