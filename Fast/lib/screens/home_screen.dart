@@ -7,17 +7,16 @@ import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
-import '../services/notification_service.dart'; // 👈 مسار استيراد خدمة الإشعارات الصحيح
+import '../services/notification_service.dart';
 import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
 import 'courier_screen.dart';
-import 'package:fast/screens/chat_screen.dart';
+import 'chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
-import '../services/notification_service.dart';
-
+import 'notifications_screen.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
@@ -966,6 +965,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // 🌐 شريط تنبيه انقطاع الإنترنت العائم
+  Widget _buildNetworkStatusBar(AppState appState) {
+    if (appState.isConnectedToInternet) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      color: Colors.red[800],
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.wifi_off, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text(
+            'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
+            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -1024,7 +1046,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Navigator.push(
                         context,
                         PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => NotificationsScreen(),
+                          pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
                           transitionsBuilder: (context, animation, secondaryAnimation, child) {
                             return FadeTransition(opacity: animation, child: child);
                           },
@@ -1174,80 +1196,87 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ],
           ),
-          body: Stack(
+          body: Column(
             children: [
-              IndexedStack(
-                index: _currentIndex,
-                children: pages,
-              ),
-              if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 16,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutBack,
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        setState(() => _currentIndex = 1);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.amber[800]!, Colors.amber[600]!],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                          borderRadius: BorderRadius.circular(30),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.amber.withOpacity(0.4),
-                              blurRadius: 15,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: Colors.black,
-                                shape: BoxShape.circle,
+              _buildNetworkStatusBar(appState), // 👈 شريط تحذير انقطاع الإنترنت يظهر هنا لحظياً
+              Expanded(
+                child: Stack(
+                  children: [
+                    IndexedStack(
+                      index: _currentIndex,
+                      children: pages,
+                    ),
+                    if (_currentIndex == 0 && appState.cartItems.isNotEmpty)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 16,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutBack,
+                          child: GestureDetector(
+                            onTap: () {
+                              HapticFeedback.mediumImpact();
+                              setState(() => _currentIndex = 1);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Colors.amber[800]!, Colors.amber[600]!],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.amber.withOpacity(0.4),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
                               ),
-                              child: const Icon(Icons.shopping_bag_outlined, color: Colors.amber, size: 20),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.shopping_bag_outlined, color: Colors.amber, size: 20),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${appState.totalCartItemsCount} منتجات بالسلة',
+                                        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                                      ),
+                                      Text(
+                                        '${appState.totalAmount} ر.ي',
+                                        style: const TextStyle(color: Colors.black87, fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                  const Spacer(),
+                                  const Text(
+                                    'إتمام الطلب',
+                                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.arrow_forward_ios, color: Colors.black, size: 14),
+                                ],
+                              ),
                             ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${appState.totalCartItemsCount} منتجات بالسلة',
-                                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
-                                Text(
-                                  '${appState.totalAmount} ر.ي',
-                                  style: const TextStyle(color: Colors.black87, fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                            const Spacer(),
-                            const Text(
-                              'إتمام الطلب',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.arrow_forward_ios, color: Colors.black, size: 14),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
+              ),
             ],
           ),
           bottomNavigationBar: BottomNavigationBar(
