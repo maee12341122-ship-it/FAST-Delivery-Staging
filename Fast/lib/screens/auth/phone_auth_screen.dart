@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
-import 'dart:math';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
 
@@ -28,7 +27,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
-  String? _generatedOtp; // لحفظ الرمز المؤقت محلياً للمقارنة عند التحقق
+  String _cleanPhoneInput = '';
+  String? _generatedOtp;
 
   // 🗺️ دالة لفتح الخريطة التفاعلية
   Future<void> _openInteractiveMap() async {
@@ -56,7 +56,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP عبر الـ Edge Function (`super-task`) وفحص قاعدة البيانات أولاً مع حماية الـ finally
+  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات أولاً مع حماية الـ finally
   Future<void> _sendSupabaseOTP() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -69,18 +69,38 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // تنسيق الرقم بالصيغة الدولية (اليمن +967)
-      String formattedPhone = phone;
-      if (!formattedPhone.startsWith('+')) {
-        if (formattedPhone.startsWith('0')) {
-          formattedPhone = '+967${formattedPhone.substring(1)}';
-        } else {
-          formattedPhone = '+967$formattedPhone';
-        }
-      }
-      _formattedPhone = formattedPhone;
+      String clean = phone.replaceAll(' ', '');
+      if (clean.startsWith('0')) clean = clean.substring(1);
+      if (clean.startsWith('967')) clean = clean.substring(3);
+      _cleanPhoneInput = clean; // مثل 775145534
+      _formattedPhone = '+967$clean';
 
-      // استدعاء دالة Supabase Edge Function (`super-task`) لفحص القاعدة وطلب الرمز
+      // فحص هل العميل موجود مسبقاً في جدول customers بناءً على عمود phone
+      final existingCustomer = await _supabase
+          .from('customers')
+          .select()
+          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+          .maybeSingle();
+
+      if (existingCustomer != null) {
+        debugPrint('✅ العميل مسجل مسبقاً في قاعدة البيانات.');
+        if (mounted) {
+          _nameController.text = existingCustomer['name'] ?? '';
+          _addressController.text = existingCustomer['address'] ?? 'تعز - ديلوكس';
+          
+          setState(() {
+            _currentStep = 2; // الانتقال مباشرة للبروفايل لوجوده مسبقاً
+            _isLoading = false;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('أهلاً بك مجدداً! تم العثور على حسابك المسجل 🚀')),
+          );
+        }
+        return;
+      }
+
+      // استدعاء الـ Edge Function (`super-task`) للرقم الجديد
       final response = await _supabase.functions.invoke(
         'super-task',
         body: {
@@ -92,14 +112,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       debugPrint('📥 استجابة فحص السيرفر: $data');
 
       if (data != null && data['success'] == true) {
-        if (data['exists'] == true) {
-          // المستخدم مسجل مسبقاً في قاعدة البيانات
-          debugPrint('✅ العميل مسجل مسبقاً.');
-        } else {
-          // عميل جديد، تم توليد الرمز وإرساله
-          _generatedOtp = data['otp']?.toString() ?? '1234';
-          debugPrint('✅ تم إرسال الرمز للرقم الجديد.');
-        }
+        _generatedOtp = data['otp']?.toString() ?? '1234';
 
         if (mounted) {
           setState(() {
@@ -108,9 +121,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(data['exists'] == true 
-                  ? 'أهلاً بك مجدداً! تم إرسال رمز التحقق إلى $_formattedPhone 💬' 
-                  : 'تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
+              content: Text('تم إرسال رمز التحقق عبر واتساب إلى $_formattedPhone 💬'),
               duration: const Duration(seconds: 5),
             ),
           );
@@ -120,20 +131,23 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الرمز عبر واتساب: $e');
+      _generatedOtp = '1234'; // رمز احتياطي للطوارئ
       if (mounted) {
+        setState(() {
+          _currentStep = 1;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل إرسال رمز واتساب: $e')),
+          const SnackBar(content: Text('تم تفعيل الرمز التجريبي (1234) للطوارئ')),
         );
       }
     } finally {
-      // 🔑 إيقاف مؤشر التحميل في كل الظروف لكي لا يعلق الزر
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل مع حماية الـ finally
+  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -146,37 +160,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // التحقق من صحة الرمز (المطابقة مع الرمز المُولد أو الرمز التجريبي 1234)
       if (otpCode == _generatedOtp || otpCode == '1234' || otpCode == appState.generatedDynamicOtp) {
-        // فحص السجل في قاعدة بيانات Supabase جدول customers
-        final existingCustomer = await _supabase
-            .from('customers')
-            .select()
-            .eq('phone', _formattedPhone)
-            .maybeSingle();
-
         if (mounted) {
-          if (existingCustomer != null) {
-            // العميل موجود مسبقاً، نملأ البيانات للانتقال للمرحلة الأخيرة
-            _nameController.text = existingCustomer['name'] ?? '';
-            _addressController.text =
-                existingCustomer['address'] ?? 'تعز - ديلوكس';
-            setState(() {
-              _currentStep = 2;
-            });
-          } else {
-            // عميل جديد
-            appState.continueWithoutPhoneVerification(_formattedPhone);
-            setState(() {
-              _currentStep = 2;
-            });
-          }
+          appState.continueWithoutPhoneVerification(_cleanPhoneInput);
+          setState(() {
+            _currentStep = 2;
+          });
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
+            const SnackBar(content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
           );
         }
       }
@@ -285,7 +279,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       keyboardType: TextInputType.phone,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'رقم الهاتف (مثال: 770000000)',
+                        labelText: 'رقم الهاتف (مثال: 775145534)',
                         labelStyle: const TextStyle(color: Colors.grey),
                         prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
                         filled: true,
@@ -479,9 +473,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         final address = _addressController.text.trim();
 
                         if (name.isNotEmpty && address.isNotEmpty) {
-                          // حفظ بيانات العميل في جدول customers في Supabase
+                          // حفظ بيانات العميل في جدول customers باستخدام الأعمدة الصحيحة (phone, name, address)
                           await _supabase.from('customers').upsert({
-                            'phone': _formattedPhone,
+                            'phone': _cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : _formattedPhone,
                             'name': name,
                             'address': address,
                           }, onConflict: 'phone');
@@ -500,7 +494,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                               await _supabase
                                   .from('customers')
                                   .update({'onesignal_player_id': playerId})
-                                  .eq('phone', _formattedPhone);
+                                  .eq('phone', _cleanPhoneInput);
                             }
                           } catch (e) {
                             debugPrint('خطأ في حفظ Player ID: $e');
