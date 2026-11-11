@@ -90,7 +90,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     });
   }
 
-  // دالة لجلب الموقع الحالي عبر الـ GPS وتحديث الخريطة
+  // دالة لجلب الموقع الحالي عبر الـ GPS وتحديث الخريطة والدبوس بدقة
   Future<void> _useGps() async {
     setState(() {
       _gettingLocation = true;
@@ -122,7 +122,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       if (!mounted) return;
       setState(() => _selectedPoint = point);
       
-      // تحريك الخريطة إلى الموقع الحالي بسلاسة
+      // تحريك الخريطة إلى الموقع الحالي بسلاسة وتحديث زوم العرض
       _mapController.move(point, 16.0);
     } catch (error) {
       if (mounted) {
@@ -236,7 +236,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               
               const SizedBox(height: 8),
 
-              // الخريطة التفاعلية المحدثة بوضوح تام لتعز
+              // الخريطة التفاعلية المحدثة بوضوح تام لتعز (تم تصحيح رابط الـ TileLayer لمنع الشاشة الرمادية)
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -251,13 +251,15 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                       initialCenter: widget.initialPoint ?? _taizCenter,
                       initialZoom: 15.0,
                       onTap: (tapPosition, point) {
-                        setState(() => _selectedPoint = point);
+                        setState(() {
+                          _selectedPoint = point; // تحديث مكان الدبوس فوراً عند النقر على أي مكان بالخريطة
+                        });
                       },
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{png}',
-                        subdomains: const ['a', 'b', 'c', 'd'],
+                        // 🛠️ تم تصحيح الرابط هنا لضمان تحميل الخريطة وعدم ظهور الشاشة الرمادية
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.fast.taiz',
                       ),
                       if (_selectedPoint != null)
