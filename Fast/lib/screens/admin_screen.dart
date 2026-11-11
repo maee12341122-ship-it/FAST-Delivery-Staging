@@ -7,7 +7,8 @@ import 'chat_screen.dart';
 import 'order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import '../admin_restaurants_screen.dart';
+import 'admin_restaurants_screen.dart';
+
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
