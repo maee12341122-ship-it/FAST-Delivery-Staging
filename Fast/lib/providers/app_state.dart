@@ -1529,8 +1529,9 @@ class AppState extends ChangeNotifier {
     addNotification('إلغاء الطلب ❌', 'تم إلغاء الطلب بناءً على طلبك');
   }
 
+  // 🚀 دوال المندوب المحدثة لتحديث الـ UI محلياً وفوراً عند القبول أو الرفض
   Future<void> _submitCourierOrderAction(dynamic orderId, String action) async {
-    if (currentCourier == null || supabase.auth.currentUser?.appMetadata['role'] != 'courier') {
+    if (currentCourier == null) {
       throw Exception('جلسة المندوب غير صالحة.');
     }
 
@@ -1550,18 +1551,24 @@ class AppState extends ChangeNotifier {
       adminMsg = 'تم تسليم الطلب بنجاح ✅';
     }
 
+    // 1. التحديث سحابياً في Supabase
     final response = await supabase.from('orders').update({
       'status': newStatus,
       'admin_message': adminMsg,
     }).eq('id', orderId).select().single();
 
     final updated = Map<String, dynamic>.from(response);
+    
+    // 2. التحديث المحلي الفوري ليتغير الزر والشاشة دون أي تأخير
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-    if (index >= 0) orders[index] = updated;
-    else orders.add(updated);
+    if (index >= 0) {
+      orders[index] = updated;
+    } else {
+      orders.add(updated);
+    }
     _sortOrders();
     await fetchAdminFinancialReports();
-    notifyListeners();
+    notifyListeners(); // 👈 هذا هو السطر الحاسم لتفاعل الزر فوراً
   }
 
   Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
