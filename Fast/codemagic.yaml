@@ -15,8 +15,11 @@ workflows:
         script: |
           set -e
           flutter config --enable-web
-      - name: Get Flutter packages
-        script: flutter pub get
+      - name: Clean and Get Flutter packages
+        script: |
+          set -e
+          flutter clean
+          flutter pub get
       - name: Generate App Launcher Icon 🖼️
         script: |
           set -e
