@@ -5,6 +5,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
+import 'customer/order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب الموحدة
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -44,6 +45,40 @@ class _CourierScreenState extends State<CourierScreen> {
         );
       }
     }
+  }
+
+  // 🔔 دالة ذكية لمعالجة النقر على إشعار المندوب وتوجيهه فوراً للطلب المحدد
+  void _handleCourierNotificationTap(BuildContext context, Map<String, dynamic> notification) {
+    final String? orderId = notification['order_id']?.toString() ?? 
+                            notification['related_id']?.toString() ?? 
+                            notification['additionalData']?['order_id']?.toString() ??
+                            _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['body'] ?? notification['message'] ?? ''));
+
+    if (orderId != null && orderId.isNotEmpty) {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
+      );
+    }
+  }
+
+  // 🔍 دالة مساعدة لاستخراج رقم الطلب من نص الإشعار (مثل طلب #15)
+  String? _extractOrderIdFromText(String text) {
+    final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
+    final match = regExp.firstMatch(text);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
   }
 
   // 🌐 شريط تنبيه انقطاع الإنترنت العائم
@@ -99,7 +134,7 @@ class _CourierScreenState extends State<CourierScreen> {
             ),
             actions: [
               if (courier != null) ...[
-                // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب
+                // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب (قابلة للنقر وتوجيهك للطلب)
                 Stack(
                   alignment: Alignment.center,
                   children: [
@@ -135,6 +170,11 @@ class _CourierScreenState extends State<CourierScreen> {
                                             child: ListTile(
                                               title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
                                               subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                              trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
+                                              onTap: () {
+                                                Navigator.pop(ctx); // إغلاق الحوار
+                                                _handleCourierNotificationTap(context, notif); // الانتقال للطلب المحدد
+                                              },
                                             ),
                                           );
                                         },
