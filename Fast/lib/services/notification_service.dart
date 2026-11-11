@@ -1,16 +1,20 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 👈 استيراد مكتبة الإشعارات المحلية للصوت
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../screens/order_tracking_screen.dart'; // تأكد من مطابقة مسار الاستيراد لمشروعك
 
 class NotificationService {
   static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
-  // تم إزالة مفتاح _restApiKey السري تماماً من هنا لأسباب أمنية حمايةً للمشروع.
 
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  // مفتاح ملاحة عالمي (GlobalKey) للانتقال للشاشات بدون الحاجة لـ BuildContext حصري
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   /// 1. تهيئة الاستماع للإشعارات والنقر عليها والتنبيهات المحلية
   static Future<void> initialize() async {
@@ -36,15 +40,36 @@ class NotificationService {
         initializationSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('🚀 [النقر على الإشعار المحلي]: ${response.payload}');
+          // الانتقال عند النقر على الإشعار المحلي إذا وجد الـ payload (رقم الطلب)
+          if (response.payload != null && response.payload!.isNotEmpty) {
+            navigateToOrderTracking(response.payload!);
+          }
         },
       );
 
       // طلب إذن الإشعارات من المستخدم نظامياً
       await OneSignal.Notifications.requestPermission(true);
 
-      // الاستماع للنقر على الإشعار من المستخدم (OneSignal)
+      // 🚀 الاستماع للنقر على إشعار OneSignal وتوجيه المستخدم للطلب مباشرة
       OneSignal.Notifications.addClickListener((event) {
         debugPrint('🚀 [النقر على إشعار OneSignal]: ${event.notification.title}');
+        
+        final data = event.notification.additionalData;
+        String? orderId;
+
+        if (data != null) {
+          orderId = data['order_id']?.toString() ?? data['related_id']?.toString();
+        }
+
+        // إذا لم يكن مخزناً بالـ additionalData، نستخرجه من عنوان أو نص الإشعار (مثل #60)
+        if (orderId == null || orderId.isEmpty) {
+          final fullText = '${event.notification.title ?? ''} ${event.notification.body ?? ''}';
+          orderId = _extractOrderIdFromText(fullText);
+        }
+
+        if (orderId != null && orderId.isNotEmpty) {
+          navigateToOrderTracking(orderId);
+        }
       });
 
       // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
@@ -61,7 +86,31 @@ class NotificationService {
     }
   }
 
-  /// 2. حفظ معرف الجهاز الحالي في جدول Supabase للمستخدم المسجل (عميل، مندوب، مشرف)
+  /// 🧭 دالة عامة للانتقال لشاشة تتبع الطلب باستخدام الـ NavigatorKey
+  static void navigateToOrderTracking(String orderId) {
+    if (navigatorKey.currentState != null) {
+      navigatorKey.currentState!.push(
+        MaterialPageRoute(
+          builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+        ),
+      );
+      debugPrint('📦 تم توجيه المستخدم مباشرة لتتبع الطلب #$orderId');
+    } else {
+      debugPrint('⚠️ تعذر الانتقال، مفتاح التنقل غير جاهز بعد.');
+    }
+  }
+
+  /// دالة مساعدة لاستخراج رقم الطلب من النص تلقائياً (مثل #60)
+  static String? _extractOrderIdFromText(String text) {
+    final RegExp regExp = RegExp(r'#(\d+)');
+    final match = regExp.firstMatch(text);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
+  }
+
+  /// 2. حفظ معرف الجهاز الحالي في جدول Supabase للمستخدم المسجل
   static Future<void> saveUserPlayerId(String userId, String tableName) async {
     try {
       String? playerId = OneSignal.User.pushSubscription.id;
@@ -77,31 +126,27 @@ class NotificationService {
             .update({'onesignal_player_id': playerId})
             .eq('id', userId);
         debugPrint("✅ تم حفظ OneSignal Player ID ($playerId) في جدول $tableName بنجاح");
-      } else {
-        debugPrint("⚠️ لم يتم العثور على Player ID للجهاز بعد، يرجى التحقق من الاتصال.");
       }
     } catch (e) {
       debugPrint("⚠️ خطأ في حفظ Player ID في Supabase: $e");
     }
   }
 
-  /// 3. إرسال الإشعار الفوري بشكل آمن (تم تعطيل استخدام المفتاح السري المباشر من التطبيق)
+  /// 3. إرسال الإشعار الفوري بشكل آمن
   static Future<void> sendNotificationToUser({
     required String targetPlayerId,
     required String title,
     required String body,
   }) async {
     if (targetPlayerId.isEmpty) return;
-
     try {
-      // إشعارات التطبيق الداخلية والآمنة تتم عبر القنوات المعتمدة بدون كشف مفاتيح REST
       debugPrint('ℹ️ إرسال الإشعار عبر الآلية الآمنة للمستخدم ذو المعرف: $targetPlayerId');
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار عبر NotificationService: $e');
     }
   }
 
-  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز (داخلي - يعمل عندما التطبيق مفتوح)
+  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز (مع تمرير رقم الطلب كـ payload)
   static Future<void> showLocalNotification(String title, String body, {String? payload}) async {
     try {
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
@@ -128,12 +173,15 @@ class NotificationService {
         iOS: iOSPlatformChannelSpecifics,
       );
 
+      // استخراج رقم الطلب للـ payload إن لم يتم تمريره صراحة
+      String? orderIdPayload = payload ?? _extractOrderIdFromText('$title $body');
+
       await _localNotificationsPlugin.show(
         DateTime.now().millisecond,
         title,
         body,
         platformChannelSpecifics,
-        payload: payload,
+        payload: orderIdPayload,
       );
       debugPrint('📢 [تم عرض الإشعار المحلي الصوتي]: $title - $body');
     } catch (e) {
@@ -141,7 +189,7 @@ class NotificationService {
     }
   }
 
-  /// 5. دالة شاملة مخصصة للشات (تظهر محلياً وترسل التنبيه بالآلية الآمنة)
+  /// 5. دالة شاملة مخصصة للشات
   static Future<void> sendChatMessageNotification({
     required String targetPlayerId,
     required String senderName,
