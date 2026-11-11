@@ -20,8 +20,9 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   bool _gettingLocation = false;
   String? _error;
   
-  // حقل إدخال العنوان التفصيلي يدوياً
+  // حقل إدخال العنوان التفصيلي يدوياً وموجه التركيز (FocusNode) لسلاسة الكيبورد
   final TextEditingController _customAddressController = TextEditingController();
+  final FocusNode _addressFocus = FocusNode();
 
   @override
   void initState() {
@@ -115,6 +116,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   @override
   void dispose() {
     _customAddressController.dispose();
+    _addressFocus.dispose();
     super.dispose();
   }
 
@@ -123,152 +125,158 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     const cardColor = Color(0xFF1E1E1E);
     const backgroundColor = Color(0xFF121212);
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: backgroundColor,
-        appBar: AppBar(
-          backgroundColor: cardColor,
-          title: const Text(
-            'تحديد موقع التوصيل في تعز 📍', 
-            style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
-            onPressed: _saveAndReturn,
-          ),
-        ),
-        body: Column(
-          children: [
-            // حقل إدخال العنوان التفصيلي يدوياً
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'أكتب عنوانك التفصيلي بدقة (مطلوب): *',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _customAddressController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'مثال: حي الروضة، بجوار الشارع العام',
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        prefixIcon: const Icon(Icons.location_on, color: AppConstants.gold),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقل
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: backgroundColor,
+          appBar: AppBar(
+            backgroundColor: cardColor,
+            title: const Text(
+              'تحديد موقع التوصيل في تعز 📍', 
+              style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
             ),
-
-            // شريط زر الـ GPS
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppConstants.gold,
-                        side: const BorderSide(color: AppConstants.gold),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: _gettingLocation ? null : _useGps,
-                      icon: _gettingLocation
-                          ? const SizedBox(
-                              width: 16, 
-                              height: 16, 
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
-                            )
-                          : const Icon(Icons.my_location),
-                      label: const Text('موقعي الحالي GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
+              onPressed: _saveAndReturn,
             ),
-            if (_error != null)
+          ),
+          body: Column(
+            children: [
+              // حقل إدخال العنوان التفصيلي يدوياً
               Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12), textAlign: TextAlign.center),
-              ),
-            
-            const SizedBox(height: 8),
-
-            // الخريطة التفاعلية
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: widget.initialPoint ?? _taizCenter,
-                    initialZoom: 15.0,
-                    onTap: (tapPosition, point) {
-                      setState(() => _selectedPoint = point);
-                    },
+                padding: const EdgeInsets.all(12.0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-                      userAgentPackageName: 'com.fast.taiz',
-                    ),
-                    if (_selectedPoint != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _selectedPoint!,
-                            width: 50,
-                            height: 50,
-                            child: const Icon(
-                              Icons.location_pin,
-                              color: Colors.red,
-                              size: 45,
-                            ),
-                          ),
-                        ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'أكتب عنوانك التفصيلي بدقة (مطلوب): *',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _customAddressController,
+                        focusNode: _addressFocus,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _saveAndReturn(),
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'مثال: حي الروضة، بجوار الشارع العام',
+                          hintStyle: const TextStyle(color: Colors.grey),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          prefixIcon: const Icon(Icons.location_on, color: AppConstants.gold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // شريط زر الـ GPS
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppConstants.gold,
+                          side: const BorderSide(color: AppConstants.gold),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: _gettingLocation ? null : _useGps,
+                        icon: _gettingLocation
+                            ? const SizedBox(
+                                width: 16, 
+                                height: 16, 
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
+                              )
+                            : const Icon(Icons.my_location),
+                        label: const Text('موقعي الحالي GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // زر الحفظ النهائي والعودة
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppConstants.gold,
-                  foregroundColor: Colors.black,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12), textAlign: TextAlign.center),
                 ),
-                onPressed: _saveAndReturn,
-                child: const Text('تثبيت الموقع والعنوان والعودة ✅', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              
+              const SizedBox(height: 8),
+
+              // الخريطة التفاعلية
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: widget.initialPoint ?? _taizCenter,
+                      initialZoom: 15.0,
+                      onTap: (tapPosition, point) {
+                        setState(() => _selectedPoint = point);
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                        userAgentPackageName: 'com.fast.taiz',
+                      ),
+                      if (_selectedPoint != null)
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _selectedPoint!,
+                              width: 50,
+                              height: 50,
+                              child: const Icon(
+                                Icons.location_pin,
+                                color: Colors.red,
+                                size: 45,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 12),
+
+              // زر الحفظ النهائي والعودة
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppConstants.gold,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _saveAndReturn,
+                  child: const Text('تثبيت الموقع والعنوان والعودة ✅', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
