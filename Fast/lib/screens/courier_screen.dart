@@ -17,16 +17,23 @@ class _CourierScreenState extends State<CourierScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  // تحسين السلاسة والانتقال عبر الكيبورد
+  final FocusNode _usernameFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
+
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
+  // تعديل رابط الخريطة لفتح الاتجاهات مباشرة
   Future<void> _openMap(String address) async {
     final query = Uri.encodeComponent(address.isNotEmpty ? address : 'Taiz, Yemen');
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$query');
     
     if (await canLaunchUrl(googleMapsUrl)) {
       await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
@@ -77,206 +84,225 @@ class _CourierScreenState extends State<CourierScreen> {
           }).length
         : 0;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1E1E1E),
-          elevation: 2,
-          title: Text(
-            courier == null ? 'تسجيل دخول الكابتن' : 'لوحة المندوب: ${courier['name']}', 
-            style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          actions: [
-            if (courier != null) ...[
-              // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
-                    tooltip: 'سجل الإشعارات الفورية',
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => Directionality(
-                          textDirection: TextDirection.rtl,
-                          child: AlertDialog(
-                            backgroundColor: const Color(0xFF1E1E1E),
-                            title: const Row(
-                              children: [
-                                Icon(Icons.notifications, color: Colors.amber),
-                                SizedBox(width: 8),
-                                Text('إشعارات المندوب 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط في أي مكان فارغ
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E1E1E),
+            elevation: 2,
+            title: Text(
+              courier == null ? 'تسجيل دخول الكابتن' : 'لوحة المندوب: ${courier['name']}', 
+              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            actions: [
+              if (courier != null) ...[
+                // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
+                      tooltip: 'سجل الإشعارات الفورية',
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => Directionality(
+                            textDirection: TextDirection.rtl,
+                            child: AlertDialog(
+                              backgroundColor: const Color(0xFF1E1E1E),
+                              title: const Row(
+                                children: [
+                                  Icon(Icons.notifications, color: Colors.amber),
+                                  SizedBox(width: 8),
+                                  Text('إشعارات المندوب 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                                ],
+                              ),
+                              content: SizedBox(
+                                width: double.maxFinite,
+                                height: 350,
+                                child: appState.notifications.isEmpty
+                                    ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
+                                    : ListView.builder(
+                                        itemCount: appState.notifications.length,
+                                        itemBuilder: (_, idx) {
+                                          final notif = appState.notifications[idx];
+                                          return Card(
+                                            color: const Color(0xFF121212),
+                                            margin: const EdgeInsets.symmetric(vertical: 4),
+                                            child: ListTile(
+                                              title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+                                              subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                                ),
                               ],
                             ),
-                            content: SizedBox(
-                              width: double.maxFinite,
-                              height: 350,
-                              child: appState.notifications.isEmpty
-                                  ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
-                                  : ListView.builder(
-                                      itemCount: appState.notifications.length,
-                                      itemBuilder: (_, idx) {
-                                        final notif = appState.notifications[idx];
-                                        return Card(
-                                          color: const Color(0xFF121212),
-                                          margin: const EdgeInsets.symmetric(vertical: 4),
-                                          child: ListTile(
-                                            title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-                                            subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                          ),
-                                        );
-                                      },
-                                    ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (pendingOrdersCount > 0)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            '$pendingOrdersCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
-                              ),
-                            ],
+                            textAlign: TextAlign.center,
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                  if (pendingOrdersCount > 0)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          '$pendingOrdersCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
                         ),
                       ),
-                    ),
-                ],
-              ),
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.redAccent),
-                tooltip: 'تسجيل الخروج',
-                onPressed: () => appState.logoutCourier(),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout, color: Colors.redAccent),
+                  tooltip: 'تسجيل الخروج',
+                  onPressed: () => appState.logoutCourier(),
+                ),
+              ],
+            ],
+          ),
+          body: Column(
+            children: [
+              _buildNetworkStatusBar(appState),
+              Expanded(
+                child: courier == null
+                    ? Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Center(
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 400),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                                    ),
+                                    child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                  const SizedBox(height: 30),
+                                  // حقل اسم المستخدم مع الانتقال السلس للكيبورد
+                                  TextField(
+                                    controller: _usernameController,
+                                    focusNode: _usernameFocus,
+                                    textInputAction: TextInputAction.next,
+                                    onSubmitted: (_) {
+                                      FocusScope.of(context).requestFocus(_passwordFocus);
+                                    },
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: const InputDecoration(
+                                      labelText: 'اسم المستخدم',
+                                      labelStyle: TextStyle(color: Colors.grey),
+                                      filled: true,
+                                      fillColor: Color(0xFF1E1E1E),
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  // حقل كلمة السر مع الانتقال السلس للكيبورد
+                                  TextField(
+                                    controller: _passwordController,
+                                    focusNode: _passwordFocus,
+                                    obscureText: true,
+                                    textInputAction: TextInputAction.done,
+                                    onSubmitted: (_) async {
+                                      // تنفيذ تسجيل الدخول مباشرة عند الضغط على تم
+                                      await _performLogin(appState);
+                                    },
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: const InputDecoration(
+                                      labelText: 'كلمة السر',
+                                      labelStyle: TextStyle(color: Colors.grey),
+                                      filled: true,
+                                      fillColor: Color(0xFF1E1E1E),
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.amber, 
+                                      minimumSize: const Size(double.infinity, 48),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    onPressed: () => _performLogin(appState),
+                                    child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : _buildCourierOrdersListWithTabs(appState, courier),
               ),
             ],
-          ],
-        ),
-        body: Column(
-          children: [
-            _buildNetworkStatusBar(appState),
-            Expanded(
-              child: courier == null
-                  ? Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Center(
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 400),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                                  ),
-                                  child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
-                                ),
-                                const SizedBox(height: 24),
-                                const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 8),
-                                const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                                const SizedBox(height: 30),
-                                TextField(
-                                  controller: _usernameController,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: const InputDecoration(
-                                    labelText: 'اسم المستخدم',
-                                    labelStyle: TextStyle(color: Colors.grey),
-                                    filled: true,
-                                    fillColor: Color(0xFF1E1E1E),
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                TextField(
-                                  controller: _passwordController,
-                                  obscureText: true,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: const InputDecoration(
-                                    labelText: 'كلمة السر',
-                                    labelStyle: TextStyle(color: Colors.grey),
-                                    filled: true,
-                                    fillColor: Color(0xFF1E1E1E),
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.amber, 
-                                    minimumSize: const Size(double.infinity, 48),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  onPressed: () async {
-                                    bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
-                                    if (success) {
-                                      try {
-                                        String? playerId = OneSignal.User.pushSubscription.id;
-                                        if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
-                                          String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
-                                          if (courierId.isNotEmpty) {
-                                            await Supabase.instance.client
-                                                .from('couriers')
-                                                .update({'onesignal_player_id': playerId})
-                                                .eq('id', courierId);
-                                          }
-                                        }
-                                      } catch (e) {
-                                        debugPrint('⚠️ خطأ: $e');
-                                      }
-                                    } else {
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
-                                        );
-                                      }
-                                    }
-                                  },
-                                  child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                  : _buildCourierOrdersListWithTabs(appState, courier),
-            ),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  // دالة تسجيل الدخول لتجنب تكرار الكود
+  Future<void> _performLogin(AppState appState) async {
+    bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
+    if (success) {
+      try {
+        String? playerId = OneSignal.User.pushSubscription.id;
+        if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
+          String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
+          if (courierId.isNotEmpty) {
+            await Supabase.instance.client
+                .from('couriers')
+                .update({'onesignal_player_id': playerId})
+                .eq('id', courierId);
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ خطأ: $e');
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
+        );
+      }
+    }
   }
 
   Widget _buildCourierOrdersListWithTabs(AppState appState, Map<String, dynamic> courier) {
@@ -437,6 +463,10 @@ class _CourierScreenState extends State<CourierScreen> {
         final String deliveryFee = order['delivery_fee']?.toString() ?? '0';
         final double finalTotal = (double.tryParse(productsPrice) ?? 0.0) + (double.tryParse(deliveryFee) ?? 0.0);
 
+        // بيانات التقييم إن وجدت
+        final ratingValue = order['rating'];
+        final ratingComment = order['rating_comment']?.toString();
+
         return Card(
           color: const Color(0xFF1E1E1E),
           margin: const EdgeInsets.symmetric(vertical: 8),
@@ -490,7 +520,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     icon: const Icon(Icons.map, color: Colors.amber, size: 16),
-                    label: const Text('فتح الموقع في خرائط جوجل 🗺️', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                    label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(color: Colors.amber, fontSize: 12)),
                     onPressed: () => _openMap(customerAddress),
                   ),
                 ),
@@ -518,8 +548,37 @@ class _CourierScreenState extends State<CourierScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                const Divider(color: Colors.white12, height: 20),
+                
+                // عرض التقييم داخل صفحة الطلب ليصل للمشرف والمندوب بوضوح
+                if (ratingValue != null) ...[
+                  const Divider(color: Colors.white12, height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.star, color: Colors.amber, size: 16),
+                            const SizedBox(width: 6),
+                            Text('تقييم العميل: $ratingValue / 5', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        if (ratingComment != null && ratingComment.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('ملاحظة العميل: $ratingComment', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
 
+                const Divider(color: Colors.white12, height: 20),
                 _buildOrderActions(appState, orderId, orderStatus),
               ],
             ),
