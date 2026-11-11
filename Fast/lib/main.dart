@@ -8,7 +8,7 @@ import 'services/notification_service.dart';
 import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/customer/order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب الموحدة
+import 'screens/order_tracking_screen.dart'; // 👈 المسار الصحيح المباشر داخل مجلد screens[span_1](start_span)[span_1](end_span)
 
 // 🔑 مفتاح التنقل العام (NavigatorKey) لتوجيه المستخدم من الإشعارات الخارجية من أي مكان
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
