@@ -18,19 +18,43 @@ class OrderTrackingScreen extends StatefulWidget {
 }
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
-  // 🗺️ متغيرات خريطة التتبع اللحظي
+  // 🗺️ متغيرات خريطة التتبع اللحظي ودبابيس العميل والمندوب
   final MapController _mapController = MapController();
   LatLng? _courierPosition;
+  LatLng _customerPosition = const LatLng(13.5795, 44.0209); // مركز تعز الافتراضي
   RealtimeChannel? _orderChannel;
   RealtimeChannel? _locationChannel;
-  static const LatLng _taizCenter = LatLng(13.5795, 44.0209); // مركز تعز الافتراضي
 
   @override
   void initState() {
     super.initState();
     final String targetId = widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
     if (targetId.isNotEmpty) {
+      _extractCustomerCoordinates(widget.orderMap);
       _subscribeToOrderUpdates(targetId);
+    }
+  }
+
+  // 📍 استخراج إحداثيات موقع العميل من العنوان المخزن
+  void _extractCustomerCoordinates(Map<String, dynamic>? order) {
+    if (order == null) return;
+    final String address = order['address']?.toString() ?? '';
+    try {
+      if (address.contains('(') && address.contains(')')) {
+        final coordsPart = address.substring(address.indexOf('(') + 1, address.indexOf(')'));
+        final parts = coordsPart.split(',');
+        if (parts.length >= 2) {
+          final lat = double.tryParse(parts[1].trim());
+          final lng = double.tryParse(parts[0].trim());
+          if (lat != null && lng != null) {
+            setState(() {
+              _customerPosition = LatLng(lat, lng);
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ استخدام موقع تعز الافتراضي: $e');
     }
   }
 
@@ -50,6 +74,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           callback: (payload) {
             if (payload.newRecord.isNotEmpty && mounted) {
               setState(() {});
+              _extractCustomerCoordinates(payload.newRecord);
               final courierName = payload.newRecord['assigned_courier']?.toString();
               if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
                 _fetchAndListenCourierLocation(courierName);
@@ -164,10 +189,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
     final String courierId = order['assigned_courier']?.toString() ?? order['courier_id']?.toString() ?? 'general_courier';
 
-    // 🔍 التحقق هل المستخدم الحالي هو مشرف أو مندوب أم العميل العادي
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
     
-    // جلب تقييم العميل إذا وجد في بيانات الطلب
     final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
     final String courierReview = order['courier_review']?.toString() ?? '';
 
@@ -187,7 +210,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🗺️ خريطة التتبع الحي الحقيقية بدلاً من الخط الرسومي الثابت
+                // 🗺️ خريطة التتبع الحي الحقيقية مع دبابيس العميل والمندوب
                 Container(
                   height: 230,
                   decoration: BoxDecoration(
@@ -204,7 +227,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       FlutterMap(
                         mapController: _mapController,
                         options: MapOptions(
-                          initialCenter: _courierPosition ?? _taizCenter,
+                          initialCenter: _courierPosition ?? _customerPosition,
                           initialZoom: 16.5,
                         ),
                         children: [
@@ -212,9 +235,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.fast.taiz',
                           ),
-                          if (_courierPosition != null)
-                            MarkerLayer(
-                              markers: [
+                          MarkerLayer(
+                            markers: [
+                              // 📍 دبوس موقع العميل الثابت
+                              Marker(
+                                point: _customerPosition,
+                                width: 45,
+                                height: 45,
+                                child: const Icon(Icons.location_pin, color: Colors.redAccent, size: 42),
+                              ),
+                              // 🛵 دبوس المندوب المتحرك لحظياً
+                              if (_courierPosition != null)
                                 Marker(
                                   point: _courierPosition!,
                                   width: 50,
@@ -230,8 +261,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                     child: const Icon(Icons.two_wheeler_rounded, color: Colors.black, size: 26),
                                   ),
                                 ),
-                              ],
-                            ),
+                            ],
+                          ),
                         ],
                       ),
                       Positioned(
@@ -321,69 +352,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   const SizedBox(height: 16),
                 ],
 
-                if (rawStatus == 'pricingSentToCustomer' && !isManagerOrCourier) ...[
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.amber.withOpacity(0.5), width: 1.5),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'تم تحديد رسوم التوصيل، يرجى الموافقة للمتابعة 🚀',
-                          style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () async {
-                                  await appState.customerConfirmOrder(targetId);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('تم تأكيد السعر بنجاح وجاري إرساله للمندوب ✅')),
-                                    );
-                                  }
-                                },
-                                child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () async {
-                                  await appState.customerCancelOrder(targetId);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('تم إلغاء الطلب ❌')),
-                                    );
-                                  }
-                                },
-                                child: const Text('إلغاء ❌', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -412,10 +380,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // ⭐ إدارة عرض التقييم حسب نوع المستخدم (عميل أم مندوب/مشرف)
+                // ⭐ إدارة عرض التقييم حسب نوع المستخدم
                 if (rawStatus == 'delivered') ...[
                   if (!isManagerOrCourier) ...[
-                    // 👤 العميل: يظهر له زر التقييم لتقييم المندوب
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.amber,
@@ -438,7 +405,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       },
                     ),
                   ] else ...[
-                    // 🛵 المندوب أو المشرف: يرى تقييم العميل لهذا الطلب (بدون زر تقييم)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
