@@ -2801,6 +2801,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ],
                   ),
                   const Divider(color: Colors.grey, height: 20),
+
+                  // 🚀 زر تتبع الطلب الواضح جداً بالنص العربي الصريح
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 1,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: order['id'].toString()),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            return FadeTransition(opacity: animation, child: child);
+                          },
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.map_rounded, color: Colors.black, size: 18),
+                    label: const Text(
+                      '🗺️ اضغط هنا لتتبع خط سير الطلب 🚀',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
                   Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
