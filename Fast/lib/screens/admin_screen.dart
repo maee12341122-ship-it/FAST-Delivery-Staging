@@ -4,6 +4,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
+import 'customer/order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
@@ -59,6 +60,40 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       case 'cancelledByCustomer': return '❌ ملغى';
       default: return status;
     }
+  }
+
+  // 🔔 دالة ذكية لمعالجة النقر على إشعار المشرف وتوجيهه للطلب المحدد فوراً
+  void _handleAdminNotificationTap(BuildContext context, Map<String, dynamic> notification) {
+    final String? orderId = notification['order_id']?.toString() ?? 
+                            notification['related_id']?.toString() ?? 
+                            notification['additionalData']?['order_id']?.toString() ??
+                            _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['body'] ?? notification['message'] ?? ''));
+
+    if (orderId != null && orderId.isNotEmpty) {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
+      );
+    }
+  }
+
+  // 🔍 دالة لاستخراج رقم الطلب من نص الإشعار
+  String? _extractOrderIdFromText(String text) {
+    final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
+    final match = regExp.firstMatch(text);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
   }
 
   // 📢 نافذة إضافة أو تعديل البنر الترويجي
@@ -367,7 +402,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           elevation: 2,
           title: const Text('لوحة تحكم المشرف - FAST', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           actions: [
-            // 🛎️ أيقونة الإشعارات المنبثقة والتنبيه الفوري للمشرف عند وجود طلبات جديدة
+            // 🛎️ أيقونة الإشعارات المنبثقة وسجل إشعارات المشرف القابل للنقر والانتقال للطلب
             Stack(
               alignment: Alignment.center,
               children: [
@@ -375,7 +410,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
                   tooltip: 'سجل الإشعارات والطلبات الجديدة',
                   onPressed: () {
-                    // إظهار نافذة منبثقة بسجل الإشعارات الفورية للمشرف
                     showDialog(
                       context: context,
                       builder: (ctx) => Directionality(
@@ -404,6 +438,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                         child: ListTile(
                                           title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
                                           subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
+                                          onTap: () {
+                                            Navigator.pop(ctx); // إغلاق الحوار
+                                            _handleAdminNotificationTap(context, notif); // الانتقال للطلب المحدد
+                                          },
                                         ),
                                       );
                                     },
