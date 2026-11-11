@@ -30,6 +30,28 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     _selectedPoint = widget.initialPoint ?? _taizCenter;
   }
 
+  // 📍 دالة تحويل الإحداثيات الجغرافية إلى اسم منطقة واضحة في تعز بدلاً من الأرقام
+  String getTaizAreaName(LatLng point) {
+    final double lat = point.latitude;
+    final double lng = point.longitude;
+
+    if (lat >= 13.568 && lat <= 13.577 && lng >= 43.996 && lng <= 44.009) {
+      return 'منطقة دي لوكس 📍';
+    } else if (lat >= 13.577 && lat <= 13.587 && lng >= 44.010 && lng <= 44.024) {
+      return 'شارع جمال / التحرير 📍';
+    } else if (lat >= 13.564 && lat <= 13.573 && lng >= 44.012 && lng <= 44.026) {
+      return 'حي المسبح 📍';
+    } else if (lat >= 13.582 && lat <= 13.595 && lng >= 44.022 && lng <= 44.035) {
+      return 'حي الروضة 📍';
+    } else if (lat >= 13.578 && lat <= 13.590 && lng >= 43.978 && lng <= 43.995) {
+      return 'منطقة الحصب 📍';
+    } else if (lat >= 13.555 && lat <= 13.567 && lng >= 44.005 && lng <= 44.020) {
+      return 'منطقة نقطة الرابع 📍';
+    } else {
+      return 'تعز - منطقة معتمدة 📍';
+    }
+  }
+
   // دالة تحقق واشتراط إدخال العنوان والموقع قبل العودة
   void _saveAndReturn() {
     final addressText = _customAddressController.text.trim();
@@ -55,15 +77,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       return;
     }
 
-    // 🎯 تنسيق الإحداثيات بشكل نظيف وموحد ومنع التداخل النصي
-    final double lat = _selectedPoint!.latitude;
-    final double lng = _selectedPoint!.longitude;
-    final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+    // 🎯 تحويل الإحداثيات إلى اسم حي عربي يمنع الأرقام نهائياً
+    final areaName = getTaizAreaName(_selectedPoint!);
     
-    // دمج العنوان النصي مع الإحداثيات المنسقة بوضوح
-    final finalFullAddress = '$addressText (الإحداثيات: $formattedCoords)';
+    // دمج العنوان التفصيلي مع اسم الحي المعتمد ناصعاً وبدون أي أرقام
+    final finalFullAddress = '$addressText - $areaName';
 
-    // إذا تحققت الشروط يتم حفظ وإرسال البيانات
+    // حفظ وإرسال البيانات نظيفة للملف المستدعي
     Navigator.pop(context, {
       'address': finalFullAddress,
       'latLng': _selectedPoint,
