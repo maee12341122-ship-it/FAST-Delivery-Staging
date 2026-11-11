@@ -18,7 +18,7 @@ import 'customer/favorites_screen.dart';
 import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
 import 'notifications_screen.dart';
-import 'order_tracking_screen.dart'; // 🚀 استيراد شاشة التتبع المنحنية الجديدة والمطلوبة
+import 'order_tracking_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -61,7 +61,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
 
-  // 📍 1. دالة تنسيق وتحويل الإحداثيات الجغرافية إلى أسماء مناطق واضحة في تعز
   String formatLocationAddress(String? rawAddress) {
     if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة 📍';
     if (rawAddress.contains('(') && rawAddress.contains(',')) {
@@ -76,7 +75,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return rawAddress;
   }
 
-  // 🔔 2. دالة معالجة النقر على الإشعار (مصححة لفتح الطلب المحدد مباشرة)
   void _handleNotificationTap(BuildContext context, Map<String, dynamic> notification) {
     final String? orderId = notification['order_id']?.toString() ?? 
                             notification['related_id']?.toString() ?? 
@@ -2711,7 +2709,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
         String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
         
-        // 📍 استخدام دالة تنسيق العنوان هنا بكل احترافية
         final formattedAddress = formatLocationAddress(order['address']);
 
         return Card(
@@ -2747,6 +2744,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Row(
                         children: [
                           IconButton(
+                            style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
+                            icon: const Icon(Icons.map, color: Colors.amber, size: 20),
+                            tooltip: 'تتبع الطلب',
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                PageRouteBuilder(
+                                  pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: order['id'].toString()),
+                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                    return FadeTransition(opacity: animation, child: child);
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
                             style: IconButton.styleFrom(backgroundColor: Colors.black12),
                             icon: const Icon(Icons.share, color: Colors.amber, size: 18),
                             tooltip: 'مشاركة الفاتورة',
@@ -2761,7 +2775,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               Share.share(invoiceText);
                             },
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                           IconButton(
                             style: IconButton.styleFrom(backgroundColor: Colors.blueGrey.withOpacity(0.2)),
                             icon: const Icon(Icons.chat, color: Colors.amber, size: 18),
