@@ -24,7 +24,7 @@ workflows:
       - name: Build Web Release (PWA) 🚀
         script: |
           set -e
-          flutter build web --release --pwa-strategy=offline-first
+          flutter build web --release
       - name: Compress Web Artifacts 📦
         script: |
           set -e
