@@ -123,7 +123,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     future: Supabase.instance.client
                         .from('user_addresses')
                         .select()
-                        .eq('user_id', userId ?? ''),
+                        .eq('user_id', userId ?? '')
+                        .then((response) => List>.from(response)),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator(color: Colors.amber));
@@ -443,7 +444,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   return;
                 }
 
-                final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: ${_selectedLocation.latitude.toStringAsFixed(4)}, ${_selectedLocation.longitude.toStringAsFixed(4)})';
+                // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق
+                final lat = _selectedLocation.latitude;
+                final lng = _selectedLocation.longitude;
+                final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+                
+                final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
                 final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
 
                 await appState.saveUserProfileDetails(_nameController.text, fullAddress);
