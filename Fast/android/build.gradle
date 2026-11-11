@@ -4,7 +4,10 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // 👈 هذا السطر هو المسؤول عن تفعيل إشعارات Firebase و OneSignal في الخلفية
+        // إصدار أداة البناء المتوافق مع فلاتر الحديثة لتجاوز الخطأ
+        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+        // مسؤول عن إشعارات Firebase و OneSignal
         classpath 'com.google.gms:google-services:4.4.2'
     }
 }
