@@ -30,7 +30,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _cleanPhoneInput = '';
   String? _generatedOtp;
 
-  // 🗺️ دالة لفتح الخريطة التفاعلية
+  // 🗺️ دالة لفتح الخريطة التفاعلية وتنسيق الإحداثيات بنظافة
   Future<void> _openInteractiveMap() async {
     final result = await Navigator.push(
       context,
@@ -46,8 +46,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       setState(() {
         if (address != null && address.isNotEmpty) {
           if (latLng != null) {
-            _addressController.text =
-                '$address (الإحداثيات: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)})';
+            // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق تماماً
+            final lat = latLng.latitude;
+            final lng = latLng.longitude;
+            final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+
+            _addressController.text = '$address (الإحداثيات: $formattedCoords)';
           } else {
             _addressController.text = address;
           }
@@ -146,10 +150,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // استخدام دالة التحقق الآمنة من AppState بدون أي تجاوزات وهمية قديمة
       bool isValid = appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
       
-      // دعم الرمز الديناميكي المحلي أيضاً كحماية إضافية
       if (!isValid && _generatedOtp != null && otpCode == _generatedOtp) {
         await appState.checkAndLoginCustomer(_cleanPhoneInput);
         isValid = true;
@@ -158,7 +160,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (isValid) {
         if (mounted) {
           setState(() {
-            _currentStep = 2; // الانتقال لمرحلة إكمال البيانات الشخصية والعنوان
+            _currentStep = 2;
           });
         }
       } else {
@@ -471,24 +473,20 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                               ? _cleanPhoneInput 
                               : _formattedPhone;
 
-                          // 1️⃣ حفظ بيانات العميل في جدول customers
                           await _supabase.from('customers').upsert({
                             'phone': cleanPhone,
                             'name': name,
                             'address': address,
                           }, onConflict: 'phone');
 
-                          // 2️⃣ الاعتماد على setUser لحفظ الجلسة فوراً في SharedPreferences والذاكرة
                           appState.setUser(
                             name: name,
                             phone: cleanPhone,
                             address: address,
                           );
 
-                          // 3️⃣ طلب أذونات الموقع والإشعارات
                           await appState.requestLocationAndNotificationPermissions();
 
-                          // 4️⃣ ربط OneSignal Player ID
                           try {
                             String? playerId = OneSignal.User.pushSubscription.id;
                             if (playerId != null && playerId.isNotEmpty) {
