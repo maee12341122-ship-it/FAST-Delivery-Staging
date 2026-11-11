@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
@@ -18,8 +18,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _addressController =
-      TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
+  
+  // 🔧 تم جعل الحقل يبدأ فارغاً أو بناءً على اختيار الخريطة الفعلي لمنع الثبات على نص معين
+  final TextEditingController _addressController = TextEditingController();
 
   // تحسين السلاسة والانتقال عبر الكيبورد (FocusNodes لكل الحقول)
   final FocusNode _phoneFocus = FocusNode();
@@ -49,7 +50,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     super.dispose();
   }
 
-  // 🗺️ دالة لفتح الخريطة التفاعلية وتنسيق الإحداثيات بنظافة
+  // 🗺️ دالة لفتح الخريطة التفاعلية وجلب الإحداثيات والعنوان الفعلي بنظافة
   Future<void> _openInteractiveMap() async {
     final result = await Navigator.push(
       context,
@@ -63,23 +64,25 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final latLng = result['latLng'];
 
       setState(() {
-        if (address != null && address.isNotEmpty) {
-          if (latLng != null) {
-            // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق تماماً
-            final lat = latLng.latitude;
-            final lng = latLng.longitude;
-            final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+        if (latLng != null) {
+          final lat = latLng.latitude;
+          final lng = latLng.longitude;
+          final formattedCoords = '($lat, $lng)';
 
-            _addressController.text = '$address (الإحداثيات: $formattedCoords)';
+          // الدمج السليم بين العنوان المختار والإحداثيات الفعلية الحية
+          if (address != null && address.isNotEmpty) {
+            _addressController.text = '$address - الإحداثيات: $formattedCoords';
           } else {
-            _addressController.text = address;
+            _addressController.text = 'الموقع المحدد - الإحداثيات: $formattedCoords';
           }
+        } else if (address != null && address.isNotEmpty) {
+          _addressController.text = address;
         }
       });
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات أولاً مع حماية الـ finally
+  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات أولاً
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -98,7 +101,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       _cleanPhoneInput = clean;
       _formattedPhone = '+967$clean';
 
-      // فحص هل العميل موجود مسبقاً في جدول customers بناءً على عمود phone
+      // فحص هل العميل موجود مسبقاً في جدول customers
       final existingCustomer = await _supabase
           .from('customers')
           .select()
@@ -109,10 +112,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         debugPrint('✅ العميل مسجل مسبقاً في قاعدة البيانات.');
         if (mounted) {
           _nameController.text = existingCustomer['name'] ?? '';
-          _addressController.text = existingCustomer['address'] ?? 'تعز - ديلوكس';
+          _addressController.text = existingCustomer['address'] ?? '';
           
           setState(() {
-            _currentStep = 2; // الانتقال مباشرة للبروفايل لوجوده مسبقاً
+            _currentStep = 2; 
             _isLoading = false;
           });
 
@@ -123,13 +126,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         return;
       }
 
-      // طلب الرمز عبر دالة appState الآمنة (بدون كشف المفاتيح السرية في الكود)
       final res = await appState.requestOtpForPhone(_formattedPhone);
       _generatedOtp = appState.generatedDynamicOtp?.toString() ?? '1234';
 
       if (mounted) {
         setState(() {
-          _currentStep = 1; // الانتقال لمرحلة إدخال رمز OTP
+          _currentStep = 1; 
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -265,7 +267,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     const primaryGold = Colors.amber;
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -503,7 +505,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         onSubmitted: (_) => _saveCustomerProfile(appState),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'العنوان التفصيلي (مثال: ديلوكس، شارع جمال)',
+                          labelText: 'العنوان التفصيلي (أو حدده عبر الخريطة)',
                           labelStyle: const TextStyle(color: Colors.grey),
                           prefixIcon:
                               const Icon(Icons.location_on, color: primaryGold),
