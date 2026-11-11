@@ -20,10 +20,16 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس بين الحقول
+  final FocusNode _usernameFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
+
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -63,97 +69,108 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1E1E1E),
-          elevation: 2,
-          title: const Text(
-            'دخول لوحة تحكم المشرف 🛡️', 
-            style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E1E1E),
+            elevation: 2,
+            title: const Text(
+              'دخول لوحة تحكم المشرف 🛡️', 
+              style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)
+            ),
           ),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppConstants.gold.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
-                      ),
-                      child: const Icon(Icons.admin_panel_settings, size: 60, color: AppConstants.gold),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'تسجيل دخول المشرف', 
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'أدخل صلاحيات المشرف للتحكم الكامل بالنظام وإدارة الطلبات', 
-                      style: TextStyle(color: Colors.grey, fontSize: 13), 
-                      textAlign: TextAlign.center
-                    ),
-                    const SizedBox(height: 30),
-                    
-                    // حقل اسم المستخدم (بدون تلميح افتراضي)
-                    TextFormField(
-                      controller: _usernameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'اسم المستخدم',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF1E1E1E),
-                        prefixIcon: Icon(Icons.person, color: AppConstants.gold),
-                      ),
-                      validator: Validators.requiredText,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // حقل كلمة المرور
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'كلمة المرور',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF1E1E1E),
-                        prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
-                      ),
-                      validator: Validators.requiredText,
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppConstants.gold,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppConstants.gold.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
                         ),
-                        onPressed: _login,
-                        icon: const Icon(Icons.login, color: Colors.black),
-                        label: const Text('دخول لوحة التحكم الرئيسية 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        child: const Icon(Icons.admin_panel_settings, size: 60, color: AppConstants.gold),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      const Text(
+                        'تسجيل دخول المشرف', 
+                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'أدخل صلاحيات المشرف للتحكم الكامل بالنظام وإدارة الطلبات', 
+                        style: TextStyle(color: Colors.grey, fontSize: 13), 
+                        textAlign: TextAlign.center
+                      ),
+                      const SizedBox(height: 30),
+                      
+                      // حقل اسم المستخدم مع الانتقال السلس
+                      TextFormField(
+                        controller: _usernameController,
+                        focusNode: _usernameFocus,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) {
+                          FocusScope.of(context).requestFocus(_passwordFocus);
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'اسم المستخدم',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF1E1E1E),
+                          prefixIcon: Icon(Icons.person, color: AppConstants.gold),
+                        ),
+                        validator: Validators.requiredText,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // حقل كلمة المرور مع تنفيذ تسجيل الدخول عند الضغط على "تم"
+                      TextFormField(
+                        controller: _passwordController,
+                        focusNode: _passwordFocus,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _login(),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'كلمة المرور',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF1E1E1E),
+                          prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
+                        ),
+                        validator: Validators.requiredText,
+                      ),
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppConstants.gold,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: _login,
+                          icon: const Icon(Icons.login, color: Colors.black),
+                          label: const Text('دخول لوحة التحكم الرئيسية 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
