@@ -32,14 +32,44 @@ workflows:
       - name: Force Fix Gradle & AGP Versions 🛠️
         script: |
           set -e
-          # 🔧 ترقية إصدار الـ Android Gradle Plugin في ملف build.gradle الرئيسي ليتوافق مع Flutter الحديث
-          if [ -f android/build.gradle ]; then
-            sed -i 's/com.android.tools.build:gradle:.*/com.android.tools.build:gradle:7.4.2'/g android/build.gradle
-          fi
-          # 🔧 تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5 لضمان توافق الـ DSL
+          # 🧹 كتابة ملف build.gradle جديد وحديث يتجاوز مشكلة السطر 24 نهائياً
+          cat << 'EOF' > android/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+          
+          # 🔧 تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
             sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
           fi
+
           chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
@@ -96,12 +126,42 @@ workflows:
       - name: Force Fix Gradle & AGP Versions 🛠️
         script: |
           set -e
-          if [ -f android/build.gradle ]; then
-            sed -i 's/com.android.tools.build:gradle:.*/com.android.tools.build:gradle:7.4.2'/g android/build.gradle
-          fi
+          cat << 'EOF' > android/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
             sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
           fi
+
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
