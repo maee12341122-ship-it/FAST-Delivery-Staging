@@ -17,7 +17,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   static const LatLng _taizCenter = LatLng(13.5795, 44.0209);
   final MapController _mapController = MapController();
   
-  // الإحداثيات الحالية التي يشير إليها منتصف الخريطة
+  // الإحداثيات الحالية التي يشير إليها منتصف الخريطة بدقة فائقة
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
   String? _error;
@@ -87,7 +87,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     });
   }
 
-  // دالة لجلب الموقع الحالي عبر الـ GPS بأقصى دقة ممكنة وتحديث الخريطة
+  // دالة لجلب الموقع الحالي عبر الـ GPS بأقصى دقة متاح وتوسيط الخريطة تلقائياً
   Future<void> _useGps() async {
     setState(() {
       _gettingLocation = true;
@@ -111,10 +111,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         throw 'صلاحية الموقع مرفوضة بشكل دائم من الإعدادات.';
       }
 
-      // جلب الموقع بأعلى دقة متوفرة مع مهلة زمنية لضمان التقاط الأقمار الصناعية
+      // جلب الموقع بأعلى دقة متوفرة عالمياً (Best) مع وقت استجابة سريع
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
-        timeLimit: const Duration(seconds: 12),
+        timeLimit: const Duration(seconds: 10),
       );
 
       final point = LatLng(position.latitude, position.longitude);
@@ -124,7 +124,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         _selectedPoint = point;
       });
       
-      // تحريك الخريطة مباشرة للموقع الحالي بدقة زوم عالية
+      // تحريك الخريطة فوراً لتتمحور حول موقعك الحالي بدرجة زوم تفصيلية عالية
       _mapController.move(point, 17.5);
     } catch (error) {
       if (mounted) {
@@ -156,7 +156,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           appBar: AppBar(
             backgroundColor: cardColor,
             title: const Text(
-              'تحديد موقع التوصيل بدقة 📍', 
+              'تحديد موقع التوصيل بدقة فائقة 📍', 
               style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
             ),
             leading: IconButton(
@@ -204,7 +204,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                 ),
               ),
 
-              // شريط زر الـ GPS
+              // شريط زر الـ GPS الفائق
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
                 child: Row(
@@ -224,7 +224,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
                               )
                             : const Icon(Icons.my_location),
-                        label: const Text('جلب موقعي الحالي بدقة GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('جلب موقعي الحالي بدقة GPS القصوى 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -238,7 +238,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               
               const SizedBox(height: 8),
 
-              // خريطة مع دبوس مركزي ثابت في المنتصف (تتحرك الخريطة تحته لضمان الدقة المطلقة)
+              // الخريطة الاحترافية مع دبوس مركزي وثبّت الإحداثيات الحية
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -254,8 +254,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                         mapController: _mapController,
                         options: MapOptions(
                           initialCenter: widget.initialPoint ?? _taizCenter,
-                          initialZoom: 16.5,
-                          // يتم تحديث الإحداثيات فوراً بناءً على مركز الخريطة أثناء تحريكها
+                          initialZoom: 17.0,
                           onPositionChanged: (position, hasGesture) {
                             if (position.center != null) {
                               setState(() {
@@ -271,7 +270,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                           ),
                         ],
                       ),
-                      // 📌 دبوس ثابت في منتصف الشاشة تماماً لتوجيه دقيق ومريح
+                      // 📌 الدبوس المركزي الثابت (Center Pin)
                       const IgnorePointer(
                         child: Padding(
                           padding: EdgeInsets.only(bottom: 35),
@@ -282,19 +281,21 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                           ),
                         ),
                       ),
-                      // إرشادات بصرية للمستخدم فوق الخريطة
+                      // شريط توجيهي علوي مع إظهار الإحداثيات الحية للمستخدم
                       Positioned(
                         top: 10,
                         child: Container(
-                          padding: constيجعل الخلفية سوداء شفافة: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
                             color: Colors.black87,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: AppConstants.gold.withOpacity(0.5)),
                           ),
-                          child: const Text(
-                            'اسحب الخريطة واجعل الدبوس فوق موقعك تماماً 🎯',
-                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          child: Text(
+                            _selectedPoint != null
+                                ? 'إحداثيات الدبوس: (${_selectedPoint!.latitude.toStringAsFixed(4)}, ${_selectedPoint!.longitude.toStringAsFixed(4)})'
+                                : 'اسحب الخريطة لتحديد الموقع بدقة 🎯',
+                            style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
