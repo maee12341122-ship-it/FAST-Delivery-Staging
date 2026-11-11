@@ -29,9 +29,13 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Prepare official Gradle wrapper
+      - name: Prepare official Gradle wrapper & Clean Root Gradle
         script: |
           set -e
+          # 1. حذف ملف build.gradle القديم الذي يسبب مشكلة السطر 24 نهائياً
+          rm -f android/build.gradle
+          
+          # 2. توليد wrapper نظيف ورسمي بالطريقة التي تفضلها
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
             SEED_DIR="$(mktemp -d)"
             flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
@@ -94,9 +98,10 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Prepare Android Gradle wrapper
+      - name: Prepare Android Gradle wrapper & Clean Root Gradle
         script: |
           set -e
+          rm -f android/build.gradle
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
             SEED_DIR="$(mktemp -d)"
             flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
