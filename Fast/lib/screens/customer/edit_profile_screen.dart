@@ -120,14 +120,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   );
 
-                  if (result != null) {
+                  if (result != null && result is Map) {
                     final address = result['address'] as String?;
                     final latLng = result['latLng'];
 
                     setState(() {
                       if (address != null && address.isNotEmpty) {
                         if (latLng != null) {
-                          _addressController.text = '$address (الإحداثيات: ${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)})';
+                          // 🎯 تنسيق الإحداثيات بشكل مرتب ومنظم تماماً
+                          final lat = latLng.latitude;
+                          final lng = latLng.longitude;
+                          final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+                          
+                          _addressController.text = '$address (الإحداثيات: $formattedCoords)';
                         } else {
                           _addressController.text = address;
                         }
