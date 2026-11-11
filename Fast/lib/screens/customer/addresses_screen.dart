@@ -95,7 +95,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // 🗺️ زر فتح الخريطة لتحديد الموقع بدقة
+                    // 🗺️ زر فتح الخريطة لتحديد الموقع بدقة وجلب الإحداثيات الحقيقية
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.amber,
@@ -110,12 +110,22 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         );
                         if (result != null && result is Map) {
                           setDialogState(() {
-                            _detailsController.text = result['address'] ?? '';
-                            _selectedLatLng = result['latLng'];
+                            final addressText = result['address'] ?? '';
+                            final latLng = result['latLng'];
+                            
+                            if (latLng != null) {
+                              final lat = latLng.latitude;
+                              final lng = latLng.longitude;
+                              // 🎯 دمج العنوان المسترجع مع الإحداثيات الحقيقية بدقة لضمان عدم ظهور إحداثيات وهمية
+                              _detailsController.text = '$addressText - الإحداثيات: ($lat, $lng)';
+                              _selectedLatLng = latLng;
+                            } else {
+                              _detailsController.text = addressText;
+                            }
                           });
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('تم تحديد الموقع والعنوان من الخريطة بنجاح ✅')),
+                              const SnackBar(content: Text('تم تحديد الموقع والإحداثيات من الخريطة بنجاح ✅')),
                             );
                           }
                         }
