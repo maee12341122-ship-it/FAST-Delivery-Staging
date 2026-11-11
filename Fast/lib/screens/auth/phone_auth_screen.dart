@@ -21,6 +21,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _addressController =
       TextEditingController(text: 'تعز - ديلوكس / بجوار الشارع العام');
 
+  // تحسين السلاسة والانتقال عبر الكيبورد (FocusNodes لكل الحقول)
+  final FocusNode _phoneFocus = FocusNode();
+  final FocusNode _otpFocus = FocusNode();
+  final FocusNode _nameFocus = FocusNode();
+  final FocusNode _addressFocus = FocusNode();
+
   // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال البروفايل
   int _currentStep = 0;
   bool _isLoading = false;
@@ -29,6 +35,19 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
   String? _generatedOtp;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _otpController.dispose();
+    _nameController.dispose();
+    _addressController.dispose();
+    _phoneFocus.dispose();
+    _otpFocus.dispose();
+    _nameFocus.dispose();
+    _addressFocus.dispose();
+    super.dispose();
+  }
 
   // 🗺️ دالة لفتح الخريطة التفاعلية وتنسيق الإحداثيات بنظافة
   Future<void> _openInteractiveMap() async {
@@ -184,13 +203,57 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _otpController.dispose();
-    _nameController.dispose();
-    _addressController.dispose();
-    super.dispose();
+  // 3️⃣ حفظ بيانات العميل النهائية
+  Future<void> _saveCustomerProfile(AppState appState) async {
+    final name = _nameController.text.trim();
+    final address = _addressController.text.trim();
+
+    if (name.isNotEmpty && address.isNotEmpty) {
+      final cleanPhone = _cleanPhoneInput.isNotEmpty 
+          ? _cleanPhoneInput 
+          : _formattedPhone;
+
+      await _supabase.from('customers').upsert({
+        'phone': cleanPhone,
+        'name': name,
+        'address': address,
+      }, onConflict: 'phone');
+
+      appState.setUser(
+        name: name,
+        phone: cleanPhone,
+        address: address,
+      );
+
+      await appState.requestLocationAndNotificationPermissions();
+
+      try {
+        String? playerId = OneSignal.User.pushSubscription.id;
+        if (playerId != null && playerId.isNotEmpty) {
+          await _supabase
+              .from('customers')
+              .update({'onesignal_player_id': playerId})
+              .eq('phone', cleanPhone);
+        }
+      } catch (e) {
+        debugPrint('خطأ في حفظ Player ID: $e');
+      }
+
+      if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!();
+      } else {
+        Navigator.pop(context);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
+      );
+    }
   }
 
   @override
@@ -201,330 +264,295 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     const cardColor = Color(0xFF1E1E1E);
     const primaryGold = Colors.amber;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: backgroundColor,
-        appBar: AppBar(
-          backgroundColor: cardColor,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: primaryGold),
-            onPressed: () => Navigator.pop(context),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: backgroundColor,
+          appBar: AppBar(
+            backgroundColor: cardColor,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: primaryGold),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'FAST – تسجيل دخول العميل',
+              style: TextStyle(
+                  color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
-          title: const Text(
-            'FAST – تسجيل دخول العميل',
-            style: TextStyle(
-                color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Container(
+          body: Center(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: primaryGold.withOpacity(0.3), width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: primaryGold.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _currentStep == 1
-                          ? Icons.mark_chat_read_outlined
-                          : Icons.person_outline_rounded,
-                      size: 50,
-                      color: primaryGold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
-                  if (_currentStep == 0) ...[
-                    const Text(
-                      'تسجيل الدخول برقم الهاتف',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الواتساب',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 25),
-                    TextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'رقم الهاتف',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                        prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade800),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGold, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGold,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _isLoading ? null : () => _sendSupabaseOTP(appState),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                            )
-                          : const Text('إرسال رمز التحقق عبر واتساب 💬',
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15)),
-                    ),
-                  ]
-
-                  // ---------------- المرحلة الثانية: إدخال رمز الـ OTP ----------------
-                  else if (_currentStep == 1) ...[
-                    const Text(
-                      'أدخل رمز التحقق (OTP)',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'تم إرسال رمز التحقق إلى $_formattedPhone',
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 25),
-                    TextField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 20, letterSpacing: 8),
-                      maxLength: 4,
-                      decoration: InputDecoration(
-                        labelText: 'رمز التحقق (4 أرقام)',
-                        labelStyle:
-                            const TextStyle(color: Colors.grey, letterSpacing: 0),
-                        prefixIcon:
-                            const Icon(Icons.lock_clock_outlined, color: primaryGold),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade800),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGold, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGold,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _isLoading
-                          ? null
-                          : () => _verifyOTPAndProceed(appState),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                            )
-                          : const Text('تأكيد الرمز والمتابعة 🔑',
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15)),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => _currentStep = 0),
-                      child: const Text('تغيير رقم الهاتف',
-                          style: TextStyle(color: primaryGold)),
-                    ),
-                  ]
-
-                  // ---------------- المرحلة الثالثة: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
-                  else ...[
-                    const Text(
-                      'استكمال وتأكيد البيانات الشخصية',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'أدخل اسمك وعنوانك التفصيلي بدقة في تعز',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: _nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'الاسم الكامل',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                        prefixIcon: const Icon(Icons.person, color: primaryGold),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade800),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGold, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _addressController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'العنوان التفصيلي (مثال: ديلوكس، شارع جمال)',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                        prefixIcon:
-                            const Icon(Icons.location_on, color: primaryGold),
-                        filled: true,
-                        fillColor: backgroundColor,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade800),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryGold, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: primaryGold),
-                        minimumSize: const Size(double.infinity, 45),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.map, color: primaryGold),
-                      label: const Text(
-                        'تحديد موقعك عبر الخريطة التفاعلية 🗺️',
-                        style: TextStyle(
-                            color: primaryGold, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: _openInteractiveMap,
-                    ),
-                    const SizedBox(height: 25),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryGold,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () async {
-                        final name = _nameController.text.trim();
-                        final address = _addressController.text.trim();
-
-                        if (name.isNotEmpty && address.isNotEmpty) {
-                          final cleanPhone = _cleanPhoneInput.isNotEmpty 
-                              ? _cleanPhoneInput 
-                              : _formattedPhone;
-
-                          await _supabase.from('customers').upsert({
-                            'phone': cleanPhone,
-                            'name': name,
-                            'address': address,
-                          }, onConflict: 'phone');
-
-                          appState.setUser(
-                            name: name,
-                            phone: cleanPhone,
-                            address: address,
-                          );
-
-                          await appState.requestLocationAndNotificationPermissions();
-
-                          try {
-                            String? playerId = OneSignal.User.pushSubscription.id;
-                            if (playerId != null && playerId.isNotEmpty) {
-                              await _supabase
-                                  .from('customers')
-                                  .update({'onesignal_player_id': playerId})
-                                  .eq('phone', cleanPhone);
-                            }
-                          } catch (e) {
-                            debugPrint('خطأ في حفظ Player ID: $e');
-                          }
-
-                          if (widget.onLoginSuccess != null) {
-                            widget.onLoginSuccess!();
-                          } else {
-                            Navigator.pop(context);
-                          }
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text(
-                                    'أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
-                          );
-                        }
-                      },
-                      child: const Text('حفظ والدخول للتطبيق 🚀',
-                          style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15)),
+              child: Container(
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: primaryGold.withOpacity(0.3), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
                     ),
                   ],
-                ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: primaryGold.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _currentStep == 1
+                            ? Icons.mark_chat_read_outlined
+                            : Icons.person_outline_rounded,
+                        size: 50,
+                        color: primaryGold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
+                    if (_currentStep == 0) ...[
+                      const Text(
+                        'تسجيل الدخول برقم الهاتف',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الواتساب',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 25),
+                      TextField(
+                        controller: _phoneController,
+                        focusNode: _phoneFocus,
+                        keyboardType: TextInputType.phone,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _sendSupabaseOTP(appState),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'رقم الهاتف',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryGold,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _isLoading ? null : () => _sendSupabaseOTP(appState),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                              )
+                            : const Text('إرسال رمز التحقق عبر واتساب 💬',
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
+                      ),
+                    ]
+
+                    // ---------------- المرحلة الثانية: إدخال رمز الـ OTP ----------------
+                    else if (_currentStep == 1) ...[
+                      const Text(
+                        'أدخل رمز التحقق (OTP)',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'تم إرسال رمز التحقق إلى $_formattedPhone',
+                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 25),
+                      TextField(
+                        controller: _otpController,
+                        focusNode: _otpFocus,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _verifyOTPAndProceed(appState),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 20, letterSpacing: 8),
+                        maxLength: 4,
+                        decoration: InputDecoration(
+                          labelText: 'رمز التحقق (4 أرقام)',
+                          labelStyle:
+                              const TextStyle(color: Colors.grey, letterSpacing: 0),
+                          prefixIcon:
+                              const Icon(Icons.lock_clock_outlined, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryGold,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _isLoading
+                            ? null
+                            : () => _verifyOTPAndProceed(appState),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                              )
+                            : const Text('تأكيد الرمز والمتابعة 🔑',
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() => _currentStep = 0),
+                        child: const Text('تغيير رقم الهاتف',
+                            style: TextStyle(color: primaryGold)),
+                      ),
+                    ]
+
+                    // ---------------- المرحلة الثالثة: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
+                    else ...[
+                      const Text(
+                        'استكمال وتأكيد البيانات الشخصية',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'أدخل اسمك وعنوانك التفصيلي بدقة في تعز',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _nameController,
+                        focusNode: _nameFocus,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) {
+                          FocusScope.of(context).requestFocus(_addressFocus);
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'الاسم الكامل',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon: const Icon(Icons.person, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _addressController,
+                        focusNode: _addressFocus,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _saveCustomerProfile(appState),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'العنوان التفصيلي (مثال: ديلوكس، شارع جمال)',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon:
+                              const Icon(Icons.location_on, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: primaryGold),
+                          minimumSize: const Size(double.infinity, 45),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.map, color: primaryGold),
+                        label: const Text(
+                          'تحديد موقعك عبر الخريطة التفاعلية 🗺️',
+                          style: TextStyle(
+                              color: primaryGold, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: _openInteractiveMap,
+                      ),
+                      const SizedBox(height: 25),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryGold,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => _saveCustomerProfile(appState),
+                        child: const Text('حفظ والدخول للتطبيق 🚀',
+                            style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
