@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../providers/app_state.dart';
 import '../services/notification_service.dart'; // 👈 استدعاء خدمة الإشعارات الخاصة بك
 import '../utils/constants.dart';
@@ -19,10 +18,16 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس عبر الكيبورد
+  final FocusNode _usernameFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
+
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -36,6 +41,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     );
 
     if (!success || appState.currentCourier == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب ❌')),
       );
@@ -63,101 +69,112 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF1E1E1E),
-          elevation: 2,
-          title: const Text('دخول حساب المندوب 🛵', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppConstants.gold.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
-                      ),
-                      child: const Icon(Icons.delivery_dining, size: 60, color: AppConstants.gold),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text('تسجيل دخول المندوب', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    const Text('أدخل بيانات الاعتماد الخاصة بحسابك المسجل من الإدارة', style: TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center),
-                    const SizedBox(height: 30),
-                    
-                    // حقل اسم المستخدم للمندوب
-                    TextFormField(
-                      controller: _usernameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'اسم المستخدم',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF1E1E1E),
-                        prefixIcon: Icon(Icons.person, color: AppConstants.gold),
-                      ),
-                      validator: Validators.requiredText,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // حقل كلمة المرور للمندوب
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'كلمة المرور',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF1E1E1E),
-                        prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
-                      ),
-                      validator: Validators.requiredText,
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppConstants.gold,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج حقول النص
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF1E1E1E),
+            elevation: 2,
+            title: const Text('دخول حساب المندوب 🛵', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppConstants.gold.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
                         ),
-                        onPressed: _login,
-                        icon: const Icon(Icons.login, color: Colors.black),
-                        label: const Text('دخول لوحة المندوب 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        child: const Icon(Icons.delivery_dining, size: 60, color: AppConstants.gold),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      const SizedBox(height: 24),
+                      const Text('تسجيل دخول المندوب', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      const Text('أدخل بيانات الاعتماد الخاصة بحسابك المسجل من الإدارة', style: TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center),
+                      const SizedBox(height: 30),
+                      
+                      // حقل اسم المستخدم للمندوب مع الانتقال السلس
+                      TextFormField(
+                        controller: _usernameController,
+                        focusNode: _usernameFocus,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) {
+                          FocusScope.of(context).requestFocus(_passwordFocus);
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'اسم المستخدم',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF1E1E1E),
+                          prefixIcon: Icon(Icons.person, color: AppConstants.gold),
+                        ),
+                        validator: Validators.requiredText,
                       ),
-                      child: const Text(
-                        'تنبيه: يمكنك إضافة حسابات المناديب وتعديل كلمات مرورهم مباشرة من لوحة تحكم المشرف.',
-                        style: TextStyle(color: Colors.lightBlueAccent, fontSize: 11, height: 1.5),
-                        textAlign: TextAlign.center,
+                      const SizedBox(height: 16),
+
+                      // حقل كلمة المرور للمندوب مع تنفيذ تسجيل الدخول عند الضغط على "تم"
+                      TextFormField(
+                        controller: _passwordController,
+                        focusNode: _passwordFocus,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _login(),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'كلمة المرور',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF1E1E1E),
+                          prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
+                        ),
+                        validator: Validators.requiredText,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppConstants.gold,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: _login,
+                          icon: const Icon(Icons.login, color: Colors.black),
+                          label: const Text('دخول لوحة المندوب 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'تنبيه: يمكنك إضافة حسابات المناديب وتعديل كلمات مرورهم مباشرة من لوحة تحكم المشرف.',
+                          style: TextStyle(color: Colors.lightBlueAccent, fontSize: 11, height: 1.5),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
