@@ -20,6 +20,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressDescriptionController = TextEditingController();
   final _paymentAccountController = TextEditingController();
 
+  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس عبر الكيبورد
+  final FocusNode _nameFocus = FocusNode();
+  final FocusNode _phoneFocus = FocusNode();
+  final FocusNode _addressFocus = FocusNode();
+  final FocusNode _paymentAccountFocus = FocusNode();
+
   String _selectedPaymentMethod = 'cash'; // cash
 
   // إحداثيات افتراضية لمدينة تعز (مركز المدينة)
@@ -45,6 +51,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneController.dispose();
     _addressDescriptionController.dispose();
     _paymentAccountController.dispose();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
+    _addressFocus.dispose();
+    _paymentAccountFocus.dispose();
     super.dispose();
   }
 
@@ -229,6 +239,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  // دالة إرسال الطلب النهائي
+  Future<void> _submitOrder(AppState appState) async {
+    if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
+      );
+      return;
+    }
+
+    // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق
+    final lat = _selectedLocation.latitude;
+    final lng = _selectedLocation.longitude;
+    final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+    
+    final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
+    final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
+
+    await appState.saveUserProfileDetails(_nameController.text, fullAddress);
+    try {
+      await appState.createOrder(
+        customerName: _nameController.text,
+        phone: _phoneController.text,
+        address: fullAddress,
+        itemsDesc: itemsDesc,
+        productsTotal: appState.totalAmount,
+        paymentMethod: _selectedPaymentMethod,
+        paymentAccount: 'نقدي',
+      );
+      if (context.mounted) {
+        final trackingCode = appState.lastOrderTrackingCode ?? '—';
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: $trackingCode')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -236,251 +290,229 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-        appBar: AppBar(
-          backgroundColor: cardBg,
-          title: const Text('تأكيد الطلب وتحديد الموقع 🚀', style: TextStyle(color: Colors.amber, fontSize: 16)),
-          iconTheme: const IconThemeData(color: Colors.amber),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.withOpacity(0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('بيانات المستلم', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
-                      // 📍 زر اختيار من العناوين المحفوظة
-                      TextButton.icon(
-                        style: TextButton.styleFrom(foregroundColor: Colors.amber),
-                        icon: const Icon(Icons.bookmarks, size: 16),
-                        label: const Text('عناويني المحفوظة', style: TextStyle(fontSize: 12)),
-                        onPressed: () => _showAddressBookBottomSheet(context, cardBg, textColor),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _nameController,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      labelText: 'الاسم الكامل',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _phoneController,
-                    keyboardType: TextInputType.phone,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      labelText: 'رقم الهاتف',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _addressDescriptionController,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      labelText: 'تفاصيل العنوان (شارع، معلم قريب...)',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // طريقة الدفع
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.withOpacity(0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('طريقة الدفع 💳', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    value: _selectedPaymentMethod,
-                    dropdownColor: cardBg,
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام')),
-                    ],
-                    onChanged: (val) {
-                      setState(() {
-                        _selectedPaymentMethod = val ?? 'cash';
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // الخريطة التفاعلية
-            const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 8),
-            Container(
-              height: 250,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber, width: 1.5),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+          appBar: AppBar(
+            backgroundColor: cardBg,
+            title: const Text('تأكيد الطلب وتحديد الموقع 🚀', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            iconTheme: const IconThemeData(color: Colors.amber),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _selectedLocation,
-                        initialZoom: 15.0,
-                        onTap: (tapPosition, point) {
-                          setState(() {
-                            _selectedLocation = point;
-                          });
-                        },
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        TileLayer(
-                          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                          subdomains: const ['a', 'b', 'c', 'd'],
-                          userAgentPackageName: 'com.fast.taiz',
-                          tileProvider: NetworkTileProvider(),
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _selectedLocation,
-                              width: 80,
-                              height: 80,
-                              child: const Icon(Icons.location_pin, color: Colors.red, size: 45),
-                            ),
-                          ],
+                        const Text('بيانات المستلم', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                        // 📍 زر اختيار من العناوين المحفوظة
+                        TextButton.icon(
+                          style: TextButton.styleFrom(foregroundColor: Colors.amber),
+                          icon: const Icon(Icons.bookmarks, size: 16),
+                          label: const Text('عناويني المحفوظة', style: TextStyle(fontSize: 12)),
+                          onPressed: () => _showAddressBookBottomSheet(context, cardBg, textColor),
                         ),
                       ],
                     ),
-                    if (_isLoadingLocation)
-                      Container(
-                        color: Colors.black54,
-                        child: const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                    const SizedBox(height: 12),
+                    // حقل الاسم الكامل
+                    TextField(
+                      controller: _nameController,
+                      focusNode: _nameFocus,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) {
+                        FocusScope.of(context).requestFocus(_phoneFocus);
+                      },
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        labelText: 'الاسم الكامل',
+                        labelStyle: const TextStyle(color: Colors.grey),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                    Positioned(
-                      bottom: 10,
-                      left: 10,
-                      child: FloatingActionButton.small(
-                        backgroundColor: Colors.amber,
-                        onPressed: _determinePosition,
-                        child: const Icon(Icons.my_location, color: Colors.black),
+                    ),
+                    const SizedBox(height: 12),
+                    // حقل رقم الهاتف
+                    TextField(
+                      controller: _phoneController,
+                      focusNode: _phoneFocus,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) {
+                        FocusScope.of(context).requestFocus(_addressFocus);
+                      },
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        labelText: 'رقم الهاتف',
+                        labelStyle: const TextStyle(color: Colors.grey),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // حقل تفاصيل العنوان
+                    TextField(
+                      controller: _addressDescriptionController,
+                      focusNode: _addressFocus,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submitOrder(appState),
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        labelText: 'تفاصيل العنوان (شارع، معلم قريب...)',
+                        labelStyle: const TextStyle(color: Colors.grey),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // ملخص السلة
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(12),
+              // طريقة الدفع
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('طريقة الدفع 💳', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: _selectedPaymentMethod,
+                      dropdownColor: cardBg,
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام')),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedPaymentMethod = val ?? 'cash';
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('إجمالي المنتجات:', style: TextStyle(color: textColor, fontSize: 15)),
-                  Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
+              const SizedBox(height: 20),
+
+              // الخريطة التفاعلية
+              const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+              const SizedBox(height: 8),
+              Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber, width: 1.5),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    children: [
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _selectedLocation,
+                          initialZoom: 15.0,
+                          onTap: (tapPosition, point) {
+                            setState(() {
+                              _selectedLocation = point;
+                            });
+                          },
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                            subdomains: const ['a', 'b', 'c', 'd'],
+                            userAgentPackageName: 'com.fast.taiz',
+                            tileProvider: NetworkTileProvider(),
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _selectedLocation,
+                                width: 80,
+                                height: 80,
+                                child: const Icon(Icons.location_pin, color: Colors.red, size: 45),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (_isLoadingLocation)
+                        Container(
+                          color: Colors.black54,
+                          child: const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                        ),
+                      Positioned(
+                        bottom: 10,
+                        left: 10,
+                        child: FloatingActionButton.small(
+                          backgroundColor: Colors.amber,
+                          onPressed: _determinePosition,
+                          child: const Icon(Icons.my_location, color: Colors.black),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // زر إرسال الطلب النهائي
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              // ملخص السلة
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('إجمالي المنتجات:', style: TextStyle(color: textColor, fontSize: 15)),
+                    Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
               ),
-              onPressed: () async {
-                if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
-                  );
-                  return;
-                }
+              const SizedBox(height: 20),
 
-                // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق
-                final lat = _selectedLocation.latitude;
-                final lng = _selectedLocation.longitude;
-                final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
-                
-                final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
-                final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
-
-                await appState.saveUserProfileDetails(_nameController.text, fullAddress);
-                try {
-                  await appState.createOrder(
-                    customerName: _nameController.text,
-                    phone: _phoneController.text,
-                    address: fullAddress,
-                    itemsDesc: itemsDesc,
-                    productsTotal: appState.totalAmount,
-                    paymentMethod: _selectedPaymentMethod,
-                    paymentAccount: 'نقدي',
-                  );
-                  if (context.mounted) {
-                    final trackingCode = appState.lastOrderTrackingCode ?? '—';
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const HomeScreen()),
-                      (route) => false,
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: $trackingCode')),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
-                }
-              },
-              child: const Text('تأكيد وإرسال الطلب للمشرف 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
-          ],
+              // زر إرسال الطلب النهائي
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => _submitOrder(appState),
+                child: const Text('تأكيد وإرسال الطلب للمشرف 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ],
+          ),
         ),
       ),
     );
