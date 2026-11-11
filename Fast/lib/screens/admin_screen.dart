@@ -4,7 +4,8 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'customer/order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
+import 'order_tracking_screen.dart';
+ // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
