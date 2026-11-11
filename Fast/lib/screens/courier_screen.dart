@@ -5,8 +5,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'order_tracking_screen.dart';
- // 👈 استيراد شاشة تتبع الطلب الموحدة
+import 'order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب الموحدة
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -516,112 +515,127 @@ class _CourierScreenState extends State<CourierScreen> {
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: Colors.amber.withOpacity(0.2)),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(14.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-                    IconButton(
-                      style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
-                      icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatScreen(
-                              orderId: orderId,
-                              userRole: 'courier',
-                              targetChat: 'admin_courier',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            // 🚀 تم ربط الكارد بالكامل ليفتح شاشة التتبع المنحنية عند النقر عليه
+            onTap: () {
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
                 ),
-                const Divider(color: Colors.white12, height: 16),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text('العنوان: $customerAddress', style: const TextStyle(color: Colors.white70, fontSize: 13))),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  height: 36,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.amber),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    icon: const Icon(Icons.map, color: Colors.amber, size: 16),
-                    label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(color: Colors.amber, fontSize: 12)),
-                    onPressed: () => _openMap(customerAddress),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.shopping_bag, size: 16, color: Colors.amberAccent),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text('المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('🛍️ سعر المنتجات: $productsPrice ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                      const Divider(color: Colors.white12, height: 8),
-                      Text('💰 الإجمالي الكلي المطلوب من العميل: ${finalTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                      IconButton(
+                        style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
+                        icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ChatScreen(
+                                orderId: orderId,
+                                userRole: 'courier',
+                                targetChat: 'admin_courier',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-                
-                // عرض التقييم داخل صفحة الطلب ليصل للمشرف والمندوب بوضوح
-                if (ratingValue != null) ...[
                   const Divider(color: Colors.white12, height: 16),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text('العنوان: $customerAddress', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 36,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.amber),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.map, color: Colors.amber, size: 16),
+                      label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                      onPressed: () => _openMap(customerAddress),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.shopping_bag, size: 16, color: Colors.amberAccent),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text('المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.star, color: Colors.amber, size: 16),
-                            const SizedBox(width: 6),
-                            Text('تقييم العميل: $ratingValue / 5', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        if (ratingComment != null && ratingComment.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('ملاحظة العميل: $ratingComment', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                        ],
+                        Text('🛍️ سعر المنتجات: $productsPrice ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const Divider(color: Colors.white12, height: 8),
+                        Text('💰 الإجمالي الكلي المطلوب من العميل: ${finalTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
                   ),
-                ],
+                  const SizedBox(height: 6),
+                  Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                  
+                  // عرض التقييم داخل صفحة الطلب ليصل للمشرف والمندوب بوضوح
+                  if (ratingValue != null) ...[
+                    const Divider(color: Colors.white12, height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.star, color: Colors.amber, size: 16),
+                              const SizedBox(width: 6),
+                              Text('تقييم العميل: $ratingValue / 5', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          if (ratingComment != null && ratingComment.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('ملاحظة العميل: $ratingComment', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
 
-                const Divider(color: Colors.white12, height: 20),
-                _buildOrderActions(appState, orderId, orderStatus),
-              ],
+                  const Divider(color: Colors.white12, height: 20),
+                  _buildOrderActions(appState, orderId, orderStatus),
+                ],
+              ),
             ),
           ),
         );
