@@ -2711,6 +2711,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         
         final formattedAddress = formatLocationAddress(order['address']);
 
+        // 💰 الأسعار التفصيلية بدقة تامة لمنع ظهور الصفر
+        final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['products_price']?.toString() ?? '0') ?? 0.0;
+        final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double grandTotal = double.tryParse(order['total_price']?.toString() ?? order['total_amount']?.toString() ?? '0') ?? (productsTotal > 0 ? (productsTotal + deliveryFee) : deliveryFee);
+
         return Card(
           color: cardBg,
           margin: const EdgeInsets.symmetric(vertical: 8),
@@ -2769,8 +2774,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   'رقم الطلب: #${order['id']}\n'
                                   'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
                                   'العنوان: $formattedAddress\n'
-                                  'رسوم التوصيل: ${order['delivery_fee']} ر.ي\n'
-                                  'الإجمالي: ${order['total_price'] ?? order['total_amount']} ر.ي\n'
+                                  'سعر المنتجات: $productsTotal ر.ي\n'
+                                  'رسوم التوصيل: $deliveryFee ر.ي\n'
+                                  'الإجمالي: $grandTotal ر.ي\n'
                                   'الحالة: $arabicStatus';
                               Share.share(invoiceText);
                             },
@@ -2830,18 +2836,76 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(height: 10),
 
+                  // 🟢 زر الموافقة أو الإلغاء السريع يظهر حصراً عندما تكون الحالة pricingSentToCustomer
+                  if (status == 'pricingSentToCustomer') ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.styleFrom != null ? ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () {
+                                    appState.customerConfirmOrder(order['id']);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('تم تأكيد الطلب وإرساله للمندوب بنجاح! ✅')),
+                                    );
+                                  },
+                                  child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ) : const SizedBox.shrink(),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () {
+                                    appState.customerCancelOrder(order['id']);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('تم رفض الطلب وإلغاؤه ❌')),
+                                    );
+                                  },
+                                  child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
                   Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
-                  Text('سعر المنتجات: ${order['products_total']} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
-                  Text('رسوم التوصيل: ${order['delivery_fee']} ر.ي', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('سعر المنتجات: $productsTotal ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
+                  Text('رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
                   const Divider(color: Colors.grey, height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('الإجمالي الكلي:', style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold)),
-                      Text('${order['total_price'] ?? order['total_amount']} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                      Text('$grandTotal ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
                     ],
                   ),
                   if (status == 'delivered' || status == 'arrived') ...[
