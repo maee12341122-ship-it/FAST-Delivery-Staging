@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -405,7 +405,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
       _previousUnreadCount = appState.unreadNotificationsCount;
 
-      // 🔒 فحص وإظهار نافذة سياسة الخصوصية إذا لم يوافق عليها المستخدم بعد
       _checkAndShowPrivacyPolicyDialog(context, appState);
     });
   }
@@ -423,15 +422,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  // 📢 نافذة سياسة الخصوصية والاستخدام التي تظهر فور فتح التطبيق
+  // 📢 نافذة سياسة الخصوصية والتنبيهات الهامة
   void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
-    // يمكنك تعديل الشرط حسب حفظ حالة الموافقة محلياً
     bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy ?? false;
 
     if (!hasAcceptedPrivacy) {
       showDialog(
         context: context,
-        barrierDismissible: false, // يمنع إغلاق النافذة بدون موافقة أو خروج
+        barrierDismissible: false,
         builder: (context) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -445,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Icon(Icons.shield_outlined, color: Colors.amber, size: 26),
                 SizedBox(width: 8),
                 Text(
-                  'سياسة الخصوصية والاستخدام 🛡️',
+                  'سياسة الخصوصية وشروط الاستخدام 🛡️',
                   style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -462,13 +460,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
                     const SizedBox(height: 12),
-                    _buildPrivacyPoint('1️⃣ جمع البيانات:', 'نجمع اسمك، رقم هاتفك، وعنوانك لغرض إتمام التوصيل والتواصل معك بشأن الطلب.'),
+                    _buildPrivacyPoint('1️⃣ جمع واستخدام البيانات:', 'نقوم بجمع معلومات أساسية مثل (الاسم، رقم الهاتف، العنوان، وإحداثيات الموقع الجغرافي GPS) حصراً لتسهيل عملية توصيل الطلبات بدقة وسرعة عبر المناديب المعتمدين.'),
+                    const SizedBox(height: 12),
+                    
+                    // 🛑 التنبيهات الهامة بالنمط المطلوب
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '🛑 تنبيهات هامة:',
+                            style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '• يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك. ✅',
+                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '• لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع ارسال البيان. 🪪',
+                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '• لا تغلق تلفونك حتى تتم عملية التوصيل. 🏍️',
+                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPrivacyPoint('2️⃣ أمان وحماية البيانات:', 'جميع بيانات المعاملات والعملاء مشفرة وآمنة عبر قواعد بيانات سحابية متقدمة، ولا يتم مشاركتها مع أي طرف ثالث سوى فريق التوصيل والإدارة لإتمام الخدمة.'),
                     const SizedBox(height: 8),
-                    _buildPrivacyPoint('2️⃣ بيانات الموقع (GPS):', 'نستخدم موقعك الجغرافي لتحديد مكان التسليم بدقة وتسهيل الوصول إليك عبر الكابتن.'),
-                    const SizedBox(height: 8),
-                    _buildPrivacyPoint('3️⃣ سرية البيانات:', 'بياناتك الشخصية مشفرة وآمنة تماماً ولن يتم مشاركتها مع أي طرف ثالث خارج إطار خدمة التوصيل.'),
-                    const SizedBox(height: 8),
-                    _buildPrivacyPoint('4️⃣ الدفع والأسعار:', 'يتم تحديد رسوم التوصيل بشفافية بعد مراجعة الإدارة، والدفع يتم نقداً عند الاستلام.'),
+                    _buildPrivacyPoint('3️⃣ الدعم والتواصل:', 'لأي استفسارات أو مساعدة حول سياسة الخصوصية أو الخدمة، يمكنك التواصل مع إدارة التطبيق في تعز، اليمن.'),
                     const SizedBox(height: 12),
                     const Text(
                       'باستخدامك للتطبيق، فإنك توافق على الشروط وسياسة الخصوصية الموضحة أعلاه.',
@@ -481,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             actions: [
               TextButton(
                 onPressed: () {
-                  SystemNavigator.pop(); // خروج من التطبيق عند الرفض
+                  SystemNavigator.pop();
                 },
                 child: const Text('رفض وخروج ❌', style: TextStyle(color: Colors.grey)),
               ),
@@ -715,7 +746,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 🌟 دالة الإضافات المنبثقة المنظمة والمرتبة باتجاه RTL الصحيح
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
@@ -793,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           return CheckboxListTile(
                             activeColor: Colors.amber,
                             checkColor: Colors.black,
-                            controlAffinity: ListTileControlAffinity.leading, // 👈 ضبط المربع ليظهر على اليمين تماماً
+                            controlAffinity: ListTileControlAffinity.leading,
                             title: Text(
                               modName,
                               style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
@@ -3064,7 +3094,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _showHowToUseDialog(context, cardBg, textColor);
         }),
 
-        // 🛡️ زر إعادة فتح وقراءة سياسة الخصوصية من صفحة الحساب الشخصي
+        // 🛡️ زر سياسة الخصوصية والاستخدام
         _buildProfileItem(Icons.privacy_tip_outlined, 'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, () {
           appState.setPrivacyPolicyAccepted(false);
           _checkAndShowPrivacyPolicyDialog(context, appState);
