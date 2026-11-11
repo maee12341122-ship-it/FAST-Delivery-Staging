@@ -18,7 +18,6 @@ class _CourierScreenState extends State<CourierScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // تحسين السلاسة والانتقال عبر الكيبورد
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
 
@@ -31,7 +30,6 @@ class _CourierScreenState extends State<CourierScreen> {
     super.dispose();
   }
 
-  // تعديل رابط الخريطة لفتح الاتجاهات مباشرة
   Future<void> _openMap(String address) async {
     final query = Uri.encodeComponent(address.isNotEmpty ? address : 'Taiz, Yemen');
     final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$query');
@@ -47,7 +45,6 @@ class _CourierScreenState extends State<CourierScreen> {
     }
   }
 
-  // 🔔 دالة ذكية لمعالجة النقر على إشعار المندوب وتوجيهه فوراً للطلب المحدد
   void _handleCourierNotificationTap(BuildContext context, Map<String, dynamic> notification) {
     final String? orderId = notification['order_id']?.toString() ?? 
                             notification['related_id']?.toString() ?? 
@@ -71,7 +68,6 @@ class _CourierScreenState extends State<CourierScreen> {
     }
   }
 
-  // 🔍 دالة مساعدة لاستخراج رقم الطلب من نص الإشعار (مثل طلب #15)
   String? _extractOrderIdFromText(String text) {
     final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
     final match = regExp.firstMatch(text);
@@ -81,7 +77,6 @@ class _CourierScreenState extends State<CourierScreen> {
     return null;
   }
 
-  // 🌐 شريط تنبيه انقطاع الإنترنت العائم
   Widget _buildNetworkStatusBar(AppState appState) {
     if (appState.isConnectedToInternet) {
       return const SizedBox.shrink();
@@ -109,7 +104,6 @@ class _CourierScreenState extends State<CourierScreen> {
     final appState = Provider.of<AppState>(context);
     final courier = appState.currentCourier;
 
-    // حساب الطلبات التي تنتظر موافقة أو استجابة المندوب
     final pendingOrdersCount = courier != null 
         ? appState.orders.where((o) {
             final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
@@ -120,7 +114,7 @@ class _CourierScreenState extends State<CourierScreen> {
         : 0;
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط في أي مكان فارغ
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -134,7 +128,6 @@ class _CourierScreenState extends State<CourierScreen> {
             ),
             actions: [
               if (courier != null) ...[
-                // 🛎️ أيقونة الإشعارات مع نافذة سجل الإشعارات الفورية للمندوب (قابلة للنقر وتوجيهك للطلب)
                 Stack(
                   alignment: Alignment.center,
                   children: [
@@ -172,8 +165,8 @@ class _CourierScreenState extends State<CourierScreen> {
                                               subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                               trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
                                               onTap: () {
-                                                Navigator.pop(ctx); // إغلاق الحوار
-                                                _handleCourierNotificationTap(context, notif); // الانتقال للطلب المحدد
+                                                Navigator.pop(ctx);
+                                                _handleCourierNotificationTap(context, notif);
                                               },
                                             ),
                                           );
@@ -201,17 +194,10 @@ class _CourierScreenState extends State<CourierScreen> {
                             color: Colors.red,
                             shape: BoxShape.circle,
                           ),
-                          constraints: const BoxConstraints(
-                            minWidth: 18,
-                            minHeight: 18,
-                          ),
+                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                           child: Text(
                             '$pendingOrdersCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -254,7 +240,6 @@ class _CourierScreenState extends State<CourierScreen> {
                                   const SizedBox(height: 8),
                                   const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
                                   const SizedBox(height: 30),
-                                  // حقل اسم المستخدم مع الانتقال السلس للكيبورد
                                   TextField(
                                     controller: _usernameController,
                                     focusNode: _usernameFocus,
@@ -273,14 +258,12 @@ class _CourierScreenState extends State<CourierScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 14),
-                                  // حقل كلمة السر مع الانتقال السلس للكيبورد
                                   TextField(
                                     controller: _passwordController,
                                     focusNode: _passwordFocus,
                                     obscureText: true,
                                     textInputAction: TextInputAction.done,
                                     onSubmitted: (_) async {
-                                      // تنفيذ تسجيل الدخول مباشرة عند الضغط على تم
                                       await _performLogin(appState);
                                     },
                                     style: const TextStyle(color: Colors.white),
@@ -318,7 +301,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  // دالة تسجيل الدخول لتجنب تكرار الكود
   Future<void> _performLogin(AppState appState) async {
     bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
     if (success) {
@@ -400,10 +382,7 @@ class _CourierScreenState extends State<CourierScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10)),
                     child: Text('إجمالي الطلبات: ${myOrders.length}', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                 ],
@@ -499,11 +478,11 @@ class _CourierScreenState extends State<CourierScreen> {
         final String customerAddress = order['address'] ?? '';
         final String orderStatus = order['status'] ?? '';
 
-        final String productsPrice = order['total_price']?.toString() ?? '0';
-        final String deliveryFee = order['delivery_fee']?.toString() ?? '0';
-        final double finalTotal = (double.tryParse(productsPrice) ?? 0.0) + (double.tryParse(deliveryFee) ?? 0.0);
+        // 💰 فصل دقيق ومنفصل لسعر المنتجات ورسوم التوصيل والإجمالي لتجنب ظهور الصفر
+        final double productsPrice = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
+        final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double finalTotal = productsPrice + deliveryFee;
 
-        // بيانات التقييم إن وجدت
         final ratingValue = order['rating'];
         final ratingComment = order['rating_comment']?.toString();
 
@@ -517,15 +496,12 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            // 🚀 تم ربط الكارد بالكامل ليفتح شاشة التتبع المنحنية عند النقر عليه
+            // 🚀 النقر على الكارد يفتح شاشة التتبع الموحدة مباشرة
             onTap: () {
               Navigator.push(
                 context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                MaterialPageRoute(
+                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
                 ),
               );
             },
@@ -538,21 +514,39 @@ class _CourierScreenState extends State<CourierScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-                      IconButton(
-                        style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
-                        icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ChatScreen(
-                                orderId: orderId,
-                                userRole: 'courier',
-                                targetChat: 'admin_courier',
-                              ),
-                            ),
-                          );
-                        },
+                      Row(
+                        children: [
+                          IconButton(
+                            style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
+                            icon: const Icon(Icons.map, color: Colors.amber, size: 20),
+                            tooltip: 'تتبع الطلب',
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
+                            icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ChatScreen(
+                                    orderId: orderId,
+                                    userRole: 'courier',
+                                    targetChat: 'admin_courier',
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -588,22 +582,22 @@ class _CourierScreenState extends State<CourierScreen> {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('🛍️ سعر المنتجات: $productsPrice ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                        Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text('🛍️ سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                         const Divider(color: Colors.white12, height: 8),
-                        Text('💰 الإجمالي الكلي المطلوب من العميل: ${finalTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text('💰 الإجمالي الكلي: ${finalTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
                   
-                  // عرض التقييم داخل صفحة الطلب ليصل للمشرف والمندوب بوضوح
                   if (ratingValue != null) ...[
                     const Divider(color: Colors.white12, height: 16),
                     Container(
