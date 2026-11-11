@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../widgets/RatingWidget.dart'; // استدعاء ويدجت التقييم الذي أضفناه مسبقاً
+// إذا كان لديك شاشة تتبع حي منفصلة، قم باستدعائها هنا (مثال):
+// import 'live_tracking_screen.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
-  // يدعم استقبال Map القديمة أو يمكن تعديله بحسب الاستدعاء
   final Map<String, dynamic>? orderMap;
   final String? orderIdParam;
 
@@ -60,6 +62,11 @@ class OrderTrackingScreen extends StatelessWidget {
     final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
     final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
     final double grandTotal = productsTotal + deliveryFee;
+
+    // بيانات تهمنا للتقييم والتتبع
+    final int numericOrderId = int.tryParse(targetId) ?? 0;
+    final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
+    final String courierId = order['courier_id']?.toString() ?? 'general_courier';
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -188,6 +195,28 @@ class OrderTrackingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
+              // 🗺️ زر التتبع الحي إذا كان المندوب في الطريق
+              if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('فتح الخريطة الحية لتتبع المندوب 🛵📍', style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    // يمكنك توجيهه لشاشة التتبع الحي التي أنشأناها مسبقاً
+                    // Navigator.push(context, MaterialPageRoute(builder: (context) => LiveTrackingScreen(orderId: numericOrderId)));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('جاري فتح خريطة التتبع الحي...')),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // 💰 أزرار موافقة أو رفض العميل للسعر (إذا أرسلت الإدارة التسعيرة)
               if (rawStatus == 'pricingSentToCustomer') ...[
                 Container(
@@ -279,6 +308,32 @@ class OrderTrackingScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+
+              // ⭐ زر تقييم الطلب يظهر فور تسليم الطلب (delivered)
+              if (rawStatus == 'delivered') ...[
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.star, color: Colors.black),
+                  label: const Text('تقييم التجربة والمندوب ⭐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => RatingDialogWidget(
+                        orderId: numericOrderId,
+                        customerPhone: customerPhone,
+                        targetId: courierId,
+                        targetType: 'courier',
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),
