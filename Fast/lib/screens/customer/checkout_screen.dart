@@ -239,7 +239,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // دالة إرسال الطلب النهائي
+  // دالة إرسال الطلب النهائي مع تمرير السعر الحقيقي للمنتجات لتجنب ظهور 0.0 ر.ي
   Future<void> _submitOrder(AppState appState) async {
     if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -254,7 +254,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
     
     final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
-    final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity})').join(', ');
+    
+    // 🛒 حساب وتنسيق أسماء المنتجات مع أسعارها الفعلية لتظهر بدقة في لوحة المشرف والمندوب والعميل
+    final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity}) - ${item.price * item.quantity} ر.ي').join(', ');
 
     await appState.saveUserProfileDetails(_nameController.text, fullAddress);
     try {
@@ -263,7 +265,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         phone: _phoneController.text,
         address: fullAddress,
         itemsDesc: itemsDesc,
-        productsTotal: appState.totalAmount,
+        productsTotal: appState.totalAmount, // تمرير الإجمالي الصحيح للمنتجات
         paymentMethod: _selectedPaymentMethod,
         paymentAccount: 'نقدي',
       );
