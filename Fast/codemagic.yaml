@@ -1,4 +1,4 @@
-workflows:
+Workflows:
   fast-taiz-android-apk:
     name: FAST Delivery - Android APK 🚀
     max_build_duration: 90
@@ -29,18 +29,15 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Prepare official Gradle wrapper
+      - name: Fix Android Gradle Compatibility & Wrapper 🛠️
         script: |
           set -e
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
-            mkdir -p android/gradle/wrapper
-            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
-            cp "$SEED_DIR/seed/android/gradlew.bat" android/gradlew.bat
-            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            rm -rf "$SEED_DIR"
-          fi
+          # إعادة توليد مشروع أندرويد نظيف متوافق تماماً مع إصدار Flutter الحالي لتجاوز خطأ ApplicationDefaultConfig
+          SEED_DIR="$(mktemp -d)"
+          flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+          rm -rf android/build.gradle android/app/build.gradle android/gradle
+          cp -r "$SEED_DIR/seed/android" android/
+          rm -rf "$SEED_DIR"
           chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
@@ -94,17 +91,14 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Prepare Android Gradle wrapper
+      - name: Fix Android Gradle Compatibility & Wrapper 🛠️
         script: |
           set -e
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
-            mkdir -p android/gradle/wrapper
-            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
-            rm -rf "$SEED_DIR"
-          fi
+          SEED_DIR="$(mktemp -d)"
+          flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+          rm -rf android/build.gradle android/app/build.gradle android/gradle
+          cp -r "$SEED_DIR/seed/android" android/
+          rm -rf "$SEED_DIR"
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
