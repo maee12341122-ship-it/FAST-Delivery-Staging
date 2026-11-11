@@ -4,11 +4,10 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'order_tracking_screen.dart';
- // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
+import 'order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب للربط المباشر بالإشعارات
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import 'admin_restaurants_screen.dart';
+import '../admin_restaurants_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -870,7 +869,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 10),
           const Text(
-            'تحكم كامل بقائمة الطعام والسلع: تعديل الأسعار، تبديل حالة التوفر (متوفر/غير متوفر)، حذف أو إضافة منتجات جديدة بكل سهولة.',
+            'تحكم كامل بقائمة الطعام والسلع: تعديل الأسعار، تبديل حالة التوفر (متوفر/غير متوفر), حذف أو إضافة منتجات جديدة بكل سهولة.',
             style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
             textAlign: TextAlign.center,
           ),
@@ -949,15 +948,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                           .from('couriers')
                                           .update({'onesignal_player_id': playerId})
                                           .eq('id', courierId);
+                                      if (!context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('تم تحديث OneSignal Player ID للمندوب بنجاح! 🔔')),
                                       );
                                     } else {
+                                      if (!context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('لم يتم العثور على معرّف OneSignal للجهاز حالياً ❌')),
                                       );
                                     }
                                   } catch (e) {
+                                    if (!context.mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text('خطأ: $e')),
                                     );
