@@ -54,9 +54,17 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       return;
     }
 
+    // 🎯 تنسيق الإحداثيات بشكل نظيف وموحد ومنع التداخل النصي
+    final double lat = _selectedPoint!.latitude;
+    final double lng = _selectedPoint!.longitude;
+    final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+    
+    // دمج العنوان النصي مع الإحداثيات المنسقة بوضوح
+    final finalFullAddress = '$addressText (الإحداثيات: $formattedCoords)';
+
     // إذا تحققت الشروط يتم حفظ وإرسال البيانات
     Navigator.pop(context, {
-      'address': addressText,
+      'address': finalFullAddress,
       'latLng': _selectedPoint,
     });
   }
