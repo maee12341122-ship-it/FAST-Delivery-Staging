@@ -51,7 +51,7 @@ class AdminOrdersTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final orders = context.watch<AppState>().orders
-        .whereType<Map>()
+        .whereType()
         .map((row) => OrderModel.fromJson(Map<String, dynamic>.from(row)))
         .toList();
     if (orders.isEmpty) return const EmptyState(message: 'لا توجد طلبات محفوظة حالياً 📦', icon: Icons.receipt_long);
@@ -70,7 +70,7 @@ class _AdminOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final courier = state.couriers.whereType<Map>().map((row) => DeliveryModel(
+    final courier = state.couriers.whereType().map((row) => DeliveryModel(
       id: row['id']?.toString() ?? '', name: row['name']?.toString() ?? '',
       phone: row['phone']?.toString() ?? '',
       isAvailable: row['status']?.toString() == 'available',
@@ -157,7 +157,7 @@ class _AdminOrderCard extends StatelessWidget {
 
   Future<void> _assignCourier(BuildContext context, String orderId) async {
     final state = context.read<AppState>();
-    final available = state.couriers.whereType<Map>().map((row) => DeliveryModel(
+    final available = state.couriers.whereType().map((row) => DeliveryModel(
       id: row['id']?.toString() ?? '', name: row['name']?.toString() ?? '',
       phone: row['phone']?.toString() ?? '', isAvailable: row['status']?.toString() == 'available',
       isEnabled: row['status']?.toString() != 'disabled',
@@ -288,7 +288,6 @@ class AdminCouriersTab extends StatelessWidget {
                         } else if (value == 'delete') {
                           state.removeCourier(courier.id);
                         } else if (value == 'update_token') {
-                          // 👈 [ميزة تحديث Player ID للمندوب يدوياً لتفعيل الإشعارات]
                           try {
                             String? playerId = OneSignal.User.pushSubscription.id;
                             if (playerId != null && playerId.isNotEmpty) {
@@ -330,30 +329,61 @@ class AdminCouriersTab extends StatelessWidget {
     final nameController = TextEditingController(text: courier.name);
     final phoneController = TextEditingController(text: courier.phone);
     final formKey = GlobalKey<FormState>();
+
+    // موجهات التركيز للانتقال السلس عبر الكيبورد
+    final FocusNode nameFocus = FocusNode();
+    final FocusNode phoneFocus = FocusNode();
+
     final saved = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('تعديل بيانات المندوب', style: TextStyle(color: AppConstants.gold)),
-            content: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم المندوب'), validator: Validators.requiredText),
-                  const SizedBox(height: 10),
-                  TextFormField(controller: phoneController, keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'رقم الهاتف'), validator: Validators.yemeniPhone),
-                ],
+          builder: (dialogContext) => GestureDetector(
+            onTap: () => FocusScope.of(dialogContext).unfocus(),
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: const Text('تعديل بيانات المندوب', style: TextStyle(color: AppConstants.gold)),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      focusNode: nameFocus,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(phoneFocus),
+                      decoration: const InputDecoration(labelText: 'اسم المندوب'),
+                      validator: Validators.requiredText,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: phoneController,
+                      focusNode: phoneFocus,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (formKey.currentState!.validate()) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      },
+                      decoration: const InputDecoration(labelText: 'رقم الهاتف'),
+                      validator: Validators.yemeniPhone,
+                    ),
+                  ],
+                ),
               ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
+                  onPressed: () => Navigator.pop(dialogContext, formKey.currentState!.validate()),
+                  child: const Text('حفظ'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-              FilledButton(style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black), onPressed: () => Navigator.pop(dialogContext, formKey.currentState!.validate()), child: const Text('حفظ')),
-            ],
           ),
         ) ??
         false;
+
     if (saved && context.mounted) {
       try {
         context.read<AppState>().updateCourier(courier.copyWith(
@@ -366,6 +396,8 @@ class AdminCouriersTab extends StatelessWidget {
     }
     nameController.dispose();
     phoneController.dispose();
+    nameFocus.dispose();
+    phoneFocus.dispose();
   }
 
   Future<void> _addCourier(BuildContext context) async {
@@ -374,38 +406,90 @@ class AdminCouriersTab extends StatelessWidget {
     final usernameController = TextEditingController();
     final passwordController = TextEditingController();
     final formKey = GlobalKey<FormState>();
+
+    // موجهات التركيز للانتقال السلس عبر الكيبورد
+    final FocusNode nameFocus = FocusNode();
+    final FocusNode phoneFocus = FocusNode();
+    final FocusNode usernameFocus = FocusNode();
+    final FocusNode passwordFocus = FocusNode();
+
     final saved = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('إضافة مندوب توصيل جديد', style: TextStyle(color: AppConstants.gold)),
-            content: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم المندوب'), validator: Validators.requiredText),
-                  const SizedBox(height: 10),
-                  TextFormField(controller: phoneController, keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'رقم الهاتف اليمني'), validator: Validators.yemeniPhone),
-                  const SizedBox(height: 10),
-                  TextFormField(controller: usernameController, decoration: const InputDecoration(labelText: 'اسم المستخدم'), validator: Validators.requiredText),
-                  const SizedBox(height: 10),
-                  TextFormField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرور مؤقتة (10 أحرف على الأقل)'), validator: (v) => (v == null || v.length < 10) ? '10 أحرف على الأقل' : null),
-                ],
+          builder: (dialogContext) => GestureDetector(
+            onTap: () => FocusScope.of(dialogContext).unfocus(),
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              title: const Text('إضافة مندوب توصيل جديد', style: TextStyle(color: AppConstants.gold)),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      focusNode: nameFocus,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(phoneFocus),
+                      decoration: const InputDecoration(labelText: 'اسم المندوب'),
+                      validator: Validators.requiredText,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: phoneController,
+                      focusNode: phoneFocus,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(usernameFocus),
+                      decoration: const InputDecoration(labelText: 'رقم الهاتف اليمني'),
+                      validator: Validators.yemeniPhone,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: usernameController,
+                      focusNode: usernameFocus,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(passwordFocus),
+                      decoration: const InputDecoration(labelText: 'اسم المستخدم'),
+                      validator: Validators.requiredText,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: passwordController,
+                      focusNode: passwordFocus,
+                      obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (formKey.currentState!.validate()) {
+                          Navigator.pop(dialogContext, true);
+                        }
+                      },
+                      decoration: const InputDecoration(labelText: 'كلمة مرور مؤقتة (10 أحرف على الأقل)'),
+                      validator: (v) => (v == null || v.length < 10) ? '10 أحرف على الأقل' : null,
+                    ),
+                  ],
+                ),
               ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
+                  onPressed: () => Navigator.pop(dialogContext, formKey.currentState!.validate()),
+                  child: const Text('حفظ'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-              FilledButton(style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black), onPressed: () => Navigator.pop(dialogContext, formKey.currentState!.validate()), child: const Text('حفظ')),
-            ],
           ),
         ) ??
         false;
+
     if (saved && context.mounted) {
       try {
-        await context.read<AppState>().addCourier(nameController.text, phoneController.text, usernameController.text, passwordController.text);
-        
+        await context.read<AppState>().addCourier(
+              nameController.text,
+              phoneController.text,
+              usernameController.text,
+              passwordController.text,
+            );
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة المندوب بنجاح! 🛵')));
       } catch (error) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
@@ -415,6 +499,10 @@ class AdminCouriersTab extends StatelessWidget {
     phoneController.dispose();
     usernameController.dispose();
     passwordController.dispose();
+    nameFocus.dispose();
+    phoneFocus.dispose();
+    usernameFocus.dispose();
+    passwordFocus.dispose();
   }
 }
 
@@ -430,6 +518,11 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
   late final TextEditingController _endController;
   late final TextEditingController _feeController;
 
+  // موجهات التركيز لمدخلات إعدادات العمل
+  final FocusNode _startFocus = FocusNode();
+  final FocusNode _endFocus = FocusNode();
+  final FocusNode _feeFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -444,80 +537,115 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
     _startController.dispose();
     _endController.dispose();
     _feeController.dispose();
+    _startFocus.dispose();
+    _endFocus.dispose();
+    _feeFocus.dispose();
     super.dispose();
+  }
+
+  // دالة حفظ إعدادات العمل
+  Future<void> _saveSettings() async {
+    final start = int.tryParse(_startController.text);
+    final end = int.tryParse(_endController.text);
+    final fee = int.tryParse(_feeController.text);
+    if (start == null || end == null || fee == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال أرقام صحيحة.')));
+      return;
+    }
+    try {
+      context.read<AppState>().updateBusinessSettings(startHour: start, endHour: end, deliveryFee: fee);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الإعدادات بنجاح! ✅')));
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-      children: [
-        const Text('أوقات الدوام ورسوم التوصيل الأساسية', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: TextField(controller: _startController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'بداية الدوام (0-23)'))),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _endController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'نهاية الدوام (1-24)'))),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _feeController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'رسوم التوصيل'))),
-          ],
-        ),
-        const SizedBox(height: 12),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
-          onPressed: () async {
-            final start = int.tryParse(_startController.text);
-            final end = int.tryParse(_endController.text);
-            final fee = int.tryParse(_feeController.text);
-            if (start == null || end == null || fee == null) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال أرقام صحيحة.')));
-              return;
-            }
-            try {
-              state.updateBusinessSettings(startHour: start, endHour: end, deliveryFee: fee);
-
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الإعدادات بنجاح! ✅')));
-            } catch (error) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
-            }
-          },
-          child: const Text('حفظ إعدادات العمل', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        const Divider(height: 32),
-        Row(
-          children: [
-            const Expanded(child: Text('إدارة المنتجات والصور', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16))),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
-              onPressed: () => _editProduct(context), 
-              icon: const Icon(Icons.add), 
-              label: const Text('إضافة منتج'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ...state.products.map((product) => Card(
-              color: Theme.of(context).colorScheme.surface,
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              child: ListTile(
-                leading: product.imageUrl.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(product.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: AppConstants.gold)),
-                      )
-                    : const Icon(Icons.fastfood, color: AppConstants.gold),
-                title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: Text('${product.restaurantName} • ${product.price} ر.ي • ${product.available ? 'متوفر 🟢' : 'غير متوفر 🔴'}', style: const TextStyle(color: Colors.white70)),
-                onTap: () => _editProduct(context, product: product),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                  onPressed: () => state.removeProduct(product.id),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        children: [
+          const Text('أوقات الدوام ورسوم التوصيل الأساسية', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _startController,
+                  focusNode: _startFocus,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => FocusScope.of(context).requestFocus(_endFocus),
+                  decoration: const InputDecoration(labelText: 'بداية الدوام (0-23)'),
                 ),
               ),
-            )),
-      ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _endController,
+                  focusNode: _endFocus,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => FocusScope.of(context).requestFocus(_feeFocus),
+                  decoration: const InputDecoration(labelText: 'نهاية الدوام (1-24)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _feeController,
+                  focusNode: _feeFocus,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveSettings(),
+                  decoration: const InputDecoration(labelText: 'رسوم التوصيل'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
+            onPressed: _saveSettings,
+            child: const Text('حفظ إعدادات العمل', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const Divider(height: 32),
+          Row(
+            children: [
+              const Expanded(child: Text('إدارة المنتجات والصور', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16))),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
+                onPressed: () => _editProduct(context), 
+                icon: const Icon(Icons.add), 
+                label: const Text('إضافة منتج'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...state.products.map((product) => Card(
+                color: Theme.of(context).colorScheme.surface,
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ListTile(
+                  leading: product.imageUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(product.imageUrl, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: AppConstants.gold)),
+                        )
+                      : const Icon(Icons.fastfood, color: AppConstants.gold),
+                  title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle: Text('${product.restaurantName} • ${product.price} ر.ي • ${product.available ? 'متوفر 🟢' : 'غير متوفر 🔴'}', style: const TextStyle(color: Colors.white70)),
+                  onTap: () => _editProduct(context, product: product),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    onPressed: () => state.removeProduct(product.id),
+                  ),
+                ),
+              )),
+        ],
+      ),
     );
   }
 
@@ -525,62 +653,103 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
     final nameController = TextEditingController(text: product?.name ?? '');
     final storeController = TextEditingController(text: product?.restaurantName ?? '');
     final priceController = TextEditingController(text: product?.price.toString() ?? '');
-    final imageUrlController = TextEditingController(text: product?.imageUrl ?? ''); // 👈 حقل رابط الصورة
+    final imageUrlController = TextEditingController(text: product?.imageUrl ?? '');
     bool isAvailable = product?.available ?? true;
     String category = product?.category ?? ProductCategories.groceries;
+
+    // موجهات التركيز للانتقال السلس بين الحقول
+    final FocusNode nameFocus = FocusNode();
+    final FocusNode storeFocus = FocusNode();
+    final FocusNode priceFocus = FocusNode();
+    final FocusNode imageFocus = FocusNode();
 
     final saved = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              title: Text(product == null ? 'إضافة منتج جديد' : 'تعديل المنتج', style: const TextStyle(color: AppConstants.gold)),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم المنتج')),
-                    const SizedBox(height: 8),
-                    TextField(controller: storeController, decoration: const InputDecoration(labelText: 'اسم المتجر / المطعم')),
-                    const SizedBox(height: 8),
-                    TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'السعر (ر.ي)')),
-                    const SizedBox(height: 8),
-                    TextField(controller: imageUrlController, decoration: const InputDecoration(labelText: 'رابط صورة المنتج (Image URL)')), // 👈 إدخال الرابط
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('المنتج متوفر حالياً', style: TextStyle(color: Colors.white70)),
-                      value: isAvailable,
-                      onChanged: (value) => setDialogState(() => isAvailable = value),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: category,
-                      dropdownColor: const Color(0xFF1E1E1E),
-                      items: ProductCategories.all
-                          .where((item) => item != ProductCategories.custom)
-                          .map((item) => DropdownMenuItem(value: item, child: Text(ProductCategories.label(item), style: const TextStyle(color: Colors.white))))
-                          .toList(),
-                      onChanged: (value) => setDialogState(() => category = value ?? category),
-                      decoration: const InputDecoration(labelText: 'القسم'),
-                    ),
-                  ],
+            builder: (context, setDialogState) => GestureDetector(
+              onTap: () => FocusScope.of(dialogContext).unfocus(),
+              child: AlertDialog(
+                backgroundColor: const Color(0xFF1E1E1E),
+                title: Text(product == null ? 'إضافة منتج جديد' : 'تعديل المنتج', style: const TextStyle(color: AppConstants.gold)),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        focusNode: nameFocus,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(storeFocus),
+                        decoration: const InputDecoration(labelText: 'اسم المنتج'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: storeController,
+                        focusNode: storeFocus,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(priceFocus),
+                        decoration: const InputDecoration(labelText: 'اسم المتجر / المطعم'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: priceController,
+                        focusNode: priceFocus,
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => FocusScope.of(dialogContext).requestFocus(imageFocus),
+                        decoration: const InputDecoration(labelText: 'السعر (ر.ي)'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: imageUrlController,
+                        focusNode: imageFocus,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (nameController.text.trim().isNotEmpty &&
+                              storeController.text.trim().isNotEmpty &&
+                              int.tryParse(priceController.text) != null &&
+                              int.parse(priceController.text) >= 0) {
+                            Navigator.pop(dialogContext, true);
+                          }
+                        },
+                        decoration: const InputDecoration(labelText: 'رابط صورة المنتج (Image URL)'),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('المنتج متوفر حالياً', style: TextStyle(color: Colors.white70)),
+                        value: isAvailable,
+                        onChanged: (value) => setDialogState(() => isAvailable = value),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: category,
+                        dropdownColor: const Color(0xFF1E1E1E),
+                        items: ProductCategories.all
+                            .where((item) => item != ProductCategories.custom)
+                            .map((item) => DropdownMenuItem(value: item, child: Text(ProductCategories.label(item), style: const TextStyle(color: Colors.white))))
+                            .toList(),
+                        onChanged: (value) => setDialogState(() => category = value ?? category),
+                        decoration: const InputDecoration(labelText: 'القسم'),
+                      ),
+                    ],
+                  ),
                 ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
+                    onPressed: () {
+                      if (nameController.text.trim().isEmpty ||
+                          storeController.text.trim().isEmpty ||
+                          int.tryParse(priceController.text) == null ||
+                          int.parse(priceController.text) < 0) return;
+                      Navigator.pop(dialogContext, true);
+                    },
+                    child: const Text('حفظ'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: AppConstants.gold, foregroundColor: Colors.black),
-                  onPressed: () {
-                    if (nameController.text.trim().isEmpty ||
-                        storeController.text.trim().isEmpty ||
-                        int.tryParse(priceController.text) == null ||
-                        int.parse(priceController.text) < 0) return;
-                    Navigator.pop(dialogContext, true);
-                  },
-                  child: const Text('حفظ'),
-                ),
-              ],
             ),
           ),
         ) ??
@@ -594,9 +763,9 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
         restaurantName: storeController.text.trim(),
         category: category,
         price: int.parse(priceController.text).toDouble(),
-        imageUrl: imageUrlController.text.trim(), // 👈 حفظ رابط الصورة
+        imageUrl: imageUrlController.text.trim(),
         unit: product?.unit ?? 'حبة',
-                available: isAvailable,
+        available: isAvailable,
       ));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ المنتج بنجاح! ✅')));
     }
@@ -605,6 +774,10 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
     storeController.dispose();
     priceController.dispose();
     imageUrlController.dispose();
+    nameFocus.dispose();
+    storeFocus.dispose();
+    priceFocus.dispose();
+    imageFocus.dispose();
   }
 }
 
