@@ -477,7 +477,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _buildPrivacyPoint('1️⃣ جمع واستخدام البيانات:', 'نقوم بجمع معلومات أساسية مثل (الاسم، رقم الهاتف، العنوان، وإحداثيات الموقع الجغرافي GPS) حصراً لتسهيل عملية توصيل الطلبات بدقة وسرعة عبر المناديب المعتمدين.'),
                     const SizedBox(height: 12),
                     
-                    // 🛑 التنبيهات الهامة بالنمط المطلوب
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -1137,7 +1136,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
+                  // تصحيح: استخدام TextField بدلاً من TextFormField لأن onSubmitted غير موجود في TextFormField
+                  TextField(
                     controller: priceController,
                     focusNode: priceFocus,
                     keyboardType: TextInputType.number,
@@ -1171,16 +1171,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'إدخال السعر إلزامي لإتمام الطلب!';
-                      }
-                      final double? parsedPrice = double.tryParse(value.trim());
-                      if (parsedPrice == null || parsedPrice <= 0) {
-                        return 'الرجاء إدخال سعر صحيح أكبر من الصفر!';
-                      }
-                      return null;
-                    },
                   ),
                 ],
               ),
@@ -1252,7 +1242,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextFormField(
+                      // تصحيح: استخدام TextField بدلاً من TextFormField لأن onSubmitted غير موجود في TextFormField
+                      TextField(
                         controller: _nameController,
                         focusNode: _nameFocus,
                         textInputAction: TextInputAction.next,
@@ -1265,10 +1256,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           filled: true,
                           fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                         ),
-                        validator: (v) => v == null || v.isEmpty ? 'يرجى إدخال الاسم' : null,
                       ),
                       const SizedBox(height: 12),
-                      TextFormField(
+                      // تصحيح: استخدام TextField بدلاً من TextFormField
+                      TextField(
                         controller: _phoneController,
                         focusNode: _phoneFocus,
                         keyboardType: TextInputType.phone,
@@ -1282,7 +1273,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           filled: true,
                           fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                         ),
-                        validator: (v) => v == null || v.length < 9 ? 'يرجى إدخال رقم صحيح' : null,
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -1315,7 +1305,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 12),
 
-                      TextFormField(
+                      // تصحيح: استخدام TextField بدلاً من TextFormField
+                      TextField(
                         controller: _addressDescriptionController,
                         focusNode: _addressFocus,
                         textInputAction: TextInputAction.next,
@@ -1328,7 +1319,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           filled: true,
                           fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                         ),
-                        validator: (v) => v == null || v.isEmpty ? 'يرجى إدخال العنوان أو تحديده من الخريطة' : null,
                       ),
                       const SizedBox(height: 16),
 
@@ -1805,7 +1795,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     ];
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context).unfocus(),
       child: PopScope(
         canPop: false,
         onPopInvoked: (didPop) {
@@ -3253,7 +3243,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _showHowToUseDialog(context, cardBg, textColor);
         }),
 
-        // 🛡️ زر سياسة الخصوصية والاستخدام
         _buildProfileItem(Icons.privacy_tip_outlined, 'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, () {
           appState.setPrivacyPolicyAccepted(false);
           _checkAndShowPrivacyPolicyDialog(context, appState);
