@@ -115,7 +115,6 @@ class _CourierScreenState extends State<CourierScreen> {
                               width: double.maxFinite,
                               height: 350,
                               child: appState.notifications.isEmpty
-                                  .isEmpty // Fixed syntax check
                                   ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
                                   : ListView.builder(
                                       itemCount: appState.notifications.length,
@@ -434,7 +433,6 @@ class _CourierScreenState extends State<CourierScreen> {
         final String customerAddress = order['address'] ?? '';
         final String orderStatus = order['status'] ?? '';
 
-        // فصل الأسعار بوضوح للمندوب: سعر المنتجات + رسوم التوصيل
         final String productsPrice = order['total_price']?.toString() ?? '0';
         final String deliveryFee = order['delivery_fee']?.toString() ?? '0';
         final double finalTotal = (double.tryParse(productsPrice) ?? 0.0) + (double.tryParse(deliveryFee) ?? 0.0);
@@ -505,7 +503,6 @@ class _CourierScreenState extends State<CourierScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // عرض الأسعار مفصولة للمندوب
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
