@@ -402,10 +402,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return rawAddress;
   }
 
-  // 🔔 2. دالة معالجة النقر على الإشعار للانتقال الفوري للطلب المرتبط
+  // 🔔 2. دالة معالجة النقر على الإشعار (مصححة لفتح الطلب المحدد مباشرة)
   void _handleNotificationTap(BuildContext context, Map<String, dynamic> notification) {
     final String? orderId = notification['order_id']?.toString() ?? 
                             notification['related_id']?.toString() ?? 
+                            notification['additionalData']?['order_id']?.toString() ??
                             _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['message'] ?? ''));
 
     if (orderId != null && orderId.isNotEmpty) {
@@ -432,7 +433,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   String? _extractOrderIdFromText(String text) {
-    final RegExp regExp = RegExp(r'#(\d+)');
+    final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
     final match = regExp.firstMatch(text);
     if (match != null && match.groupCount >= 1) {
       return match.group(1);
