@@ -14,6 +14,21 @@ workflows:
           set -e
           flutter --version
           java -version
+      - name: Auto increment build number 🔢
+        script: |
+          python3 -c '
+          import re
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
+          if match:
+              v_name, b_num = match.groups()
+              new_b_num = int(b_num) + 1
+              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
+              with open("pubspec.yaml", "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
+          '
       - name: Prepare official Gradle wrapper
         script: |
           set -e
@@ -64,6 +79,21 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
+      - name: Auto increment build number 🔢
+        script: |
+          python3 -c '
+          import re
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
+          if match:
+              v_name, b_num = match.groups()
+              new_b_num = int(b_num) + 1
+              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
+              with open("pubspec.yaml", "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
+          '
       - name: Prepare Android Gradle wrapper
         script: |
           set -e
