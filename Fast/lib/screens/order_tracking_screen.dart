@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart'; // 🗺️ تم استيراد مكتبة الروابط لتفعيل زر الخريطة الحية
 import 'dart:math' as math;
 import '../providers/app_state.dart';
 import '../widgets/RatingWidget.dart';
@@ -214,7 +215,7 @@ class OrderTrackingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 🗺️ زر التتبع الحي إذا كان المندوب في الطريق
+                // 🗺️ زر التتبع الحي المفعل الآن ليفتح خرائط جوجل أو مسار التوصيل
                 if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
@@ -225,10 +226,26 @@ class OrderTrackingScreen extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.map_outlined),
                     label: const Text('فتح الخريطة الحية لتتبع المندوب 🛵📍', style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('جاري فتح خريطة التتبع الحي...')),
-                      );
+                    onPressed: () async {
+                      // 📍 استخدام الإحداثيات الموجودة في العنوان أو افتراض إحداثيات مركز تعز
+                      final String addressText = order['address']?.toString() ?? '';
+                      String mapsQuery = 'Taiz, Yemen';
+                      
+                      if (addressText.contains('13.') && addressText.contains('44.')) {
+                        mapsQuery = addressText; // إذا كانت إحداثيات محفوظة
+                      }
+
+                      final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$mapsQuery');
+                      
+                      if (await canLaunchUrl(googleMapsUrl)) {
+                        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+                      } else {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تعذر فتح الخريطة الحية 🗺️')),
+                          );
+                        }
+                      }
                     },
                   ),
                   const SizedBox(height: 16),
