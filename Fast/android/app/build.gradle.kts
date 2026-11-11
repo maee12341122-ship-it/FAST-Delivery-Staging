@@ -21,6 +21,10 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     defaultConfig {
         applicationId = "com.maeen.fastdelivery"
         minSdk = flutter.minSdkVersion
@@ -28,6 +32,7 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
     }
 
     signingConfigs {
@@ -45,12 +50,6 @@ android {
         release {
             signingConfig = if (!releaseStorePath.isNullOrBlank()) signingConfigs.getByName("production") else signingConfigs.getByName("debug")
         }
-    }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
