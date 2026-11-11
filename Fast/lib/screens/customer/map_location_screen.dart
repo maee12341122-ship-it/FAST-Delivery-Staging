@@ -236,7 +236,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               
               const SizedBox(height: 8),
 
-              // الخريطة التفاعلية
+              // الخريطة التفاعلية المحدثة بوضوح تام لتعز
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -256,7 +256,8 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{png}',
+                        subdomains: const ['a', 'b', 'c', 'd'],
                         userAgentPackageName: 'com.fast.taiz',
                       ),
                       if (_selectedPoint != null)
