@@ -111,7 +111,6 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         throw 'صلاحية الموقع مرفوضة بشكل دائم من الإعدادات.';
       }
 
-      // جلب الموقع بأعلى دقة متوفرة عالمياً (Best) مع وقت استجابة سريع
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
         timeLimit: const Duration(seconds: 10),
@@ -124,7 +123,6 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         _selectedPoint = point;
       });
       
-      // تحريك الخريطة فوراً لتتمحور حول موقعك الحالي بدرجة زوم تفصيلية عالية
       _mapController.move(point, 17.5);
     } catch (error) {
       if (mounted) {
@@ -238,7 +236,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               
               const SizedBox(height: 8),
 
-              // الخريطة الاحترافية مع دبوس مركزي وثبّت الإحداثيات الحية
+              // الخريطة الاحترافية مع الخادم البديل السريع
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -264,9 +262,11 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                           },
                         ),
                         children: [
+                          // 🚀 استخدام الخادم البديل السريع لتجنب الحجب ومشاكل الاتصال المحلي
                           TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            urlTemplate: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.fast.taiz',
+                            maxZoom: 19,
                           ),
                         ],
                       ),
