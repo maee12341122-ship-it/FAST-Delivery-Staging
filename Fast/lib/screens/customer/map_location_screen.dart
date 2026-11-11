@@ -16,11 +16,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   // إحداثيات مركز مدينة تعز الافتراضية
   static const LatLng _taizCenter = LatLng(13.5795, 44.0209);
   final MapController _mapController = MapController();
+  
+  // الإحداثيات الحالية التي يشير إليها منتصف الخريطة
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
   String? _error;
   
-  // حقل إدخال العنوان التفصيلي يدوياً وموجه التركيز (FocusNode) لسلاسة الكيبورد
+  // حقل إدخال العنوان التفصيلي يدوياً وموجه التركيز
   final TextEditingController _customAddressController = TextEditingController();
   final FocusNode _addressFocus = FocusNode();
 
@@ -56,7 +58,6 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   void _saveAndReturn() {
     final addressText = _customAddressController.text.trim();
 
-    // ⛔ الشرط الإجباري: يلزم وجود عنوان نصي وموقع محدد على الخريطة
     if (addressText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -77,20 +78,16 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       return;
     }
 
-    // 🎯 تحويل الإحداثيات إلى اسم حي عربي يمنع الأرقام نهائياً
     final areaName = getTaizAreaName(_selectedPoint!);
-    
-    // دمج العنوان التفصيلي مع اسم الحي المعتمد ناصعاً وبدون أي أرقام
     final finalFullAddress = '$addressText - $areaName';
 
-    // حفظ وإرسال البيانات نظيفة للملف المستدعي
     Navigator.pop(context, {
       'address': finalFullAddress,
       'latLng': _selectedPoint,
     });
   }
 
-  // دالة لجلب الموقع الحالي عبر الـ GPS وتحديث الخريطة والدبوس بدقة
+  // دالة لجلب الموقع الحالي عبر الـ GPS بأقصى دقة ممكنة وتحديث الخريطة
   Future<void> _useGps() async {
     setState(() {
       _gettingLocation = true;
@@ -114,16 +111,21 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         throw 'صلاحية الموقع مرفوضة بشكل دائم من الإعدادات.';
       }
 
+      // جلب الموقع بأعلى دقة متوفرة مع مهلة زمنية لضمان التقاط الأقمار الصناعية
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 12),
       );
 
       final point = LatLng(position.latitude, position.longitude);
       if (!mounted) return;
-      setState(() => _selectedPoint = point);
       
-      // تحريك الخريطة إلى الموقع الحالي بسلاسة وتحديث زوم العرض
-      _mapController.move(point, 16.0);
+      setState(() {
+        _selectedPoint = point;
+      });
+      
+      // تحريك الخريطة مباشرة للموقع الحالي بدقة زوم عالية
+      _mapController.move(point, 17.5);
     } catch (error) {
       if (mounted) {
         setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -146,7 +148,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     const backgroundColor = Color(0xFF121212);
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقل
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -154,7 +156,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           appBar: AppBar(
             backgroundColor: cardColor,
             title: const Text(
-              'تحديد موقع التوصيل في تعز 📍', 
+              'تحديد موقع التوصيل بدقة 📍', 
               style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
             ),
             leading: IconButton(
@@ -222,7 +224,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
                               )
                             : const Icon(Icons.my_location),
-                        label: const Text('موقعي الحالي GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('جلب موقعي الحالي بدقة GPS 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -236,7 +238,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               
               const SizedBox(height: 8),
 
-              // الخريطة التفاعلية المحدثة بوضوح تام لتعز (تم تصحيح رابط الـ TileLayer لمنع الشاشة الرمادية)
+              // خريطة مع دبوس مركزي ثابت في المنتصف (تتحرك الخريطة تحته لضمان الدقة المطلقة)
               Expanded(
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -245,38 +247,57 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: widget.initialPoint ?? _taizCenter,
-                      initialZoom: 15.0,
-                      onTap: (tapPosition, point) {
-                        setState(() {
-                          _selectedPoint = point; // تحديث مكان الدبوس فوراً عند النقر على أي مكان بالخريطة
-                        });
-                      },
-                    ),
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      TileLayer(
-                        // 🛠️ تم تصحيح الرابط هنا لضمان تحميل الخريطة وعدم ظهور الشاشة الرمادية
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.fast.taiz',
-                      ),
-                      if (_selectedPoint != null)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _selectedPoint!,
-                              width: 50,
-                              height: 50,
-                              child: const Icon(
-                                Icons.location_pin,
-                                color: Colors.red,
-                                size: 45,
-                              ),
-                            ),
-                          ],
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: widget.initialPoint ?? _taizCenter,
+                          initialZoom: 16.5,
+                          // يتم تحديث الإحداثيات فوراً بناءً على مركز الخريطة أثناء تحريكها
+                          onPositionChanged: (position, hasGesture) {
+                            if (position.center != null) {
+                              setState(() {
+                                _selectedPoint = position.center;
+                              });
+                            }
+                          },
                         ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.fast.taiz',
+                          ),
+                        ],
+                      ),
+                      // 📌 دبوس ثابت في منتصف الشاشة تماماً لتوجيه دقيق ومريح
+                      const IgnorePointer(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 35),
+                          child: Icon(
+                            Icons.location_pin,
+                            color: Colors.red,
+                            size: 50,
+                          ),
+                        ),
+                      ),
+                      // إرشادات بصرية للمستخدم فوق الخريطة
+                      Positioned(
+                        top: 10,
+                        child: Container(
+                          padding: constيجعل الخلفية سوداء شفافة: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppConstants.gold.withOpacity(0.5)),
+                          ),
+                          child: const Text(
+                            'اسحب الخريطة واجعل الدبوس فوق موقعك تماماً 🎯',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
