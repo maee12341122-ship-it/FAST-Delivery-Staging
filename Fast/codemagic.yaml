@@ -29,15 +29,12 @@ Workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Fix Android Gradle Compatibility & Wrapper 🛠️
+      - name: Regenerate Clean Android Directory 🛠️
         script: |
           set -e
-          # إعادة توليد مشروع أندرويد نظيف متوافق تماماً مع إصدار Flutter الحالي لتجاوز خطأ ApplicationDefaultConfig
-          SEED_DIR="$(mktemp -d)"
-          flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
-          rm -rf android/build.gradle android/app/build.gradle android/gradle
-          cp -r "$SEED_DIR/seed/android" android/
-          rm -rf "$SEED_DIR"
+          # 🧹 حذف مجلد android القديم تماماً واستبداله بقالب نظيف ومتوافق 100% مع أحدث إصدارات فلاتر
+          rm -rf android
+          flutter create --platforms=android --org com.maeen --project-name fast_delivery .
           chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
@@ -91,14 +88,11 @@ Workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Fix Android Gradle Compatibility & Wrapper 🛠️
+      - name: Regenerate Clean Android Directory 🛠️
         script: |
           set -e
-          SEED_DIR="$(mktemp -d)"
-          flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
-          rm -rf android/build.gradle android/app/build.gradle android/gradle
-          cp -r "$SEED_DIR/seed/android" android/
-          rm -rf "$SEED_DIR"
+          rm -rf android
+          flutter create --platforms=android --org com.maeen --project-name fast_delivery .
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
