@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     
+    <!-- 🛰️ صلاحية تتبع الموقع في الخلفية للمندوب (ضرورية لاستمرار البث) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    
     <!-- 🔔 صلاحية الإشعارات لأندرويد 13 و 14 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -26,7 +29,7 @@
 
     <application
         android:name="${applicationName}"
-       android:label="Fast Delivery App"
+        android:label="Fast Delivery App"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">
 
