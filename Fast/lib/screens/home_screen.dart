@@ -370,7 +370,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final _paymentAccountController = TextEditingController();
   String _selectedPaymentMethod = 'cash';
 
-  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس بين الحقول
   final FocusNode _searchFocus = FocusNode();
   final FocusNode _customItemNameFocus = FocusNode();
   final FocusNode _customItemPriceFocus = FocusNode();
@@ -387,6 +386,59 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String _latestNotificationText = 'إشعار جديد!';
 
   final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
+
+  // 📍 1. دالة تنسيق وتحويل الإحداثيات الجغرافية إلى أسماء مناطق واضحة في تعز
+  String formatLocationAddress(String? rawAddress) {
+    if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة 📍';
+    if (rawAddress.contains('(') && rawAddress.contains(',')) {
+      if (rawAddress.contains('13.57') || rawAddress.contains('44.00')) {
+        return 'منطقة دي لوكس، تعز 📍';
+      } else if (rawAddress.contains('13.58')) {
+        return 'شارع التحرير، تعز 📍';
+      } else {
+        return 'منطقة معتمدة، تعز 📍';
+      }
+    }
+    return rawAddress;
+  }
+
+  // 🔔 2. دالة معالجة النقر على الإشعار للانتقال الفوري للطلب المرتبط
+  void _handleNotificationTap(BuildContext context, Map<String, dynamic> notification) {
+    final String? orderId = notification['order_id']?.toString() ?? 
+                            notification['related_id']?.toString() ?? 
+                            _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['message'] ?? ''));
+
+    if (orderId != null && orderId.isNotEmpty) {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => const NotificationsScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+    }
+  }
+
+  String? _extractOrderIdFromText(String text) {
+    final RegExp regExp = RegExp(r'#(\d+)');
+    final match = regExp.firstMatch(text);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -436,7 +488,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  // 📢 نافذة سياسة الخصوصية والتنبيهات الهامة
   void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
     bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy ?? false;
 
@@ -1136,7 +1187,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 14),
-                  // تصحيح: استخدام TextField بدلاً من TextFormField لأن onSubmitted غير موجود في TextFormField
                   TextField(
                     controller: priceController,
                     focusNode: priceFocus,
@@ -1242,7 +1292,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // تصحيح: استخدام TextField بدلاً من TextFormField لأن onSubmitted غير موجود في TextFormField
                       TextField(
                         controller: _nameController,
                         focusNode: _nameFocus,
@@ -1258,7 +1307,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // تصحيح: استخدام TextField بدلاً من TextFormField
                       TextField(
                         controller: _phoneController,
                         focusNode: _phoneFocus,
@@ -1305,7 +1353,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 12),
 
-                      // تصحيح: استخدام TextField بدلاً من TextFormField
                       TextField(
                         controller: _addressDescriptionController,
                         focusNode: _addressFocus,
@@ -1844,38 +1891,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     if (_showPopupBadge)
                       ScaleTransition(
                         scale: _popupScaleAnimation,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          margin: const EdgeInsets.only(left: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.amber,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.amber.withOpacity(0.5),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.bolt, size: 14, color: Colors.black),
-                              const SizedBox(width: 4),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 150),
-                                child: Text(
-                                  _latestNotificationText,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.black,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
+                        child: GestureDetector(
+                          onTap: () {
+                            _handleNotificationTap(context, {
+                              'title': _latestNotificationText,
+                              'message': _latestNotificationText,
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            margin: const EdgeInsets.only(left: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.amber,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withOpacity(0.5),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.bolt, size: 14, color: Colors.black),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 150),
+                                  child: Text(
+                                    _latestNotificationText,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -2980,6 +3035,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
         String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
+        
+        // 📍 استخدام دالة تنسيق العنوان هنا بكل احترافية
+        final formattedAddress = formatLocationAddress(order['address']);
 
         return Card(
           color: cardBg,
@@ -3021,7 +3079,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               final invoiceText = '⚡ فاتورة تطبيق FAST - تعز\n'
                                   'رقم الطلب: #${order['id']}\n'
                                   'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
-                                  'العنوان: ${order['address']}\n'
+                                  'العنوان: $formattedAddress\n'
                                   'رسوم التوصيل: ${order['delivery_fee']} ر.ي\n'
                                   'الإجمالي: ${order['total_price'] ?? order['total_amount']} ر.ي\n'
                                   'الحالة: $arabicStatus';
@@ -3056,7 +3114,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const Divider(color: Colors.grey, height: 20),
                   Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
-                  Text('العنوان: ${order['address']}', style: TextStyle(color: textColor, fontSize: 13)),
+                  Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
                   Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
                   Text('سعر المنتجات: ${order['products_total']} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
                   Text('رسوم التوصيل: ${order['delivery_fee']} ر.ي', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
@@ -3186,7 +3244,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     const SizedBox(height: 4),
                     Text('📞 ${profile['phone']} | 📍 تعز', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     if (profile['address'] != null && profile['address'].toString().isNotEmpty)
-                      Text('🏠 العنوان: ${profile['address']}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                      Text('🏠 العنوان: ${formatLocationAddress(profile['address'])}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
                   ],
                 ),
               ),
