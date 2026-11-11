@@ -14,74 +14,18 @@ workflows:
           set -e
           flutter --version
           java -version
-      - name: Auto increment build number 🔢
-        script: |
-          python3 -c '
-          import re
-          with open("pubspec.yaml", "r", encoding="utf-8") as f:
-              content = f.read()
-          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
-          if match:
-              v_name, b_num = match.groups()
-              new_b_num = int(b_num) + 1
-              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
-              with open("pubspec.yaml", "w", encoding="utf-8") as f:
-                  f.write(new_content)
-              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
-          '
-      - name: Force Clean & Rewrite Android Build Files for Flutter 3.29+ 🛠️
+      - name: Prepare official Gradle wrapper
         script: |
           set -e
-          # 1. إعادة كتابة ملف build.gradle الرئيسي ليتوافق مع الإصدارات الحديثة والـ plugins
-          cat << 'EOF' > android/build.gradle
-          buildscript {
-              ext.kotlin_version = '1.9.0'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.1'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-                  classpath 'com.google.gms:google-services:4.4.0'
-              }
-          }
-
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-
-          task clean(type: Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-
-          # 2. تعديل ملف gradle-wrapper.properties إلى الإصدار 8.0 لضمان التوافق التام
-          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-8.0-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            SEED_DIR="$(mktemp -d)"
+            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
+            cp "$SEED_DIR/seed/android/gradlew.bat" android/gradlew.bat
+            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            rm -rf "$SEED_DIR"
           fi
-
-          # 3. تحديث compileSdk و targetSdk داخل ملف android/app/build.gradle ليتوافق مع حزمك الحديثة وتجنب خطأ ApplicationDefaultConfig
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
-            sed -i 's/targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
-          fi
-
           chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
@@ -120,71 +64,17 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
-      - name: Auto increment build number 🔢
-        script: |
-          python3 -c '
-          import re
-          with open("pubspec.yaml", "r", encoding="utf-8") as f:
-              content = f.read()
-          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
-          if match:
-              v_name, b_num = match.groups()
-              new_b_num = int(b_num) + 1
-              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
-              with open("pubspec.yaml", "w", encoding="utf-8") as f:
-                  f.write(new_content)
-              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
-          '
-      - name: Force Clean & Rewrite Android Build Files for Flutter 3.29+ 🛠️
+      - name: Prepare Android Gradle wrapper
         script: |
           set -e
-          cat << 'EOF' > android/build.gradle
-          buildscript {
-              ext.kotlin_version = '1.9.0'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.1'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-                  classpath 'com.google.gms:google-services:4.4.0'
-              }
-          }
-
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-
-          task clean(type: Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-
-          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-8.0-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            SEED_DIR="$(mktemp -d)"
+            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
+            rm -rf "$SEED_DIR"
           fi
-
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
-            sed -i 's/targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
-            sed -i 's/flutter.minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
-          fi
-
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
