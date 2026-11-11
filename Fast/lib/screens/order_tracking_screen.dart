@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart'; // 🗺️ تم استيراد مكتبة الروابط لتفعيل زر الخريطة الحية
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 import '../providers/app_state.dart';
 import '../widgets/RatingWidget.dart';
 
-// 🎨 رسم المسار المنحني (Wavy Path Painter)
 class CurvedRoutePainter extends CustomPainter {
-  final double progress; // من 0.0 إلى 1.0 يمثل تقدم المندوب على الخط
+  final double progress;
 
   CurvedRoutePainter({required this.progress});
 
@@ -25,7 +24,6 @@ class CurvedRoutePainter extends CustomPainter {
       ..strokeWidth = 6.0
       ..strokeCap = StrokeCap.round;
 
-    // رسم مسار منحني (Bezier Curve) جميل
     final path = Path();
     path.moveTo(30, size.height * 0.7);
     path.cubicTo(
@@ -34,10 +32,8 @@ class CurvedRoutePainter extends CustomPainter {
       size.width - 30, size.height * 0.3,
     );
 
-    // رسم الخط الرمادي الأساسي
     canvas.drawPath(path, paintLine);
 
-    // رسم الخط الملون بحسب تقدم الطلب (باستخدام PathMetric)
     final pathMetric = path.computeMetrics().first;
     final extractPath = pathMetric.extractPath(0.0, pathMetric.length * progress);
     canvas.drawPath(extractPath, paintProgress);
@@ -83,7 +79,6 @@ class OrderTrackingScreen extends StatelessWidget {
 
     final String rawStatus = order['status'] ?? 'waitingForPricing';
     
-    // تحديد نسبة التقدم على المنحنى (من 0.0 إلى 1.0)
     double progressValue = 0.1;
     int currentStep = 0;
     
@@ -109,7 +104,7 @@ class OrderTrackingScreen extends StatelessWidget {
       {'title': 'التسعير والموافقة', 'desc': 'تحديد رسوم التوصيل والموافقة'},
       {'title': 'المندوب في الطريق 🛵', 'desc': 'الكابتن متجه لاستلام وتوصيل الطلب'},
       {'title': 'وصل المندوب للموقع 📍', 'desc': 'المندوب وصل باب منزلك'},
-      {'title': 'تم التسليم بنجاح ✅', 'desc': 'بالهناء والشفاء، نتمنى تقييمك'},
+      {'title': 'تم التسليم بنجاح ✅', 'desc': 'بالهناء والشفاء، شكراً لاستخدامك فاست'},
     ];
 
     final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
@@ -119,6 +114,13 @@ class OrderTrackingScreen extends StatelessWidget {
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
     final String courierId = order['courier_id']?.toString() ?? 'general_courier';
+
+    // 🔍 التحقق هل المستخدم الحالي هو مشرف أو مندوب أم العميل العادي
+    final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
+    
+    // جلب تقييم العميل إذا وجد في بيانات الطلب
+    final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
+    final String courierReview = order['courier_review']?.toString() ?? '';
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -136,7 +138,6 @@ class OrderTrackingScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🌟 بطاقة المسار المنحني التفاعلي (Wavy Delivery Tracking Route)
                 Container(
                   height: 230,
                   padding: const EdgeInsets.all(16),
@@ -150,7 +151,6 @@ class OrderTrackingScreen extends StatelessWidget {
                   ),
                   child: Stack(
                     children: [
-                      // عنوان داخلي
                       Positioned(
                         top: 0,
                         right: 0,
@@ -165,15 +165,11 @@ class OrderTrackingScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      
-                      // رسم الخط المنحني والـ Custom Painter
                       Positioned.fill(
                         child: CustomPaint(
                           painter: CurvedRoutePainter(progress: progressValue),
                         ),
                       ),
-
-                      // أيقونة المندوب المتحركة على المسار
                       Positioned(
                         bottom: 45,
                         left: MediaQuery.of(context).size.width * 0.42,
@@ -189,8 +185,6 @@ class OrderTrackingScreen extends StatelessWidget {
                           child: const Icon(Icons.two_wheeler, color: Colors.black, size: 24),
                         ),
                       ),
-
-                      // وصف المرحلة الحالية أسفل البطاقة
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -215,7 +209,6 @@ class OrderTrackingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 🗺️ زر التتبع الحي المفعل الآن ليفتح خرائط جوجل أو مسار التوصيل
                 if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
@@ -227,12 +220,11 @@ class OrderTrackingScreen extends StatelessWidget {
                     icon: const Icon(Icons.map_outlined),
                     label: const Text('فتح الخريطة الحية لتتبع المندوب 🛵📍', style: TextStyle(fontWeight: FontWeight.bold)),
                     onPressed: () async {
-                      // 📍 استخدام الإحداثيات الموجودة في العنوان أو افتراض إحداثيات مركز تعز
                       final String addressText = order['address']?.toString() ?? '';
                       String mapsQuery = 'Taiz, Yemen';
                       
                       if (addressText.contains('13.') && addressText.contains('44.')) {
-                        mapsQuery = addressText; // إذا كانت إحداثيات محفوظة
+                        mapsQuery = addressText;
                       }
 
                       final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$mapsQuery');
@@ -251,8 +243,7 @@ class OrderTrackingScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
 
-                // 💰 أزرار موافقة أو رفض العميل للسعر
-                if (rawStatus == 'pricingSentToCustomer') ...[
+                if (rawStatus == 'pricingSentToCustomer' && !isManagerOrCourier) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -315,7 +306,6 @@ class OrderTrackingScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
 
-                // 🧾 تفاصيل الفاتورة والمنتجات
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -344,29 +334,73 @@ class OrderTrackingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // ⭐ زر تقييم الطلب يظهر فور تسليم الطلب (delivered)
+                // ⭐ إدارة عرض التقييم حسب نوع المستخدم (عميل أم مندوب/مشرف)
                 if (rawStatus == 'delivered') ...[
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  if (!isManagerOrCourier) ...[
+                    // 👤 العميل: يظهر له زر التقييم لتقييم المندوب
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.star, color: Colors.black),
+                      label: const Text('تقييم التجربة والمندوب ⭐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => RatingDialogWidget(
+                            orderId: numericOrderId,
+                            customerPhone: customerPhone,
+                            targetId: courierId,
+                            targetType: 'courier',
+                          ),
+                        );
+                      },
                     ),
-                    icon: const Icon(Icons.star, color: Colors.black),
-                    label: const Text('تقييم التجربة والمندوب ⭐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => RatingDialogWidget(
-                          orderId: numericOrderId,
-                          customerPhone: customerPhone,
-                          targetId: courierId,
-                          targetType: 'courier',
-                        ),
-                      );
-                    },
-                  ),
+                  ] else ...[
+                    // 🛵 المندوب أو المشرف: يرى تقييم العميل لهذا الطلب (بدون زر تقييم)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('⭐ تقييم العميل لهذا الطلب:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                          const SizedBox(height: 8),
+                          if (courierRating != null) ...[
+                            Row(
+                              children: [
+                                Text('$courierRating / 5', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                                const SizedBox(width: 8),
+                                Row(
+                                  children: List.generate(5, (index) {
+                                    return Icon(
+                                      index < courierRating ? Icons.star : Icons.star_border,
+                                      color: Colors.amber,
+                                      size: 18,
+                                    );
+                                  }),
+                                ),
+                              ],
+                            ),
+                            if (courierReview.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text('ملاحظة العميل: "$courierReview"', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            ],
+                          ] else ...[
+                            const Text('لم يتم تقييم هذا الطلب من قبل العميل بعد ⏳', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),
