@@ -29,19 +29,21 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Force Fix Gradle & AGP Versions 🛠️
+      - name: Force Clean & Rewrite Android Build Files for Flutter 3.29+ 🛠️
         script: |
           set -e
-          # كتابة ملف build.gradle متوافق ومستقر يتجاوز مشكلة الـ API
+          # 1. إعادة كتابة ملف build.gradle الرئيسي ليتوافق مع الإصدارات الحديثة والـ plugins
           cat << 'EOF' > android/build.gradle
           buildscript {
+              ext.kotlin_version = '1.9.0'
               repositories {
                   google()
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+                  classpath 'com.google.gms:google-services:4.4.0'
               }
           }
 
@@ -64,10 +66,20 @@ workflows:
               delete rootProject.buildDir
           }
           EOF
-          
-          # تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5
+
+          # 2. تعديل ملف gradle-wrapper.properties إلى الإصدار 8.0 لضمان التوافق التام
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-8.0-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
+
+          # 3. تحديث compileSdk و targetSdk داخل ملف android/app/build.gradle ليتوافق مع حزمك الحديثة وتجنب خطأ ApplicationDefaultConfig
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
+            sed -i 's/targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
           fi
 
           chmod +x android/gradlew
@@ -123,18 +135,20 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Force Fix Gradle & AGP Versions 🛠️
+      - name: Force Clean & Rewrite Android Build Files for Flutter 3.29+ 🛠️
         script: |
           set -e
           cat << 'EOF' > android/build.gradle
           buildscript {
+              ext.kotlin_version = '1.9.0'
               repositories {
                   google()
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+                  classpath 'com.google.gms:google-services:4.4.0'
               }
           }
 
@@ -159,7 +173,16 @@ workflows:
           EOF
 
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-8.0-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
+
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
+            sed -i 's/targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.compileSdkVersion.*/compileSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.targetSdkVersion.*/targetSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/flutter.minSdkVersion.*/minSdkVersion 21/g' android/app/build.gradle || true
           fi
 
           chmod +x android/gradlew
