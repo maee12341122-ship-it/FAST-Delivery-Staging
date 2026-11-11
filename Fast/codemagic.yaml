@@ -32,7 +32,7 @@ workflows:
       - name: Force Fix Gradle & AGP Versions 🛠️
         script: |
           set -e
-          # 🧹 كتابة ملف build.gradle جديد وحديث يتجاوز مشكلة السطر 24 نهائياً
+          # كتابة ملف build.gradle متوافق ومستقر يتجاوز مشكلة الـ API
           cat << 'EOF' > android/build.gradle
           buildscript {
               repositories {
@@ -65,7 +65,7 @@ workflows:
           }
           EOF
           
-          # 🔧 تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5
+          # تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5
           if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
             sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
           fi
