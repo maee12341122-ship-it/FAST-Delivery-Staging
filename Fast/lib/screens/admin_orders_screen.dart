@@ -288,15 +288,14 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
               // 1. حفظ التحديثات في قاعدة البيانات
               appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
 
-              // 2. إرسال إشعار للعميل عبر رقم الهاتف (تم التصحيح للاعتماد على عمود phone في جدول customers)
+              // 2. إرسال إشعار للعميل عبر رقم الهاتف (تم تصحيح الاستعلام بنجاح)
               try {
                 String customerPhone = order['phone']?.toString() ?? '';
                 if (customerPhone.isNotEmpty) {
-                  // جلب الـ Player ID للعميل باستخدام رقم الهاتف (Phone) كمعرف فريد
                   final custRes = await appState.supabase
                       .from('customers')
                       .select('onesignal_player_id')
-                      .eq('phone', appState.toString() == '' ? customerPhone : appState.supabase.toString().isNotEmpty ? customerPhone : customerPhone)
+                      .eq('phone', customerPhone)
                       .maybeSingle();
                       
                   String? customerPlayerId = custRes?['onesignal_player_id']?.toString();
