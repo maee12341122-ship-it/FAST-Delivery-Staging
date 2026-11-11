@@ -1,63 +1,119 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math' as math;
+import 'package:flutter_map/flutter_map.dart'; // 👈 استيراد مكتبة الخرائط الحية
+import 'package:latlong2/latlong.dart';       // 👈 استيراد الإحداثيات الجغرافية
+import 'package:supabase_flutter/supabase_flutter.dart'; // 👈 سوبابيس للـ Realtime
 import '../providers/app_state.dart';
 import '../widgets/RatingWidget.dart';
 
-class CurvedRoutePainter extends CustomPainter {
-  final double progress;
-
-  CurvedRoutePainter({required this.progress});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintLine = Paint()
-      ..color = Colors.grey[800]!
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6.0
-      ..strokeCap = StrokeCap.round;
-
-    final paintProgress = Paint()
-      ..color = Colors.amber
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6.0
-      ..strokeCap = StrokeCap.round;
-
-    final path = Path();
-    path.moveTo(30, size.height * 0.7);
-    path.cubicTo(
-      size.width * 0.25, size.height * 0.1,
-      size.width * 0.75, size.height * 0.9,
-      size.width - 30, size.height * 0.3,
-    );
-
-    canvas.drawPath(path, paintLine);
-
-    final pathMetric = path.computeMetrics().first;
-    final extractPath = pathMetric.extractPath(0.0, pathMetric.length * progress);
-    canvas.drawPath(extractPath, paintProgress);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class OrderTrackingScreen extends StatelessWidget {
+class OrderTrackingScreen extends StatefulWidget {
   final Map<String, dynamic>? orderMap;
   final String? orderIdParam;
 
   const OrderTrackingScreen({Key? key, this.orderMap, this.orderIdParam}) : super(key: key);
 
   @override
+  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
+}
+
+class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
+  // 🗺️ متغيرات خريطة التتبع اللحظي
+  final MapController _mapController = MapController();
+  LatLng? _courierPosition;
+  RealtimeChannel? _orderChannel;
+  RealtimeChannel? _locationChannel;
+  static const LatLng _taizCenter = LatLng(13.5795, 44.0209); // مركز تعز الافتراضي
+
+  @override
+  void initState() {
+    super.initState();
+    final String targetId = widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
+    if (targetId.isNotEmpty) {
+      _subscribeToOrderUpdates(targetId);
+    }
+  }
+
+  // 📡 الاستماع لتحديثات الطلب وموقع المندوب لحظياً عبر سوبابيس
+  void _subscribeToOrderUpdates(String orderId) {
+    _orderChannel = Supabase.instance.client
+        .channel('public:orders:id=eq.$orderId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: orderId,
+          ),
+          callback: (payload) {
+            if (payload.newRecord.isNotEmpty && mounted) {
+              setState(() {});
+              final courierName = payload.newRecord['assigned_courier']?.toString();
+              if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
+                _fetchAndListenCourierLocation(courierName);
+              }
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _fetchAndListenCourierLocation(String courierId) async {
+    try {
+      final res = await Supabase.instance.client
+          .from('courier_locations')
+          .select()
+          .eq('courier_id', courierId)
+          .maybeSingle();
+
+      if (res != null && mounted) {
+        setState(() {
+          _courierPosition = LatLng(res['latitude'], res['longitude']);
+        });
+      }
+
+      _locationChannel = Supabase.instance.client
+          .channel('public:courier_locations:courier_id=eq.$courierId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'courier_locations',
+            callback: (payload) {
+              final newData = payload.newRecord;
+              if (newData.isNotEmpty && mounted) {
+                final lat = newData['latitude'] as double;
+                final lng = newData['longitude'] as double;
+                setState(() {
+                  _courierPosition = LatLng(lat, lng);
+                });
+                _mapController.move(_courierPosition!, 17.0);
+              }
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في متابعة موقع المندوب: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_orderChannel != null) Supabase.instance.client.removeChannel(_orderChannel!);
+    if (_locationChannel != null) Supabase.instance.client.removeChannel(_locationChannel!);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
 
-    final String targetId = orderIdParam ?? orderMap?['id']?.toString() ?? '';
+    final String targetId = widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
     
     final order = appState.orders.firstWhere(
       (o) => o['id'].toString() == targetId,
-      orElse: () => orderMap ?? {},
+      orElse: () => widget.orderMap ?? {},
     );
 
     if (order.isEmpty) {
@@ -79,24 +135,17 @@ class OrderTrackingScreen extends StatelessWidget {
 
     final String rawStatus = order['status'] ?? 'waitingForPricing';
     
-    double progressValue = 0.1;
     int currentStep = 0;
-    
     if (rawStatus == 'waitingForPricing') {
       currentStep = 0;
-      progressValue = 0.15;
     } else if (rawStatus == 'pricingSentToCustomer' || rawStatus == 'waitingCourierApproval') {
       currentStep = 1;
-      progressValue = 0.35;
     } else if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') {
       currentStep = 2;
-      progressValue = 0.65;
     } else if (rawStatus == 'arrivedToCustomer' || rawStatus == 'arrived') {
       currentStep = 3;
-      progressValue = 0.85;
     } else if (rawStatus == 'delivered') {
       currentStep = 4;
-      progressValue = 1.0;
     }
 
     final steps = [
@@ -113,7 +162,7 @@ class OrderTrackingScreen extends StatelessWidget {
 
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
-    final String courierId = order['courier_id']?.toString() ?? 'general_courier';
+    final String courierId = order['assigned_courier']?.toString() ?? order['courier_id']?.toString() ?? 'general_courier';
 
     // 🔍 التحقق هل المستخدم الحالي هو مشرف أو مندوب أم العميل العادي
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
@@ -138,9 +187,9 @@ class OrderTrackingScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 🗺️ خريطة التتبع الحي الحقيقية بدلاً من الخط الرسومي الثابت
                 Container(
                   height: 230,
-                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(20),
@@ -149,51 +198,80 @@ class OrderTrackingScreen extends StatelessWidget {
                       BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5)),
                     ],
                   ),
+                  clipBehavior: Clip.antiAlias,
                   child: Stack(
                     children: [
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.two_wheeler, color: Colors.amber, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              steps[currentStep]['title'].toString(),
-                              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _courierPosition ?? _taizCenter,
+                          initialZoom: 16.5,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.fast.taiz',
+                          ),
+                          if (_courierPosition != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _courierPosition!,
+                                  width: 50,
+                                  height: 50,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 6, offset: const Offset(0, 3)),
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.two_wheeler_rounded, color: Colors.black, size: 26),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: CurvedRoutePainter(progress: progressValue),
-                        ),
+                        ],
                       ),
                       Positioned(
-                        bottom: 45,
-                        left: MediaQuery.of(context).size.width * 0.42,
+                        top: 10,
+                        right: 10,
+                        left: 10,
                         child: Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Colors.amber,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: Colors.amber.withOpacity(0.6), blurRadius: 12, spreadRadius: 3),
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.two_wheeler, color: Colors.amber, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    steps[currentStep]['title'].toString(),
+                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                              const Text('📡 تتبع حي مباشر', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                             ],
                           ),
-                          child: const Icon(Icons.two_wheeler, color: Colors.black, size: 24),
                         ),
                       ),
                       Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
                         child: Center(
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.black54,
+                              color: Colors.black87,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -218,7 +296,7 @@ class OrderTrackingScreen extends StatelessWidget {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: const Icon(Icons.map_outlined),
-                    label: const Text('فتح الخريطة الحية لتتبع المندوب 🛵📍', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
                     onPressed: () async {
                       final String addressText = order['address']?.toString() ?? '';
                       String mapsQuery = 'Taiz, Yemen';
@@ -234,7 +312,7 @@ class OrderTrackingScreen extends StatelessWidget {
                       } else {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تعذر فتح الخريطة الحية 🗺️')),
+                            const SnackBar(content: Text('تعذر فتح خرائط جوجل 🗺️')),
                           );
                         }
                       }
