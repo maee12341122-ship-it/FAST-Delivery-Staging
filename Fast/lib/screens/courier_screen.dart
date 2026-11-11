@@ -5,7 +5,8 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'customer/order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب الموحدة
+import 'order_tracking_screen.dart';
+ // 👈 استيراد شاشة تتبع الطلب الموحدة
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
