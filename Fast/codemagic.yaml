@@ -1,4 +1,4 @@
-Workflows:
+workflows:
   fast-taiz-android-apk:
     name: FAST Delivery - Android APK 🚀
     max_build_duration: 90
@@ -29,12 +29,17 @@ Workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Regenerate Clean Android Directory 🛠️
+      - name: Force Fix Gradle & AGP Versions 🛠️
         script: |
           set -e
-          # 🧹 حذف مجلد android القديم تماماً واستبداله بقالب نظيف ومتوافق 100% مع أحدث إصدارات فلاتر
-          rm -rf android
-          flutter create --platforms=android --org com.maeen --project-name fast_delivery .
+          # 🔧 ترقية إصدار الـ Android Gradle Plugin في ملف build.gradle الرئيسي ليتوافق مع Flutter الحديث
+          if [ -f android/build.gradle ]; then
+            sed -i 's/com.android.tools.build:gradle:.*/com.android.tools.build:gradle:7.4.2'/g android/build.gradle
+          fi
+          # 🔧 تحديث ملف gradle-wrapper.properties إلى الإصدار 7.5 لضمان توافق الـ DSL
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
           chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
@@ -88,11 +93,15 @@ Workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: Regenerate Clean Android Directory 🛠️
+      - name: Force Fix Gradle & AGP Versions 🛠️
         script: |
           set -e
-          rm -rf android
-          flutter create --platforms=android --org com.maeen --project-name fast_delivery .
+          if [ -f android/build.gradle ]; then
+            sed -i 's/com.android.tools.build:gradle:.*/com.android.tools.build:gradle:7.4.2'/g android/build.gradle
+          fi
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
