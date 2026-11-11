@@ -478,7 +478,6 @@ class _CourierScreenState extends State<CourierScreen> {
         final String customerAddress = order['address'] ?? '';
         final String orderStatus = order['status'] ?? '';
 
-        // 💰 فصل دقيق ومنفصل لسعر المنتجات ورسوم التوصيل والإجمالي لتجنب ظهور الصفر
         final double productsPrice = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
         final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
         final double finalTotal = productsPrice + deliveryFee;
@@ -496,7 +495,6 @@ class _CourierScreenState extends State<CourierScreen> {
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            // 🚀 النقر على الكارد يفتح شاشة التتبع الموحدة مباشرة
             onTap: () {
               Navigator.push(
                 context,
@@ -551,6 +549,32 @@ class _CourierScreenState extends State<CourierScreen> {
                     ],
                   ),
                   const Divider(color: Colors.white12, height: 16),
+
+                  // 🚀 زر تتبع الطلب الواضح جداً بالنص العربي (مثل باقي الشاشات)
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 1,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.map_rounded, color: Colors.black, size: 18),
+                    label: const Text(
+                      '🗺️ اضغط هنا لتتبع خط سير الطلب 🚀',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
                   Row(
                     children: [
                       const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
@@ -614,12 +638,12 @@ class _CourierScreenState extends State<CourierScreen> {
                             children: [
                               const Icon(Icons.star, color: Colors.amber, size: 16),
                               const SizedBox(width: 6),
-                              Text('تقييم العميل: $ratingValue / 5', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                              Text('تقييم العميل لك: $ratingValue / 5 ⭐', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           if (ratingComment != null && ratingComment.isNotEmpty) ...[
                             const SizedBox(height: 4),
-                            Text('ملاحظة العميل: $ratingComment', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text('ملاحظة العميل: "$ratingComment"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                           ],
                         ],
                       ),
