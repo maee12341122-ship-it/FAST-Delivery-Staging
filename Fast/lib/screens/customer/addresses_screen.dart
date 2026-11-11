@@ -128,7 +128,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     style: TextStyle(color: textColor),
                     maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: 'التفاصيل (الشارع، بجوار...)*',
+                      labelText: 'التفاصيل والإحداثيات (الشارع، بجوار...)*',
                       labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       filled: true,
                       fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
@@ -163,7 +163,6 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 onPressed: () {
                   if (_titleController.text.isNotEmpty && _areaController.text.isNotEmpty) {
                     if (isEditing) {
-                      // 🔄 تحديث العنوان الموجود
                       final updatedAddress = AddressModel(
                         id: addressToEdit.id,
                         title: _titleController.text.trim(),
@@ -171,8 +170,6 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         details: _detailsController.text.trim(),
                         instructions: _instructionsController.text.trim(),
                       );
-                      // نفترض أنك تمتلك دالة update أو سنقوم بحذفه وإضافته أو تحديثه عبر الـ Provider
-                      // سنقوم باستبداله مباشرة إذا كانت الدالة متوفرة أو إزالته ثم إضافته
                       appState.removeUserAddress(addressToEdit.id);
                       appState.addUserAddress(updatedAddress);
                       
@@ -181,7 +178,6 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         const SnackBar(content: Text('تم تعديل العنوان بنجاح ✏️')),
                       );
                     } else {
-                      // ➕ إضافة عنوان جديد
                       final newAddress = AddressModel(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
                         title: _titleController.text.trim(),
@@ -266,7 +262,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Row(
                                 children: [
@@ -277,13 +274,11 @@ class _AddressesScreenState extends State<AddressesScreen> {
                               ),
                               Row(
                                 children: [
-                                  // ✏️ زر التعديل
                                   IconButton(
                                     icon: const Icon(Icons.edit_outlined, color: Colors.amber),
                                     tooltip: 'تعديل العنوان',
                                     onPressed: () => _showAddressDialog(context, appState, cardBg, textColor, addressToEdit: address),
                                   ),
-                                  // 🗑️ زر الحذف
                                   IconButton(
                                     icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                                     tooltip: 'حذف العنوان',
