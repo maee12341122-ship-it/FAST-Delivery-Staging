@@ -1,11 +1,13 @@
+import 'dart:async'; // 👈 استيراد لتنظيم الـ Stream
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart'; // 👈 استيراد جغرافية الموقع
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب الموحدة
+import 'order_tracking_screen.dart';
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -21,13 +23,50 @@ class _CourierScreenState extends State<CourierScreen> {
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
 
+  StreamSubscription<Position>? _locationSubscription; // 👈 متغير لمتابعة بث الإحداثيات
+
   @override
   void dispose() {
+    _locationSubscription?.cancel(); // 👈 إيقاف البث عند إغلاق الشاشة لتفريغ الذاكرة
     _usernameController.dispose();
     _passwordController.dispose();
     _usernameFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
+  }
+
+  // 🛰️ دالة بدء البث الحي لموقع المندوب ورفعه إلى سوبابيس تلقائياً
+  void _startLiveLocationUpdates(String courierId) async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+    }
+    if (permission == LocationPermission.deniedForever) return;
+
+    // إلغاء أي بث سابق إن وجد
+    _locationSubscription?.cancel();
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 5, // تحديث الموقع كلما تحرك المندوب 5 أمتار
+    );
+
+    _locationSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
+      try {
+        await Supabase.instance.client.from('courier_locations').upsert({
+          'courier_id': courierId,
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        debugPrint('⚠️ خطأ في رفع الموقع اللحظي: $e');
+      }
+    });
   }
 
   Future<void> _openMap(String address) async {
@@ -103,6 +142,14 @@ class _CourierScreenState extends State<CourierScreen> {
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final courier = appState.currentCourier;
+
+    // إذا سجل الكابتن دخوله، نبدأ فوراً بث إحداثياته الجغرافية الحية
+    if (courier != null) {
+      final String courierId = (courier['id'] ?? courier['name'] ?? '').toString().trim();
+      if (courierId.isNotEmpty) {
+        _startLiveLocationUpdates(courierId);
+      }
+    }
 
     final pendingOrdersCount = courier != null 
         ? appState.orders.where((o) {
@@ -207,7 +254,10 @@ class _CourierScreenState extends State<CourierScreen> {
                 IconButton(
                   icon: const Icon(Icons.logout, color: Colors.redAccent),
                   tooltip: 'تسجيل الخروج',
-                  onPressed: () => appState.logoutCourier(),
+                  onPressed: () {
+                    _locationSubscription?.cancel(); // إيقاف البث عند الخروج
+                    appState.logoutCourier();
+                  },
                 ),
               ],
             ],
@@ -313,6 +363,9 @@ class _CourierScreenState extends State<CourierScreen> {
                 .from('couriers')
                 .update({'onesignal_player_id': playerId})
                 .eq('id', courierId);
+            
+            // بدء بث الموقع مباشرة بعد تسجيل الدخول الناجح
+            _startLiveLocationUpdates(courierId);
           }
         }
       } catch (e) {
@@ -550,7 +603,7 @@ class _CourierScreenState extends State<CourierScreen> {
                   ),
                   const Divider(color: Colors.white12, height: 16),
 
-                  // 🚀 زر تتبع الطلب الواضح جداً بالنص العربي (مثل باقي الشاشات)
+                  // 🚀 زر تتبع الطلب الواضح جداً بالنص العربي
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber,
