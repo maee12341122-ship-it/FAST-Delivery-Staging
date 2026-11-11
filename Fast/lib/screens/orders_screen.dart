@@ -4,7 +4,7 @@ import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
 import '../services/notification_service.dart';
-import 'order_tracking_screen.dart'; // 🚀 استيراد شاشة التتبع المنحنية والخاصة بالطلب
+import 'order_tracking_screen.dart'; // 🚀 استيراد شاشة التتبع والخرائط الحية
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -116,7 +116,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                             const Divider(height: 20, color: Colors.white12),
                             
-                            // 🚀 زر تتبع الطلب البارز والواضح جداً بالنص العربي (مطلوبك الأساسي)
+                            // 🚀 زر تتبع الطلب البارز والواضح جداً بالنص العربي
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppConstants.gold,
@@ -179,7 +179,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                             const SizedBox(height: 14),
 
-                            // 💰 أزرار موافقة العميل على السعر
+                            // 💰 أزرار موافقة العميل على السعر (تظهر مباشرة هنا عند الحاجة)
                             if (status == 'pricingSentToCustomer') ...[
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -243,7 +243,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               const SizedBox(height: 12),
                             ],
 
-                            // 🔍 زر التفاصيل الاحتياطي
+                            // 🔍 زر تفاصيل الفاتورة
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
