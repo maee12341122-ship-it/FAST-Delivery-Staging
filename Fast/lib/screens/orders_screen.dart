@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
-import '../services/notification_service.dart'; // استيراد خدمة الإشعارات
+import '../services/notification_service.dart';
+import 'order_tracking_screen.dart'; // 🚀 استيراد شاشة التتبع المنحنية والخاصة بالطلب
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -13,7 +14,6 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-  // تخزين الحالات التي تم تنبيه المستخدم لها مطلع الجلسة لمنع التكرار المزعج
   final Set<String> _notifiedOrders = {};
 
   @override
@@ -21,7 +21,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final appState = Provider.of<AppState>(context);
     final orders = List>.from(appState.orders);
 
-    // 🔄 ترتيب الطلبات بحيث يكون الطلب الأخير (الأحدث/الأكبر في الـ ID) في الأعلى دائماً
     orders.sort((a, b) {
       final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
       final idB = int.tryParse(b['id']?.toString() ?? '0') ?? 0;
@@ -29,7 +28,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     });
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -57,7 +56,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
                     final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
                     
-                    // 🔔 فحص حالة الطلب وإطلاق إشعار صوتي محلي عند التغييرات الهامة (بدون تكرار)
                     final notificationKey = '$orderId-$status';
                     if (!_notifiedOrders.contains(notificationKey)) {
                       if (status == 'pricingSentToCustomer') {
@@ -118,6 +116,31 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                             const Divider(height: 20, color: Colors.white12),
                             
+                            // 🚀 زر تتبع الطلب البارز والواضح جداً بالنص العربي (مطلوبك الأساسي)
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppConstants.gold,
+                                foregroundColor: Colors.black,
+                                minimumSize: const Size(double.infinity, 46),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 2,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.map_rounded, color: Colors.black),
+                              label: const Text(
+                                '🗺️ اضغط هنا لتتبع خط سير الطلب 🚀',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
                             // تفاصيل العنوان والمنتجات
                             Row(
                               children: [
@@ -156,7 +179,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                             const SizedBox(height: 14),
 
-                            // 💰 أزرار موافقة العميل على السعر (تظهر مباشرة إذا كانت الحالة بانتظار الموافقة)
+                            // 💰 أزرار موافقة العميل على السعر
                             if (status == 'pricingSentToCustomer') ...[
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -220,7 +243,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               const SizedBox(height: 12),
                             ],
 
-                            // 🔍 زر التفاصيل الاحتياطي المرتبط بالنافذة المنبثقة للعميل
+                            // 🔍 زر التفاصيل الاحتياطي
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
@@ -232,7 +255,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 ),
                                 onPressed: () => _showClientOrderDetailsDialog(context, order),
                                 icon: const Icon(Icons.info_outline, size: 18),
-                                label: const Text('عرض تفاصيل الطلب والمتابعة 🔍', style: TextStyle(fontWeight: FontWeight.bold)),
+                                label: const Text('عرض تفاصيل الفاتورة 📋', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                             ),
                           ],
@@ -246,7 +269,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
-  // نافذة منبثقة تفاعلية للعميل لعرض التفاصيل
   void _showClientOrderDetailsDialog(BuildContext context, Map<String, dynamic> order) {
     showDialog(
       context: context,
