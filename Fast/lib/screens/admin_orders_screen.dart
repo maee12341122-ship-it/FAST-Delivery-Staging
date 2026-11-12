@@ -44,9 +44,14 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                   final phone = order['phone']?.toString() ?? '';
                   final address = order['address']?.toString() ?? '';
                   final itemsDesc = order['items_description']?.toString() ?? 'لا توجد تفاصيل';
-                  final productsTotal = double.tryParse(order['products_total']?.toString() ?? '0') ?? 0.0;
+                  
+                  // 🎯 قراءة الأسعار الصحيحة من الحقول الجديدة المحدثة في قاعدة البيانات
+                  final productsTotal = double.tryParse(order['items_price']?.toString() ?? order['products_total']?.toString() ?? '0') ?? 0.0;
                   final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-                  final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
+                  final totalPrice = double.tryParse(order['total_amount']?.toString() ?? '0') > 0 
+                      ? double.parse(order['total_amount'].toString()) 
+                      : (productsTotal + deliveryFee);
+                      
                   final status = order['status']?.toString() ?? 'waitingForPricing';
                   final assignedCourier = order['assigned_courier']?.toString() ?? 'لم يتم التعيين';
                   final adminMessage = order['admin_message']?.toString() ?? '';
@@ -288,7 +293,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
               // 1. حفظ التحديثات في قاعدة البيانات
               appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
 
-              // 2. إرسال إشعار للعميل عبر رقم الهاتف (تم تصحيح الاستعلام بنجاح)
+              // 2. إرسال إشعار للعميل عبر رقم الهاتف
               try {
                 String customerPhone = order['phone']?.toString() ?? '';
                 if (customerPhone.isNotEmpty) {
