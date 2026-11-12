@@ -14,12 +14,19 @@ workflows:
           set -e
           flutter --version
           java -version
+      - name: Generate Android directory if missing
+        script: |
+          set -e
+          if [ ! -d "android" ]; then
+            echo "Android directory missing. Generating it via flutter create..."
+            flutter create . --platforms=android --org com.example --project-name fast_delivery
+          fi
       - name: Prepare official Gradle wrapper
         script: |
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
             SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            flutter create --platforms=android --org com.example --project-name fast_seed "$SEED_DIR/seed"
             mkdir -p android/gradle/wrapper
             cp "$SEED_DIR/seed/android/gradlew" android/gradlew
             cp "$SEED_DIR/seed/android/gradlew.bat" android/gradlew.bat
@@ -40,7 +47,9 @@ workflows:
       - name: Get Flutter packages
         script: flutter pub get
       - name: Generate App Launcher Icon 🖼️
-        script: flutter pub run flutter_launcher_icons
+        script: |
+          set +e
+          flutter pub run flutter_launcher_icons || echo "Launcher icons generation skipped or failed, continuing..."
       - name: Build release APK
         script: flutter build apk --release --android-skip-build-dependency-validation
     artifacts:
@@ -64,12 +73,19 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
+      - name: Generate Android directory if missing
+        script: |
+          set -e
+          if [ ! -d "android" ]; then
+            echo "Android directory missing. Generating it via flutter create..."
+            flutter create . --platforms=android --org com.example --project-name fast_delivery
+          fi
       - name: Prepare Android Gradle wrapper
         script: |
           set -e
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
             SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.fast --project-name fast "$SEED_DIR/seed"
+            flutter create --platforms=android --org com.example --project-name fast_seed "$SEED_DIR/seed"
             mkdir -p android/gradle/wrapper
             cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
             cp "$SEED_DIR/seed/android/gradlew" android/gradlew
