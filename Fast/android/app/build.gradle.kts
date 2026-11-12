@@ -44,8 +44,6 @@ android {
 
     buildTypes {
         getByName("release") {
-            // Uses the Codemagic keystore when configured; otherwise creates an installable
-            // test APK signed with the debug key (not suitable for Google Play publishing).
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
             } else {
