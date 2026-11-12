@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+Import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -2711,10 +2711,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         
         final formattedAddress = formatLocationAddress(order['address']);
 
-        // 💰 الأسعار التفصيلية بدقة تامة لمنع ظهور الصفر
-        final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['products_price']?.toString() ?? '0') ?? 0.0;
+        // 💰 تم تعديل جلب الأسعار بدقة تامة ليفحص كل احتمالات المفاتيح في قاعدة البيانات ومنع ظهور الصفر
+        final double productsTotal = double.tryParse(
+          order['products_total']?.toString() ?? 
+          order['products_price']?.toString() ?? 
+          order['item_price']?.toString() ?? 
+          order['total_price']?.toString() ?? '0'
+        ) ?? 0.0;
+        
         final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final double grandTotal = double.tryParse(order['total_price']?.toString() ?? order['total_amount']?.toString() ?? '0') ?? (productsTotal > 0 ? (productsTotal + deliveryFee) : deliveryFee);
+        final double grandTotal = double.tryParse(
+          order['total_price']?.toString() ?? 
+          order['total_amount']?.toString() ?? '0'
+        ) ?? (productsTotal > 0 ? (productsTotal + deliveryFee) : deliveryFee);
 
         return Card(
           color: cardBg,
@@ -2854,7 +2863,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           Row(
                             children: [
                               Expanded(
-                                child: ElevatedButton.styleFrom != null ? ElevatedButton(
+                                child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
                                     foregroundColor: Colors.white,
@@ -2867,7 +2876,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     );
                                   },
                                   child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ) : const SizedBox.shrink(),
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
