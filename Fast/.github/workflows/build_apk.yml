@@ -1,9 +1,7 @@
-name: Build Flutter APK
+name: Automated APK Build
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
     branches: [ "main", "master" ]
 
 jobs:
@@ -23,7 +21,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v4
         with:
-          flutter-version: '3.19.x' # أو استخدم stable
+          flutter-version: '3.19.x'
           channel: 'stable'
           cache: true
 
@@ -36,5 +34,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
+          name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
