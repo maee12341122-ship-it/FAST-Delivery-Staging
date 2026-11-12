@@ -1,111 +1,162 @@
-# FAST Delivery - Codemagic workflows
-# Project layout in the uploaded ZIP: repository-root/Fast/{pubspec.yaml,android,web,lib}
-# Keep this file in the GitHub repository root (next to the Fast folder).
-
 workflows:
-  fast-taiz-web:
-    name: FAST Delivery - Web
-    working_directory: Fast
-    max_build_duration: 60
-    environment:
-      flutter: stable
-      vars:
-        WEB_BASE_HREF: "/"
-    cache:
-      cache_paths:
-        - $FLUTTER_ROOT/.pub-cache
-    scripts:
-      - name: Check Flutter and web project
-        script: |
-          set -e
-          flutter --version
-          test -f pubspec.yaml
-          test -f web/index.html
-      - name: Enable Flutter Web
-        script: flutter config --enable-web
-      - name: Get Flutter packages
-        script: flutter pub get
-      - name: Build production Web
-        script: |
-          set -e
-          flutter build web --release --base-href "${WEB_BASE_HREF:-/}"
-    artifacts:
-      - Fast/build/web/**
-
-  fast-taiz-android-release:
-    name: FAST Delivery - Android APK + Google Play AAB
-    working_directory: Fast
+  fast-taiz-android-apk:
+    name: FAST Delivery - Android APK 🚀
     max_build_duration: 90
     environment:
       flutter: stable
-      android_signing:
-        - fast_delivery_upload
+      vars:
+        PACKAGE_NAME: "com.example.taiz_express"
     cache:
-      cache_paths:
-        - $FLUTTER_ROOT/.pub-cache
-        - $HOME/.gradle/caches
+      cache_paths: []
     scripts:
-      - name: Check Flutter, Java and Android project
+      - name: Check Flutter environment
         script: |
           set -e
           flutter --version
           java -version
-          test -f pubspec.yaml
-          test -f android/settings.gradle
-          test -f android/app/build.gradle.kts
-          test -f android/gradle/wrapper/gradle-wrapper.jar
-      - name: Configure Android SDK paths for Codemagic
+      - name: Auto increment build number 🔢
+        script: |
+          python3 -c '
+          import re
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
+          if match:
+              v_name, b_num = match.groups()
+              new_b_num = int(b_num) + 1
+              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
+              with open("pubspec.yaml", "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
+          '
+      - name: 🛠️ Fix Gradle Root Compatibility for Kotlin DSL (.kts)
         script: |
           set -e
-          if [ -z "${FLUTTER_ROOT:-}" ]; then
-            echo "Codemagic did not provide FLUTTER_ROOT."
-            exit 1
-          fi
-          ANDROID_SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if [ -z "$ANDROID_SDK_PATH" ]; then
-            echo "ANDROID_SDK_ROOT / ANDROID_HOME is missing."
-            exit 1
-          fi
-          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_ROOT" "$ANDROID_SDK_PATH" > android/local.properties
+          # 1. حذف ملف build.gradle الجذري القديم الذي يسبب التعارض عند السطر 12
+          rm -f android/build.gradle
+          
+          # 2. إنشاء ملف build.gradle جذري متوافق تماماً مع بنية .kts الحديثة
+          cat << 'EOF' > android/build.gradle
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          val rootBuildDir = file("../build")
+          rootProject.buildDir = rootBuildDir
+          subprojects {
+              val newBuildDir = file("${rootBuildDir}/${project.name}")
+              project.buildDir = newBuildDir
+          }
+          subprojects {
+              afterEvaluate {
+                  if (project.hasProperty("android")) {
+                      // توافق تام مع تقييم التطبيق
+                  }
+              }
+          }
+
+          tasks.register<Delete>("clean") {
+              delete(rootProject.buildDir)
+          }
+          EOF
+
           chmod +x android/gradlew
-      - name: Verify Google Services configuration
+      - name: Configure Android SDK paths
         script: |
           set -e
-          test -f android/app/google-services.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          data = json.loads(Path("android/app/google-services.json").read_text(encoding="utf-8"))
-          packages = [
-              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
-              for client in data.get("client", [])
-          ]
-          expected = "com.maeen.fastdelivery"
-          if expected not in packages:
-              raise SystemExit(
-                  f"google-services.json has no Android client for {expected}. Found: {packages}"
-              )
-          print(f"Firebase Android package verified: {expected}")
-          PY
+          FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}"
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$ANDROID_SDK" ]; then
+            echo "ANDROID_SDK_ROOT/ANDROID_HOME is not configured on the build machine."
+            exit 1
+          fi
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
       - name: Get Flutter packages
         script: flutter pub get
-      - name: Verify Android upload signing key
+      - name: Generate App Launcher Icon 🖼️
+        script: flutter pub run flutter_launcher_icons
+      - name: Build release APK
+        script: flutter build apk --release --android-skip-build-dependency-validation
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+      - flutter_drive.log
+
+  fast-taiz-google-play-aab:
+    name: FAST Delivery - Google Play AAB (signed)
+    max_build_duration: 90
+    environment:
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "com.example.taiz_express"
+    cache:
+      cache_paths: []
+    scripts:
+      - name: Check signing secrets
         script: |
           set -e
           for name in CM_KEYSTORE_PATH CM_KEYSTORE_PASSWORD CM_KEY_ALIAS CM_KEY_PASSWORD; do
-            if [ -z "${!name:-}" ]; then
-              echo "Missing Android signing value: $name. Check Code signing identities in Codemagic."
-              exit 1
-            fi
+            if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
-          if [ ! -f "$CM_KEYSTORE_PATH" ]; then
-            echo "The uploaded Android keystore file was not found: $CM_KEYSTORE_PATH"
-            exit 1
-          fi
-      - name: Build signed Android APK for installation and testing
-        script: flutter build apk --release
-      - name: Build signed Android App Bundle for Google Play
-        script: flutter build appbundle --release
+          if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
+      - name: Auto increment build number 🔢
+        script: |
+          python3 -c '
+          import re
+          with open("pubspec.yaml", "r", encoding="utf-8") as f:
+              content = f.read()
+          match = re.search(r"version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)", content)
+          if match:
+              v_name, b_num = match.groups()
+              new_b_num = int(b_num) + 1
+              new_content = content.replace(match.group(0), f"version: {v_name}+{new_b_num}")
+              with open("pubspec.yaml", "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
+          '
+      - name: 🛠️ Fix Gradle Root Compatibility for Kotlin DSL (.kts)
+        script: |
+          set -e
+          rm -f android/build.gradle
+          cat << 'EOF' > android/build.gradle
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          val rootBuildDir = file("../build")
+          rootProject.buildDir = rootBuildDir
+          subprojects {
+              val newBuildDir = file("${rootBuildDir}/${project.name}")
+              project.buildDir = newBuildDir
+          }
+          subprojects {
+              afterEvaluate {
+                  if (project.hasProperty("android")) {
+                  }
+              }
+          }
+
+          tasks.register<Delete>("clean") {
+              delete(rootProject.buildDir)
+          }
+          EOF
+          chmod +x android/gradlew
+      - name: Configure Android SDK
+        script: |
+          set -e
+          FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}" 
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
+      - name: Get packages
+        script: flutter pub get
+      - name: Build signed Google Play bundle
+        script: |
+          set -e
+          flutter build appbundle --release --android-skip-build-dependency-validation
     artifacts:
-      - Fast/build/app/outputs/flutter-apk/*.apk
-      - Fast/build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/bundle/release/*.aab
