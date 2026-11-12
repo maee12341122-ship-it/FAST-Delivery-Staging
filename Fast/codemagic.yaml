@@ -1,6 +1,6 @@
 workflows:
-  build-apk-workflow:
-    name: Build Android APK for FAST Delivery
+  build-web-workflow:
+    name: Build Web for FAST Delivery
     max_build_duration: 30
     environment:
       flutter: 3.22.2
@@ -8,17 +8,15 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Fix Gradle Wrapper Version
+      - name: Clean build cache
         script: |
-          cd android
-          ./gradlew wrapper --gradle-version 8.7
-          cd ..
-      - name: Build Release APK with Skip Flag
+          flutter clean
+          flutter pub get
+      - name: Build Web Release
         script: |
-          flutter build apk --release --android-skip-build-dependency-validation
+          flutter build web --release
     artifacts:
-      - build/app/outputs/flutter-apk/app-release.apk
-      - build/app/outputs/flutter-apk/app-debug.apk
+      - build/web
     publishing:
       email:
         recipients:
