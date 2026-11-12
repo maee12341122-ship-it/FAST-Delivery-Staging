@@ -1,11 +1,14 @@
+
 workflows:
   fast-delivery-apk-web:
     name: FAST Delivery - APK + Web
     max_build_duration: 120
     instance_type: linux_x2
+
     environment:
       flutter: 3.50.0
       java: 17
+
     triggering:
       events:
         - push
@@ -18,16 +21,24 @@ workflows:
           include: true
           source: false
       cancel_previous_builds: true
+
     scripts:
       - name: Flutter dependencies
-        script: flutter pub get
+        script: |
+          flutter --version
+          flutter pub get
+
       - name: Diagnose Android Gradle
-  script: |
-    flutter pub get
-    cd android
-    ./gradlew app:assembleRelease --stacktrace --info
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --stacktrace --info
+
       - name: Build Flutter Web
-        script: flutter build web --release --base-href /
+        script: |
+          cd ..
+          flutter build web --release --base-href /
+
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
       - build/web/**
