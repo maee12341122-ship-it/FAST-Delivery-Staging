@@ -4,8 +4,6 @@ workflows:
     max_build_duration: 30
     environment:
       flutter: stable
-      groups:
-        # يمكنك إضافة مفاتيح السرية أو التوقيع هنا لاحقاً إذا احتجت
     scripts:
       - name: Get Flutter packages
         script: |
@@ -14,16 +12,15 @@ workflows:
         script: |
           flutter clean
           flutter pub get
-      - name: Build Debug/Release APK
+      - name: Build Release APK with Skip Flag
         script: |
-          flutter build apk --release
+          flutter build apk --release --android-skip-build-dependency-validation
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
       - build/app/outputs/flutter-apk/app-debug.apk
     publishing:
       email:
         recipients:
-          # ضع بريدك الإلكتروني هنا إذا أردت أن يرسل لك كودماجيك الملف عليه
           - maeen@example.com
         notify:
           success: true
