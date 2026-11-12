@@ -9,25 +9,43 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: Auto-generate clean & compatible Android directory
+      - name: Auto-generate clean & compatible Android directory (v2 embedding)
         script: |
           set -e
-          # إعادة توليد مجلد الأندرويد نظيفاً لضمان عدم وجود أي تعارضات قديمة
           echo "Cleaning and regenerating Android directory..."
           rm -rf android
           flutter create . --platforms=android --org com.example --project-name fast_delivery
           
-          # ضبط إصدارات Gradle و AGP لتكون متوافقة تماماً وتمنع أي تعارض
+          # ضبط إصدارات Gradle لتكون متوافقة تماماً
           GRADLE_PROPERTIES="android/gradle/wrapper/gradle-wrapper.properties"
           if [ -f "$GRADLE_PROPERTIES" ]; then
             sed -i 's/distributionUrl=.*$/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-bin.zip/g' "$GRADLE_PROPERTIES"
           fi
           
-          # التأكد من تفعيل التضمين الحديث v2 embedding
+          # التأكد من تفعيل التضمين الحديث v2 embedding في AndroidManifest.xml
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
-            sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
+          if [ -f "$MANIFEST_PATH" ]; then
+            if ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
+              sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
+            fi
           fi
+
+          # ضمان أن MainActivity يستخدم FlutterActivity الحديثة لتجنب أي خطأ v1
+          MAIN_KT="android/app/src/main/kotlin/com/example/fast_delivery/MainActivity.kt"
+          MAIN_JAVA="android/app/src/main/java/com/example/fast_delivery/MainActivity.java"
+          
+          mkdir -p android/app/src/main/kotlin/com/example/fast_delivery
+          cat << 'EOF' > "$MAIN_KT"
+          package com.example.fast_delivery
+
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity() {
+          }
+          EOF
+          
+          # حذف أي ملفات جافا قديمة قد تسبب تعارضاً
+          rm -f "$MAIN_JAVA"
       - name: Check Flutter environment
         script: |
           set -e
@@ -72,7 +90,7 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
-      - name: Auto-generate clean & compatible Android directory
+      - name: Auto-generate clean & compatible Android directory (v2 embedding)
         script: |
           set -e
           rm -rf android
@@ -87,6 +105,17 @@ workflows:
           if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
             sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
           fi
+
+          MAIN_KT="android/app/src/main/kotlin/com/example/fast_delivery/MainActivity.kt"
+          mkdir -p android/app/src/main/kotlin/com/example/fast_delivery
+          cat << 'EOF' > "$MAIN_KT"
+          package com.example.fast_delivery
+
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity() {
+          }
+          EOF
       - name: Configure Android SDK
         script: |
           set -e
