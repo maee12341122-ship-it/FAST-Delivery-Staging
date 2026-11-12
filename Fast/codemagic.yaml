@@ -1,44 +1,30 @@
 workflows:
-  fast-delivery-apk-web:
-    name: FAST Delivery - APK + Web 🚀
-    max_build_duration: 120
-    instance_type: linux_x2
-
+  build-apk-workflow:
+    name: Build Android APK for FAST Delivery
+    max_build_duration: 30
     environment:
       flutter: stable
-      java: 17
-
-    triggering:
-      events:
-        - push
-        - pull_request
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: false
-        - pattern: master
-          include: true
-          source: false
-      cancel_previous_builds: true
-
+      groups:
+        # يمكنك إضافة مفاتيح السرية أو التوقيع هنا لاحقاً إذا احتجت
     scripts:
-      - name: Flutter dependencies & Environment Check
+      - name: Get Flutter packages
         script: |
-          flutter --version
-          java -version
           flutter pub get
-
-      - name: Diagnose Android Gradle & Build APK 📦
+      - name: Clean build cache
         script: |
-          cd android
-          chmod +x gradlew
-          ./gradlew :app:assembleRelease --stacktrace --info
-          cd ..
-
-      - name: Build Flutter Web 🌐
+          flutter clean
+          flutter pub get
+      - name: Build Debug/Release APK
         script: |
-          flutter build web --release --base-href /
-
+          flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
-      - build/web/**
+      - build/app/outputs/flutter-apk/app-debug.apk
+    publishing:
+      email:
+        recipients:
+          # ضع بريدك الإلكتروني هنا إذا أردت أن يرسل لك كودماجيك الملف عليه
+          - maeen@example.com
+        notify:
+          success: true
+          failure: true
