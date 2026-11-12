@@ -8,10 +8,11 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Clean build cache
+      - name: Fix Gradle Wrapper Version
         script: |
-          flutter clean
-          flutter pub get
+          cd android
+          ./gradlew wrapper --gradle-version 8.7
+          cd ..
       - name: Build Release APK with Skip Flag
         script: |
           flutter build apk --release --android-skip-build-dependency-validation
