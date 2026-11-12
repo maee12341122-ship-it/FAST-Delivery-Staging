@@ -1,4 +1,4 @@
-name: Automated APK Build
+name: Build FAST Delivery APK
 
 on:
   push:
