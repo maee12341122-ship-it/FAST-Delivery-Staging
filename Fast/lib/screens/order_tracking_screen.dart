@@ -181,9 +181,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'تم التسليم بنجاح ✅', 'desc': 'بالهناء والشفاء، شكراً لاستخدامك فاست'},
     ];
 
-    final double productsTotal = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
+    // 🛠️ تم تعديل جلب السعر ليفحص جميع الاحتمالات في قاعدة البيانات لكي لا يظهر صفر
+    final double productsTotal = double.tryParse(
+      order['products_total']?.toString() ?? 
+      order['products_price']?.toString() ?? 
+      order['item_price']?.toString() ?? 
+      order['total_price']?.toString() ?? '0'
+    ) ?? 0.0;
+    
     final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-    final double grandTotal = productsTotal + deliveryFee;
+    final double grandTotal = productsTotal > 0 ? (productsTotal + deliveryFee) : (double.tryParse(order['total_price']?.toString() ?? '0') ?? deliveryFee);
 
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
@@ -368,6 +375,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       const SizedBox(height: 8),
                       Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                       const Divider(color: Colors.white12, height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('سعر المنتجات:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                          Text('$productsTotal ر.ي', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('رسوم التوصيل:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                          Text('$deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const Divider(color: Colors.white12, height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
