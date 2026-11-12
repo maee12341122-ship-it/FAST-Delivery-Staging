@@ -9,7 +9,7 @@ import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'location_picker_screen.dart';
 import 'register_screen.dart';
-import 'customer/addresses_screen.dart'; // 👈 شاشة العناوين المستقلة
+import 'addresses_screen.dart'; // 👈 شاشة العناوين المستقلة
 
 class ProfileScreen extends StatelessWidget {
   final VoidCallback? onOpenDrawer;
