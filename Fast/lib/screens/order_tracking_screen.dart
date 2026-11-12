@@ -1,4 +1,4 @@
-Import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -314,7 +314,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           border: Border.all(color: Colors.amber.withOpacity(0.4)),
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.between,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Row(
                               children: [
