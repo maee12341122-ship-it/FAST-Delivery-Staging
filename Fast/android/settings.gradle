@@ -1,10 +1,15 @@
 pluginManagement {
     def flutterSdkPath = {
         def properties = new Properties()
-        file("local.properties").withInputStream { properties.load(it) }
-        def flutterSdkPath = properties.getProperty("flutter.sdk")
-        assert flutterSdkPath != null : "flutter.sdk is not set in android/local.properties"
-        return flutterSdkPath
+        def localPropertiesFile = file("local.properties")
+
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.withInputStream { properties.load(it) }
+        }
+
+        def sdkPath = properties.getProperty("flutter.sdk") ?: System.getenv("FLUTTER_ROOT")
+        assert sdkPath != null : "Flutter SDK not found. Run flutter pub get or set FLUTTER_ROOT / android/local.properties."
+        return sdkPath
     }()
 
     includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
@@ -18,8 +23,9 @@ pluginManagement {
 
 plugins {
     id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-    id "com.android.application" version "8.9.1" apply false
-    id "org.jetbrains.kotlin.android" version "2.3.0" apply false
+    id "com.android.application" version "8.10.1" apply false
+    id "org.jetbrains.kotlin.android" version "2.2.20" apply false
+    id "com.google.gms.google-services" version "4.5.0" apply false
 }
 
 include ":app"

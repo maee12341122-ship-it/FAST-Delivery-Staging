@@ -1,14 +1,3 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        // 👈 هذا السطر هو المسؤول عن تفعيل إشعارات Firebase و OneSignal في الخلفية
-        classpath 'com.google.gms:google-services:4.4.2'
-    }
-}
-
 allprojects {
     repositories {
         google()
@@ -17,10 +6,9 @@ allprojects {
 }
 
 rootProject.buildDir = "../build"
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
     project.evaluationDependsOn(":app")
 }
 

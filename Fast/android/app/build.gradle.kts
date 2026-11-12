@@ -1,43 +1,89 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // Apply the Flutter plugin after the Android and Kotlin plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    // 👈 هذا السطر هو المسؤول عن تفعيل إشعارات OneSignal و Firebase في الخلفية
     id("com.google.gms.google-services")
 }
 
-val releaseStorePath = System.getenv("CM_KEYSTORE_PATH")
-val releaseStorePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-val releaseKeyAlias = System.getenv("CM_KEY_ALIAS")
-val releaseKeyPassword = System.getenv("CM_KEY_PASSWORD")
+// Release signing can be supplied through Codemagic environment variables or
+// android/key.properties (copied from key.properties.example).
+val signingProperties = Properties()
+val signingPropertiesFile = rootProject.file("key.properties")
+if (signingPropertiesFile.isFile) {
+    signingPropertiesFile.inputStream().use { signingProperties.load(it) }
+}
+
+fun signingValue(environmentName: String, propertyName: String): String? {
+    return System.getenv(environmentName)?.takeIf { it.isNotBlank() }
+        ?: signingProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+}
+
+val releaseStorePath = signingValue("CM_KEYSTORE_PATH", "storeFile")
+val releaseStorePassword = signingValue("CM_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("CM_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("CM_KEY_PASSWORD", "keyPassword")
+
+val releaseSigningValues = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+)
+val hasAnyReleaseSigningValue = releaseSigningValues.any { !it.isNullOrBlank() }
+val hasCompleteReleaseSigning = releaseSigningValues.all { !it.isNullOrBlank() }
+
+if (hasAnyReleaseSigningValue && !hasCompleteReleaseSigning) {
+    throw GradleException(
+        "Incomplete Android release signing configuration. Set all four CM_KEYSTORE_* variables " +
+            "or complete android/key.properties."
+    )
+}
+
+if (hasCompleteReleaseSigning && !rootProject.file(releaseStorePath!!).isFile) {
+    throw GradleException("Release keystore was not found: ${rootProject.file(releaseStorePath!!).path}")
+}
+
+if (!hasCompleteReleaseSigning) {
+    logger.warn(
+        "WARNING: Release builds are using the DEBUG key. This is for local testing only; " +
+            "configure a private upload keystore before uploading to Google Play."
+    )
+}
 
 android {
+    // Keep this namespace aligned with the package declared by MainActivity.kt.
     namespace = "com.example.taiz_express"
-    compileSdk = flutter.compileSdkVersion
+
+    // AGP 8.10.x supports compileSdk 36 (Android 16).
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // 👈 تفعيل الـ Desugaring هنا لحل مشاكل flutter_local_notifications نهائياً
         isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
+        // This applicationId matches the Android client in google-services.json.
+        // Do not change it after publishing the app on Google Play.
         applicationId = "com.maeen.fastdelivery"
-        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            (System.getenv("GOOGLE_MAPS_API_KEY") ?: project.findProperty("GOOGLE_MAPS_API_KEY") as? String).orEmpty()
+
+        minSdk = maxOf(flutter.minSdkVersion, 23)
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        multiDexEnabled = true
     }
 
     signingConfigs {
-        if (!releaseStorePath.isNullOrBlank()) {
+        if (hasCompleteReleaseSigning) {
             create("production") {
-                storeFile = file(releaseStorePath)
+                storeFile = rootProject.file(releaseStorePath!!)
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -46,8 +92,14 @@ android {
     }
 
     buildTypes {
-        release {
-            signingConfig = if (!releaseStorePath.isNullOrBlank()) signingConfigs.getByName("production") else signingConfigs.getByName("debug")
+        getByName("release") {
+            // Without a configured upload key, the release build remains usable
+            // for local testing but is NOT suitable for Google Play submission.
+            signingConfig = if (hasCompleteReleaseSigning) {
+                signingConfigs.getByName("production")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
@@ -62,7 +114,7 @@ flutter {
     source = "../.."
 }
 
-// 👈 إضافة مكتبة الـ Desugaring المطلوبة في النهاية
 dependencies {
+    // Required by flutter_local_notifications for Java 8+ API desugaring.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
