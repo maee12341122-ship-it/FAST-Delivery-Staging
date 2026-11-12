@@ -29,13 +29,13 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: 🛠️ Fix Gradle Root Compatibility for Kotlin DSL (.kts)
+      - name: 🛠️ Fix Gradle Root Groovy Compatibility
         script: |
           set -e
-          # 1. حذف ملف build.gradle الجذري القديم الذي يسبب التعارض عند السطر 12
+          # 1. حذف ملف build.gradle القديم
           rm -f android/build.gradle
           
-          # 2. إنشاء ملف build.gradle جذري متوافق تماماً مع بنية .kts الحديثة
+          # 2. إنشاء ملف build.gradle جذري بلغة Groovy السليمة 100% المتوافقة مع .kts
           cat << 'EOF' > android/build.gradle
           allprojects {
               repositories {
@@ -44,22 +44,16 @@ workflows:
               }
           }
 
-          val rootBuildDir = file("../build")
-          rootProject.buildDir = rootBuildDir
+          rootProject.buildDir = '../build'
           subprojects {
-              val newBuildDir = file("${rootBuildDir}/${project.name}")
-              project.buildDir = newBuildDir
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
           }
           subprojects {
-              afterEvaluate {
-                  if (project.hasProperty("android")) {
-                      // توافق تام مع تقييم التطبيق
-                  }
-              }
+              project.evaluationDependsOn(':app')
           }
 
-          tasks.register<Delete>("clean") {
-              delete(rootProject.buildDir)
+          task clean(type: Delete) {
+              delete rootProject.buildDir
           }
           EOF
 
@@ -116,7 +110,7 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: 🛠️ Fix Gradle Root Compatibility for Kotlin DSL (.kts)
+      - name: 🛠️ Fix Gradle Root Groovy Compatibility
         script: |
           set -e
           rm -f android/build.gradle
@@ -128,21 +122,16 @@ workflows:
               }
           }
 
-          val rootBuildDir = file("../build")
-          rootProject.buildDir = rootBuildDir
+          rootProject.buildDir = '../build'
           subprojects {
-              val newBuildDir = file("${rootBuildDir}/${project.name}")
-              project.buildDir = newBuildDir
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
           }
           subprojects {
-              afterEvaluate {
-                  if (project.hasProperty("android")) {
-                  }
-              }
+              project.evaluationDependsOn(':app')
           }
 
-          tasks.register<Delete>("clean") {
-              delete(rootProject.buildDir)
+          task clean(type: Delete) {
+              delete rootProject.buildDir
           }
           EOF
           chmod +x android/gradlew
