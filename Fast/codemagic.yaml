@@ -21,8 +21,11 @@ workflows:
     scripts:
       - name: Flutter dependencies
         script: flutter pub get
-      - name: Build Android APK
-        script: flutter build apk --release
+      - name: Diagnose Android Gradle
+  script: |
+    flutter pub get
+    cd android
+    ./gradlew app:assembleRelease --stacktrace --info
       - name: Build Flutter Web
         script: flutter build web --release --base-href /
     artifacts:
