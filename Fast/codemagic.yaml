@@ -17,6 +17,12 @@ workflows:
             rm -rf android
             flutter create . --platforms=android --org com.example --project-name fast_delivery
           fi
+          # ضمان تفعيل التضمين الحديث (v2 embedding) داخل AndroidManifest.xml
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
+            echo "Adding Flutter v2 embedding meta-data to AndroidManifest.xml..."
+            sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
+          fi
       - name: Check Flutter environment
         script: |
           set -e
@@ -29,9 +35,8 @@ workflows:
             SEED_DIR="$(mktemp -d)"
             flutter create --platforms=android --org com.example --project-name fast_seed "$SEED_DIR/seed"
             mkdir -p android/gradle/wrapper
-            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
-            cp "$SEED_DIR/seed/android/gradlew.bat" android/gradlew.bat
             cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
             rm -rf "$SEED_DIR"
           fi
           chmod +x android/gradlew
@@ -81,6 +86,10 @@ workflows:
             echo "Android directory is empty or missing. Regenerating via flutter create..."
             rm -rf android
             flutter create . --platforms=android --org com.example --project-name fast_delivery
+          fi
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
+            sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
           fi
       - name: Prepare Android Gradle wrapper
         script: |
