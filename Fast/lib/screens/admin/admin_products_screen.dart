@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:typed_data';
+import 'dart:io';
 import '../../providers/app_state.dart';
 import '../../models/product_model.dart';
 
@@ -17,7 +17,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingImage = false;
 
-  Future<String?> _uploadImageToSupabase(Uint8List imageBytes, StateSetter setDialogState) async {
+  Future<String?> _uploadImageToSupabase(File imageFile, StateSetter setDialogState) async {
     try {
       setDialogState(() => _isUploadingImage = true);
       
@@ -26,7 +26,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
 
       await Supabase.instance.client.storage
           .from('products')
-          .uploadBinary(storagePath, imageBytes);
+          .upload(storagePath, imageFile);
 
       final String publicUrl = Supabase.instance.client.storage
           .from('products')
@@ -121,7 +121,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                               onPressed: () async {
                                 final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
                                 if (image != null) {
-                                  final uploadedUrl = await _uploadImageToSupabase(await image.readAsBytes(), setDialogState);
+                                  final uploadedUrl = await _uploadImageToSupabase(File(image.path), setDialogState);
                                   if (uploadedUrl != null) {
                                     setDialogState(() {
                                       imageController.text = uploadedUrl;
