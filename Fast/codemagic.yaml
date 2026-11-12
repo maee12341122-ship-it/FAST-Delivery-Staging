@@ -12,8 +12,9 @@ workflows:
       - name: Generate Android directory first
         script: |
           set -e
-          if [ ! -d "android" ]; then
-            echo "Android directory missing. Generating it via flutter create..."
+          if [ ! -f "android/build.gradle" ]; then
+            echo "Android directory is empty or missing. Regenerating via flutter create..."
+            rm -rf android
             flutter create . --platforms=android --org com.example --project-name fast_delivery
           fi
       - name: Check Flutter environment
@@ -76,8 +77,9 @@ workflows:
       - name: Generate Android directory first
         script: |
           set -e
-          if [ ! -d "android" ]; then
-            echo "Android directory missing. Generating it via flutter create..."
+          if [ ! -f "android/build.gradle" ]; then
+            echo "Android directory is empty or missing. Regenerating via flutter create..."
+            rm -rf android
             flutter create . --platforms=android --org com.example --project-name fast_delivery
           fi
       - name: Prepare Android Gradle wrapper
