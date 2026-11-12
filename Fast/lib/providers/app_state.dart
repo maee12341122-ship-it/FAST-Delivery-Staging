@@ -34,6 +34,7 @@ class AppState extends ChangeNotifier {
     await fetchStoreSettings();
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
+    await fetchRestaurantAverages(); // 🌟 جلب متوسطات تقييمات المطاعم التراكمية
     await recordVisitorVisit(); 
     await fetchTotalVisitorsCount(); 
     await fetchAdminFinancialReports(); 
@@ -245,6 +246,7 @@ class AppState extends ChangeNotifier {
   // --- 🍔 قسم إضافات وخصائص المنتجات (Modifiers) ---
   // ==========================================
   List productModifiers = [];
+  Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
   Future<void> fetchProductModifiers(String productId) async {
     try {
@@ -257,6 +259,25 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في جلب إضافات المنتج: $e');
+    }
+  }
+
+  /// 🌟 جلب متوسطات تقييمات المطاعم التراكمية من الـ View للمنافسة
+  Future<void> fetchRestaurantAverages() async {
+    try {
+      final response = await supabase.from('restaurant_averages').select();
+      restaurantRatingsCache.clear();
+      for (var row in response) {
+        String name = row['restaurant_name']?.toString().trim() ?? '';
+        double avg = double.tryParse(row['avg_rating']?.toString() ?? '5.0') ?? 5.0;
+        int total = int.tryParse(row['total_reviews']?.toString() ?? '0') ?? 0;
+        if (name.isNotEmpty) {
+          restaurantRatingsCache[name] = {'avg': avg, 'total': total};
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب معدلات تقييمات المطاعم: $e');
     }
   }
 
@@ -1607,16 +1628,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 🌟 حفظ تقييم المطعم في الجدول المستقل restaurant_ratings وتحديث الـ Cache فوراً
   Future<void> submitRestaurantRating({
     required String orderId,
     required double rating,
     required String reviewText,
   }) async {
     try {
-      await supabase.from('orders').update({
-        'restaurant_rating': rating,
-        'restaurant_review': reviewText,
-      }).eq('id', orderId);
+      final orderRes = await supabase
+          .from('orders')
+          .select('restaurant_name, items_description')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      String restaurantName = 'المطعم العام';
+      if (orderRes != null) {
+        restaurantName = orderRes['restaurant_name']?.toString() ?? 
+                         (orderRes['items_description']?.toString().contains('مطعم') == true ? 'مطعم محدد' : 'مطعم متنوع');
+      }
+
+      await supabase.from('restaurant_ratings').insert({
+        'order_id': int.tryParse(orderId.toString()) ?? 0,
+        'restaurant_name': restaurantName.trim(),
+        'rating': rating,
+        'review_text': reviewText.trim(),
+        'customer_phone': userProfile?['phone'] ?? '',
+      });
 
       final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
       if (index != -1) {
@@ -1624,6 +1661,9 @@ class AppState extends ChangeNotifier {
         orders[index]['restaurant_review'] = reviewText;
         notifyListeners();
       }
+      
+      await fetchRestaurantAverages();
+      debugPrint('⭐ تم حفظ تقييم المطعم ($restaurantName) بنجاح');
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
     }
