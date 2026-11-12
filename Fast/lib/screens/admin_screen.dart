@@ -4,7 +4,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
-import 'order_tracking_screen.dart'; // 👈 استيراد شاشة تتبع الطلب للربط المباشر
+import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
@@ -269,7 +269,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               children: [
                 Icon(Icons.star, color: Colors.amber),
                 SizedBox(width: 8),
-                Text('تقييمات وملاحظات المطاعم ⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                Text('تقييمات وملاحظات المطاعم الشهرية ⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
               ],
             ),
             content: SizedBox(
@@ -279,7 +279,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 future: Supabase.instance.client
                     .from('restaurant_ratings')
                     .select()
-                    .order('created_at', ascending: false),
+                    .order('average_rating', ascending: false),
                 builder: (BuildContext context, AsyncSnapshot snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator(color: Colors.amber));
@@ -316,23 +316,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('🍽️ ${r['restaurant_name'] ?? 'مطعم'}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text('🍽️ ${r['restaurant_name'] ?? 'مطعم'}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
                                   Row(
                                     children: [
-                                      const Icon(Icons.star, color: Colors.amber, size: 16),
+                                      const Icon(Icons.star, color: Colors.amber, size: 18),
                                       const SizedBox(width: 4),
-                                      Text('${r['rating'] ?? 5.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                      Text('${r['average_rating'] ?? 0.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                                     ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('📦 رقم الطلب: #${r['order_id'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                              Text('📞 هاتف العميل: ${r['customer_phone'] ?? 'غير معروف'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                              if (r['review_text'] != null && r['review_text'].toString().isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Text('💬 الملاحظة: "${r['review_text']}"', style: const TextStyle(color: Colors.amberAccent, fontSize: 13)),
-                              ],
+                              Text('📊 إجمالي عدد التقييمات (آخر 30 يوم): ${r['total_reviews'] ?? 0}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -379,6 +374,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
+
+    // 🎯 حساب إجمالي الطلبات المكتملة لعرضها في لوحة المشرف بدقة
+    final int totalCompletedOrdersCount = appState.orders.where((o) => o['status'] == 'delivered').length;
 
     final List<Widget> adminPages = [
       _buildOrdersManagementWithTabs(appState),
@@ -482,42 +480,73 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         body: Column(
           children: [
             _buildNetworkStatusBar(appState),
-            Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
-              ),
+            
+            // 📊 بطاقة إحصائيات الزوار والطلبات المكتملة للمشرف
+            Padding(
+              padding: const EdgeInsets.all(12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), shape: BoxShape.circle),
-                        child: const Icon(Icons.remove_red_eye, color: Colors.amber, size: 24),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
                       ),
-                      const SizedBox(width: 12),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text('إجمالي زوار التطبيق والموقع 📊', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          SizedBox(height: 2),
-                          Text('إجمالي مرات الدخول وزيارات العملاء', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), shape: BoxShape.circle),
+                            child: const Icon(Icons.remove_red_eye, color: Colors.amber, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('إجمالي الزوار', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              const SizedBox(height: 2),
+                              Text('${appState.totalVisitorsCount} زائر', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                  Text(
-                    '${appState.totalVisitorsCount} زائر',
-                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.green.withOpacity(0.4), width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), shape: BoxShape.circle),
+                            child: const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('الطلبات المكتملة', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              const SizedBox(height: 2),
+                              Text('$totalCompletedOrdersCount طلب', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
+            
             Expanded(
               child: adminPages[_selectedNavIndex],
             ),
@@ -599,10 +628,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
         final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
 
-        // 💰 حساب دقيق ومنفصل لسعر المنتجات ورسوم التوصيل والإجمالي
-        final double productsPrice = double.tryParse(order['products_total']?.toString() ?? order['total_price']?.toString() ?? '0') ?? 0.0;
+        // 💰 قراءة الأسعار بدقة من الحقول الجديدة المحدثة
+        final double productsPrice = double.tryParse(order['items_price']?.toString() ?? order['products_total']?.toString() ?? '0') ?? 0.0;
         final double deliveryFeeAmount = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final double grandTotal = productsPrice + deliveryFeeAmount;
+        final double grandTotal = double.tryParse(order['total_amount']?.toString() ?? '0') > 0
+            ? double.parse(order['total_amount'].toString())
+            : (productsPrice + deliveryFeeAmount);
 
         if (!_feeControllers.containsKey(orderId)) {
           _feeControllers[orderId] = TextEditingController(text: order['delivery_fee']?.toString() ?? '0');
@@ -618,7 +649,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            // 🚀 النقر على الكارد يفتح شاشة التتبع الموحدة مباشرة
             onTap: () {
               Navigator.push(
                 context,
@@ -638,7 +668,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
                       Row(
                         children: [
-                          // 🗺️ زر تتبع الطلب السريع في أعلى الكارد
                           IconButton(
                             style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
                             icon: const Icon(Icons.map, color: Colors.amber, size: 20),
@@ -674,7 +703,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 8),
 
-                  // 📊 تفصيل الأسعار المنفصل بدقة (المنتجات وحدها والتوصيل لوحده)
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
@@ -829,36 +857,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         return;
                       }
 
-                      int courierActiveOrders = appState.orders.where((o) {
-                        return o['assigned_courier'] == courierName && 
-                               o['status'] != 'delivered' && 
-                               o['status'] != 'cancelled' && 
-                               o['status'] != 'cancelledByCustomer';
-                      }).length;
-
-                      if (courierActiveOrders >= 2) {
-                        bool? confirmAssign = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => Directionality(
-                            textDirection: TextDirection.rtl,
-                            child: AlertDialog(
-                              backgroundColor: const Color(0xFF1E1E1E),
-                              title: const Text('تنبيه: المندوب مشغول! ⚠️', style: TextStyle(color: Colors.amber)),
-                              content: Text('الكابتن ($courierName) لديه بالفعل ($courierActiveOrders) طلبات نشطة حالياً. هل أنت متأكد من إسناد طلب إضافي له أم تود اختيار مندوب آخر؟', style: const TextStyle(color: Colors.white70)),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('اختيار غيره ❌', style: TextStyle(color: Colors.grey))),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                                  onPressed: () => Navigator.pop(ctx, true), 
-                                  child: const Text('إسناد رغم ذلك 🚀', style: TextStyle(color: Colors.black)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                        if (confirmAssign != true) return;
-                      }
-                      
                       appState.setOrderDeliveryFee(orderId, fee, courierName);
 
                       try {
@@ -910,7 +908,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 10),
           const Text(
-            'تحكم كامل بقائمة الطعام والسلع: تعديل الأسعار، تبديل حالة التوفر (متوفر/غير متوفر), حذف أو إضافة منتجات جديدة بكل سهولة.',
+            'تحكم كامل بقائمة الطعام والسلع: تعديل الأسعار، تبديل حالة التوفر، حذف أو إضافة منتجات جديدة بكل سهولة.',
             style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
             textAlign: TextAlign.center,
           ),
@@ -980,7 +978,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                               ),
                               IconButton(
                                 icon: const Icon(Icons.notifications_active, color: Colors.amberAccent, size: 20),
-                                tooltip: 'ربط وتحديث OneSignal Player ID للمندوب',
+                                tooltip: 'تحديث OneSignal Player ID للمندوب',
                                 onPressed: () async {
                                   try {
                                     String? playerId = OneSignal.User.pushSubscription.id;
@@ -992,11 +990,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                       if (!context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('تم تحديث OneSignal Player ID للمندوب بنجاح! 🔔')),
-                                      );
-                                    } else {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('لم يتم العثور على معرّف OneSignal للجهاز حالياً ❌')),
                                       );
                                     }
                                   } catch (e) {
@@ -1050,16 +1043,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 return;
               }
 
-              if (password.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف 🔒')),
-                );
-                return;
-              }
-
               try {
                 await appState.addCourier(name, phone, username, password);
-                
                 _courierNameController.clear();
                 _courierPhoneController.clear();
                 _courierUsernameController.clear();
