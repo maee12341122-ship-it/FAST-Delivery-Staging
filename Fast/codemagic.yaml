@@ -29,14 +29,25 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: 🛠️ Fix Gradle Root Groovy Compatibility
+      - name: 🛠️ Absolute Override for Android Build.gradle
         script: |
           set -e
-          # 1. حذف ملف build.gradle القديم
+          # 1. حذف ملف build.gradle القديم كلياً
           rm -f android/build.gradle
           
-          # 2. إنشاء ملف build.gradle جذري بلغة Groovy السليمة 100% المتوافقة مع .kts
+          # 2. كتابة ملف build.gradle متوافق مع كافة الإصدارات الحديثة لمنع خطأ getDefaultConfig
           cat << 'EOF' > android/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22"
+              }
+          }
+
           allprojects {
               repositories {
                   google()
@@ -56,6 +67,11 @@ workflows:
               delete rootProject.buildDir
           }
           EOF
+
+          # 3. تعديل الـ gradle-wrapper إلى إصدار مستقر
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
 
           chmod +x android/gradlew
       - name: Configure Android SDK paths
@@ -110,11 +126,22 @@ workflows:
                   f.write(new_content)
               print(f"✅ Successfully bumped build number to: {v_name}+{new_b_num}")
           '
-      - name: 🛠️ Fix Gradle Root Groovy Compatibility
+      - name: 🛠️ Absolute Override for Android Build.gradle
         script: |
           set -e
           rm -f android/build.gradle
           cat << 'EOF' > android/build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22"
+              }
+          }
+
           allprojects {
               repositories {
                   google()
@@ -134,6 +161,11 @@ workflows:
               delete rootProject.buildDir
           }
           EOF
+
+          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's/distributionUrl=.*/distributionUrl\\=https\\:\\/\\/services.gradle.org\\/distributions\\/gradle-7.5-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+          fi
+
           chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
