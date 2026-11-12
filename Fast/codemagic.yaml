@@ -9,18 +9,23 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: Generate Android directory first
+      - name: Auto-generate clean & compatible Android directory
         script: |
           set -e
-          if [ ! -f "android/build.gradle" ]; then
-            echo "Android directory is empty or missing. Regenerating via flutter create..."
-            rm -rf android
-            flutter create . --platforms=android --org com.example --project-name fast_delivery
+          # إعادة توليد مجلد الأندرويد نظيفاً لضمان عدم وجود أي تعارضات قديمة
+          echo "Cleaning and regenerating Android directory..."
+          rm -rf android
+          flutter create . --platforms=android --org com.example --project-name fast_delivery
+          
+          # ضبط إصدارات Gradle و AGP لتكون متوافقة تماماً وتمنع أي تعارض
+          GRADLE_PROPERTIES="android/gradle/wrapper/gradle-wrapper.properties"
+          if [ -f "$GRADLE_PROPERTIES" ]; then
+            sed -i 's/distributionUrl=.*$/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-bin.zip/g' "$GRADLE_PROPERTIES"
           fi
-          # ضمان تفعيل التضمين الحديث (v2 embedding) داخل AndroidManifest.xml
+          
+          # التأكد من تفعيل التضمين الحديث v2 embedding
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
-            echo "Adding Flutter v2 embedding meta-data to AndroidManifest.xml..."
             sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
           fi
       - name: Check Flutter environment
@@ -28,18 +33,6 @@ workflows:
           set -e
           flutter --version
           java -version
-      - name: Prepare official Gradle wrapper
-        script: |
-          set -e
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.example --project-name fast_seed "$SEED_DIR/seed"
-            mkdir -p android/gradle/wrapper
-            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
-            rm -rf "$SEED_DIR"
-          fi
-          chmod +x android/gradlew
       - name: Configure Android SDK paths
         script: |
           set -e
@@ -79,30 +72,21 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
-      - name: Generate Android directory first
+      - name: Auto-generate clean & compatible Android directory
         script: |
           set -e
-          if [ ! -f "android/build.gradle" ]; then
-            echo "Android directory is empty or missing. Regenerating via flutter create..."
-            rm -rf android
-            flutter create . --platforms=android --org com.example --project-name fast_delivery
+          rm -rf android
+          flutter create . --platforms=android --org com.example --project-name fast_delivery
+          
+          GRADLE_PROPERTIES="android/gradle/wrapper/gradle-wrapper.properties"
+          if [ -f "$GRADLE_PROPERTIES" ]; then
+            sed -i 's/distributionUrl=.*$/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.7-bin.zip/g' "$GRADLE_PROPERTIES"
           fi
+          
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ] && ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
             sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
           fi
-      - name: Prepare Android Gradle wrapper
-        script: |
-          set -e
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            SEED_DIR="$(mktemp -d)"
-            flutter create --platforms=android --org com.example --project-name fast_seed "$SEED_DIR/seed"
-            mkdir -p android/gradle/wrapper
-            cp "$SEED_DIR/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            cp "$SEED_DIR/seed/android/gradlew" android/gradlew
-            rm -rf "$SEED_DIR"
-          fi
-          chmod +x android/gradlew
       - name: Configure Android SDK
         script: |
           set -e
