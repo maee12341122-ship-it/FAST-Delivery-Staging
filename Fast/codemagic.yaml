@@ -9,18 +9,18 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: Check Flutter environment
-        script: |
-          set -e
-          flutter --version
-          java -version
-      - name: Generate Android directory if missing
+      - name: Generate Android directory first
         script: |
           set -e
           if [ ! -d "android" ]; then
             echo "Android directory missing. Generating it via flutter create..."
             flutter create . --platforms=android --org com.example --project-name fast_delivery
           fi
+      - name: Check Flutter environment
+        script: |
+          set -e
+          flutter --version
+          java -version
       - name: Prepare official Gradle wrapper
         script: |
           set -e
@@ -73,7 +73,7 @@ workflows:
             if [ -z "${!name}" ]; then echo "Missing required Codemagic secret: $name"; exit 1; fi
           done
           if [ ! -f "$CM_KEYSTORE_PATH" ]; then echo "Keystore file not found at CM_KEYSTORE_PATH"; exit 1; fi
-      - name: Generate Android directory if missing
+      - name: Generate Android directory first
         script: |
           set -e
           if [ ! -d "android" ]; then
