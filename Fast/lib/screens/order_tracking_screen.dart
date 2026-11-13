@@ -178,15 +178,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    // 💰 فصل الأسعار بدقة تامة وتوافق مع باقي الشاشات
+    // 🛒 جلب سعر المنتجات الحقيقي مع فحص كافة الاحتمالات في قاعدة البيانات لتجنب ظهور 0
     final double productsPrice = double.tryParse(
       order['products_total']?.toString() ?? 
       order['products_price']?.toString() ?? 
+      order['product_price']?.toString() ?? 
+      order['items_price']?.toString() ?? 
       order['item_price']?.toString() ?? 
+      order['subtotal']?.toString() ?? 
       order['total_price']?.toString() ?? '0'
     ) ?? 0.0;
     
-    final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+    // 🏍️ رسوم التوصيل
+    final double deliveryFee = double.tryParse(
+      order['delivery_fee']?.toString() ?? 
+      order['delivery_price']?.toString() ?? '0'
+    ) ?? 0.0;
+    
+    // 💰 الإجمالي الكلي الصحيح
     final double grandTotal = productsPrice + deliveryFee;
 
     final int numericOrderId = int.tryParse(targetId) ?? 0;
