@@ -2712,23 +2712,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         
         final formattedAddress = formatLocationAddress(order['address']);
 
-        // 💰 تصحيح الأسعار لضمان عدم ظهور 0 ومطابقتها التامة مع لوحة الإدارة
+        // 💰 المعادلة الموحدة والذكية لضمان صحة الأسعار وعدم ظهور الصفر مطلقاً
         final double productsPrice = double.tryParse(
-          order['products_total']?.toString() ?? 
-          order['products_price']?.toString() ?? 
-          order['product_price']?.toString() ?? 
+          order['total_price']?.toString() ?? 
           order['items_price']?.toString() ?? 
-          order['item_price']?.toString() ?? 
-          order['subtotal']?.toString() ?? 
-          order['total_price']?.toString() ?? '0'
+          order['products_total']?.toString() ?? 
+          order['products_price']?.toString() ?? '0'
         ) ?? 0.0;
         
         final double deliveryFee = double.tryParse(
-          order['delivery_fee']?.toString() ?? 
-          order['delivery_price']?.toString() ?? '0'
+          order['delivery_fee']?.toString() ?? '0'
         ) ?? 0.0;
         
-        final double grandTotal = productsPrice + deliveryFee;
+        final double dbTotalAmount = double.tryParse(
+          order['total_amount']?.toString() ?? 
+          order['total']?.toString() ?? '0'
+        ) ?? 0.0;
+
+        final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
+            ? (dbTotalAmount - deliveryFee)
+            : productsPrice;
+
+        final double grandTotal = dbTotalAmount > 0 
+            ? dbTotalAmount 
+            : (finalProductsPrice + deliveryFee);
 
         return Card(
           color: cardBg,
@@ -2788,7 +2795,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   'رقم الطلب: #${order['id']}\n'
                                   'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
                                   'العنوان: $formattedAddress\n'
-                                  'سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي\n'
+                                  'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي\n'
                                   'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي\n'
                                   'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي\n'
                                   'الحالة: $arabicStatus';
@@ -2913,14 +2920,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
                   const SizedBox(height: 8),
 
-                  // 📦 صندوق عرض الأسعار المفصول والمنظم تماماً كالـ Admin و Courier
+                  // 📦 صندوق عرض الأسعار المفصول والمطابق تماماً للمندوب والمشرف
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
+                        Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
                         const SizedBox(height: 4),
                         Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                         const Divider(color: Colors.white12, height: 8),
