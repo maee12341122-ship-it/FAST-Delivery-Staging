@@ -9,9 +9,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // ⭐ الطريقة الصحيحة لـ Kotlin DSL (.kts)
         isCoreLibraryDesugaringEnabled = true
-
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -22,9 +20,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-
-        // ⭐ تفعيل الـ MultiDex بالطريقة الصحيحة لـ .kts
-        isMultiDexEnabled = true
+        // تمت إزالة السطر الذي سبب الخطأ هنا لتتوافق مع AGP الحديث
     }
 
     buildTypes {
@@ -40,7 +36,6 @@ kotlin {
     }
 }
 
-// ⭐ قسم الـ dependencies بالطريقة الصحيحة لـ Kotlin DSL (.kts)
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
