@@ -76,8 +76,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _handleNotificationTap(BuildContext context, Map<String, dynamic> notification) {
-    final String? orderId = notification['order_id']?.toString() ??
-                            notification['related_id']?.toString() ??
+    final String? orderId = notification['order_id']?.toString() ?? 
+                            notification['related_id']?.toString() ?? 
                             notification['additionalData']?['order_id']?.toString() ??
                             _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['message'] ?? ''));
 
@@ -116,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-
+    
     _popupAnimController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
@@ -200,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     const SizedBox(height: 12),
                     _buildPrivacyPoint('1️⃣ جمع واستخدام البيانات:', 'نقوم بجمع معلومات أساسية مثل (الاسم، رقم الهاتف، العنوان، وإحداثيات الموقع الجغرافي GPS) حصراً لتسهيل عملية توصيل الطلبات بدقة وسرعة عبر المناديب المعتمدين.'),
                     const SizedBox(height: 12),
-
+                    
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -463,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _handleProductTapOrAdd(BuildContext context, AppState appState, ProductModel product) async {
     await appState.fetchProductModifiers(product.id);
-
+    
     if (appState.productModifiers.isEmpty) {
       appState.addToCart(CartItemModel(
         id: product.id,
@@ -482,8 +482,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _showProductModifiersDialog(context, appState, product);
     }
   }
-
-  void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
+    void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
 
@@ -673,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 onPressed: _launchWhatsApp,
                 icon: const Icon(Icons.chat, color: Colors.white),
-                label: const Text('خدمة العملاء واتساب (775145534) 💬', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('خدمة العملاء واتساب (776857316) 💬', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
@@ -685,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 onPressed: _launchPhoneCall,
                 icon: const Icon(Icons.phone, color: Colors.amber),
-                label: const Text('اتصل بخدمة العملاء (775145534) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('اتصل بخدمة العملاء (776857316) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -815,7 +814,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ],
     );
   }
-
   void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController priceController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
@@ -1126,7 +1124,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -1172,7 +1170,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
-
   void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
@@ -2490,7 +2487,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
     final categories = ['الكل', 'المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
-
+    
     return SizedBox(
       height: 52,
       child: ListView(
@@ -2708,22 +2705,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
         String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
-
+        
         final formattedAddress = formatLocationAddress(order['address']);
 
-        // 💰 تم تعديل جلب الأسعار بدقة تامة ليفحص كل احتمالات المفاتيح في قاعدة البيانات ومنع ظهور الصفر
-        final double productsTotal = double.tryParse(
-          order['products_total']?.toString() ??
-          order['products_price']?.toString() ??
-          order['item_price']?.toString() ??
+        // 💰 الأسعار مفصولة ومنظمة بدقة تامة
+        final double productsPrice = double.tryParse(
+          order['products_total']?.toString() ?? 
+          order['products_price']?.toString() ?? 
+          order['item_price']?.toString() ?? 
           order['total_price']?.toString() ?? '0'
         ) ?? 0.0;
-
+        
         final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final double grandTotal = double.tryParse(
-          order['total_price']?.toString() ??
-          order['total_amount']?.toString() ?? '0'
-        ) ?? (productsTotal > 0 ? (productsTotal + deliveryFee) : deliveryFee);
+        final double grandTotal = productsPrice + deliveryFee;
 
         return Card(
           color: cardBg,
@@ -2783,9 +2777,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   'رقم الطلب: #${order['id']}\n'
                                   'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
                                   'العنوان: $formattedAddress\n'
-                                  'سعر المنتجات: $productsTotal ر.ي\n'
+                                  'سعر المنتجات: $productsPrice ر.ي\n'
                                   'رسوم التوصيل: $deliveryFee ر.ي\n'
-                                  'الإجمالي: $grandTotal ر.ي\n'
+                                  'الإجمالي الكلي: $grandTotal ر.ي\n'
                                   'الحالة: $arabicStatus';
                               Share.share(invoiceText);
                             },
@@ -2906,17 +2900,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 6),
                   Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
                   Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
-                  const SizedBox(height: 4),
-                  Text('سعر المنتجات: $productsTotal ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
-                  Text('رسوم التوصيل: $deliveryFee ر.ي', style: const TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
-                  const Divider(color: Colors.grey, height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('الإجمالي الكلي:', style: TextStyle(color: textColor, fontSize: 13, fontWeight: FontWeight.bold)),
-                      Text('$grandTotal ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
-                    ],
+                  const SizedBox(height: 8),
+
+                  // 📦 صندوق عرض الأسعار المفصول والمنظم تماماً كالـ Admin و Courier
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const Divider(color: Colors.white12, height: 8),
+                        Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      ],
+                    ),
                   ),
+
                   if (status == 'delivered' || status == 'arrived') ...[
                     const SizedBox(height: 14),
                     ElevatedButton.icon(
@@ -3147,3 +3148,4 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 }
+
