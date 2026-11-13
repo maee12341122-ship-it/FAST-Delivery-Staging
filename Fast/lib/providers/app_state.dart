@@ -44,6 +44,21 @@ class AppState extends ChangeNotifier {
   }
 
   // ==========================================
+  // --- 📦 دالة جلب الطلبات (المضافة حديثاً لحل المشكلة) ---
+  // ==========================================
+  Future<void> fetchOrders() async {
+    try {
+      final initialData = await supabase.from('orders').select();
+      orders = List.from(initialData);
+      _sortOrders();
+      await fetchAdminFinancialReports(); 
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب الطلبات: $e');
+    }
+  }
+
+  // ==========================================
   // --- 🛡️ قسم سياسة الخصوصية والاستخدام ---
   // ==========================================
   bool hasAcceptedPrivacyPolicy = false;
