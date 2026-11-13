@@ -679,6 +679,91 @@ class _CourierScreenState extends State<CourierScreen> {
                   const SizedBox(height: 6),
                   Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
 
+                  const SizedBox(height: 12),
+
+                  // 🛵 أزرار تحكم المندوب بمراحل التوصيل (قبول، في الطريق، تم الوصول، تسليم)
+                  if (orderStatus == 'waitingCourierApproval' || orderStatus == 'pricingSentToCustomer') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.check_circle_outline),
+                        label: const Text('قبول الطلب والبدء 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        onPressed: () async {
+                          await Supabase.instance.client.from('orders').update({
+                            'status': 'acceptedByCourier',
+                          }).eq('id', orderId);
+                          appState.fetchOrders();
+                        },
+                      ),
+                    ),
+                  ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'approvedByCustomer') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.two_wheeler),
+                        label: const Text('بدء التوصيل (في الطريق) 🛵', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        onPressed: () async {
+                          await Supabase.instance.client.from('orders').update({
+                            'status': 'onTheWay',
+                          }).eq('id', orderId);
+                          appState.fetchOrders();
+                        },
+                      ),
+                    ),
+                  ] else if (orderStatus == 'onTheWay') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.location_on),
+                        label: const Text('تم الوصول لموقع العميل 📍', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        onPressed: () async {
+                          await Supabase.instance.client.from('orders').update({
+                            'status': 'arrivedToCustomer',
+                          }).eq('id', orderId);
+                          appState.fetchOrders();
+                        },
+                      ),
+                    ),
+                  ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.done_all),
+                        label: const Text('تأكيد تسليم الطلب للعميل 🏁', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        onPressed: () async {
+                          await Supabase.instance.client.from('orders').update({
+                            'status': 'delivered',
+                          }).eq('id', orderId);
+                          appState.fetchOrders();
+                        },
+                      ),
+                    ),
+                  ],
+
                   if (ratingValue != null) ...[
                     const Divider(color: Colors.white12, height: 16),
                     Container(
