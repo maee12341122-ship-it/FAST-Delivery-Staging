@@ -10,6 +10,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // ⭐ أضف هذا السطر هنا لتفعيل الـ Desugaring المطلوب للإشعارات
+        coreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -27,6 +30,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // ⭐ أضف هذا السطر لتجنب مشاكل تداخل الدوال في الأندرويد
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -42,6 +48,11 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+// ⭐ أضف قسم الـ dependencies في نهاية الملف تماماً لدعم الـ Desugaring
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
 
 flutter {
