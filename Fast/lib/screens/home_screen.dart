@@ -673,7 +673,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 onPressed: _launchWhatsApp,
                 icon: const Icon(Icons.chat, color: Colors.white),
-                label: const Text('خدمة العملاء واتساب (775145534) 💬', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('خدمة العملاء واتساب (776857316) 💬', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
@@ -685,7 +685,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 onPressed: _launchPhoneCall,
                 icon: const Icon(Icons.phone, color: Colors.amber),
-                label: const Text('اتصل بخدمة العملاء (775145534) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('اتصل بخدمة العملاء (776857316) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
