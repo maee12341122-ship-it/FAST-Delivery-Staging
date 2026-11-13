@@ -277,19 +277,27 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🌟 جلب متوسطات تقييمات المطاعم التراكمية من الـ View للمنافسة
+  /// 🌟 جلب متوسطات تقييمات المطاعم التراكمية من الـ View للمنافسة (مع معالجة الأخطاء)
   Future<void> fetchRestaurantAverages() async {
     try {
-      final response = await supabase.from('restaurant_averages').select();
+      final response = await supabase.from('restaurant_ratings').select('restaurant_name, rating');
       restaurantRatingsCache.clear();
+      
+      Map<String, List<double>> tempRatings = {};
       for (var row in response) {
         String name = row['restaurant_name']?.toString().trim() ?? '';
-        double avg = double.tryParse(row['avg_rating']?.toString() ?? '5.0') ?? 5.0;
-        int total = int.tryParse(row['total_reviews']?.toString() ?? '0') ?? 0;
+        double rating = double.tryParse(row['rating']?.toString() ?? '5.0') ?? 5.0;
         if (name.isNotEmpty) {
-          restaurantRatingsCache[name] = {'avg': avg, 'total': total};
+          tempRatings.putIfAbsent(name, () => []).add(rating);
         }
       }
+
+      tempRatings.forEach((name, ratings) {
+        double sum = ratings.fold(0.0, (a, b) => a + b);
+        double avg = sum / ratings.length;
+        restaurantRatingsCache[name] = {'avg': avg, 'total': ratings.length};
+      });
+
       notifyListeners();
     } catch (e) {
       debugPrint('⚠️ خطأ في جلب معدلات تقييمات المطاعم: $e');
@@ -391,7 +399,7 @@ class AppState extends ChangeNotifier {
 
     if (userProfile != null && userProfile!['phone'] != null) {
       try {
-        final cleanPhone = _normalizePhone(userProfile!['phone']!);
+        final cleanPhone = _normalizePhone(userProfile!['phone'] != null ? userProfile!['phone']! : '');
         await supabase.from('customer_addresses').insert({
           'customer_phone': cleanPhone,
           'title': address.title.trim(),
@@ -589,7 +597,7 @@ class AppState extends ChangeNotifier {
   int deliveryFee = 500;
   int get workStartHour => startHour;
   int get workEndHour => endHour;
-  String customerSupportPhone = '775145534';
+  String customerSupportPhone = '776857316'; // تم التحديث للرقم الجديد
 
   bool isDarkMode = true;
   void toggleTheme() {
@@ -642,8 +650,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التسجيل في تطبيق Fast Delivery App.'}) async {
-    final uri = Uri.parse('https://wa.me/967775145534?text=${Uri.encodeComponent(message)}');
+  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد حجز إعلاني أو التواصل مع خدمة العملاء.'}) async {
+    final uri = Uri.parse('https://wa.me/967776857316?text=${Uri.encodeComponent(message)}'); // تحديث الرقم الجديد 776857316
     if (!await canLaunchUrl(uri)) {
       throw Exception('تعذر فتح واتساب أو المتصفح.');
     }
@@ -1466,7 +1474,7 @@ class AppState extends ChangeNotifier {
       removeCoupon(); 
       await fetchAdminFinancialReports(); 
       
-      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
@@ -1565,7 +1573,6 @@ class AppState extends ChangeNotifier {
     addNotification('إلغاء الطلب ❌', 'تم إلغاء الطلب بناءً على طلبك');
   }
 
-  // 🚀 دوال المندوب المحدثة لتحديث الـ UI محلياً وفوراً عند القبول أو الرفض
   Future<void> _submitCourierOrderAction(dynamic orderId, String action) async {
     if (currentCourier == null) {
       throw Exception('جلسة المندوب غير صالحة.');
@@ -1587,7 +1594,6 @@ class AppState extends ChangeNotifier {
       adminMsg = 'تم تسليم الطلب بنجاح ✅';
     }
 
-    // 1. التحديث سحابياً في Supabase
     final response = await supabase.from('orders').update({
       'status': newStatus,
       'admin_message': adminMsg,
@@ -1595,7 +1601,6 @@ class AppState extends ChangeNotifier {
 
     final updated = Map<String, dynamic>.from(response);
     
-    // 2. التحديث المحلي الفوري ليتغير الزر والشاشة دون أي تأخير
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) {
       orders[index] = updated;
@@ -1604,7 +1609,7 @@ class AppState extends ChangeNotifier {
     }
     _sortOrders();
     await fetchAdminFinancialReports();
-    notifyListeners(); // 👈 هذا هو السطر الحاسم لتفاعل الزر فوراً
+    notifyListeners(); 
   }
 
   Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
@@ -1643,7 +1648,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🌟 حفظ تقييم المطعم في الجدول المستقل restaurant_ratings وتحديث الـ Cache فوراً
   Future<void> submitRestaurantRating({
     required String orderId,
     required double rating,
