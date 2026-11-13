@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
@@ -21,7 +20,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   late TabController _ordersTabController;
 
   final Map<String, TextEditingController> _feeControllers = {};
-  // 🛵 خريطة لحفظ المندوب المختار لكل طلب أثناء التسعير
   final Map<String, String> _selectedCouriersForOrder = {};
 
   @override
@@ -257,13 +255,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 future: Supabase.instance.client
                     .from('restaurant_ratings')
                     .select()
-                    .order('average_rating', ascending: false),
+                    .order('rating', ascending: false), // تم التصحيح ليتوافق مع العمود الموجود في الجدول
                 builder: (BuildContext context, AsyncSnapshot snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator(color: Colors.amber));
                   }
                   if (snapshot.hasError) {
-                    return Center(child: Text('خطأ في جلب التقييمات: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                    return Center(child: Text('لا توجد تقييمات مسجلة أو خطأ في الجدول', style: const TextStyle(color: Colors.grey)));
                   }
 
                   final dynamic rawData = snapshot.data;
@@ -299,13 +297,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                     children: [
                                       const Icon(Icons.star, color: Colors.amber, size: 18),
                                       const SizedBox(width: 4),
-                                      Text('${r['average_rating'] ?? 0.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                                      Text('${r['rating'] ?? r['average_rating'] ?? 5.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                                     ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('📊 إجمالي عدد التقييمات (آخر 30 يوم): ${r['total_reviews'] ?? 0}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                              Text('💬 الملاحظة: ${r['review_text'] ?? 'بدون تعليق'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -324,6 +322,184 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCouriersManagement(AppState appState) {
+    return FutureBuilder<List<dynamic>>(
+      future: Supabase.instance.client.from('couriers').select(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Colors.amber));
+        }
+        final couriers = snapshot.data ?? [];
+        if (couriers.isEmpty) {
+          return const Center(child: Text('لا يوجد مناديب مسجلين حالياً 🛵', style: TextStyle(color: Colors.grey)));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: couriers.length,
+          itemBuilder: (context, index) {
+            final courier = couriers[index];
+            final courierName = courier['name']?.toString() ?? courier['full_name']?.toString() ?? 'مندوب';
+
+            // حساب عدد الطلبات الكل والمكتملة وعمولات التوصيل لهذا المندوب بدقة من قائمة الطلبات العامة
+            final courierAllOrders = appState.orders.where((o) =>
+            (o['assigned_courier']?.toString() ?? '') == courierName ||
+                (o['courier_name']?.toString() ?? '') == courierName
+            ).toList();
+
+            final courierCompletedOrders = courierAllOrders.where((o) => o['status'] == 'delivered').toList();
+
+            double totalCourierEarnings = 0.0;
+            for (var order in courierCompletedOrders) {
+              totalCourierEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+            }
+
+            return Card(
+              color: const Color(0xFF1E1E1E),
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.two_wheeler, color: Colors.amber, size: 24),
+                            const SizedBox(width: 10),
+                            Text(courierName, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.green),
+                          ),
+                          child: Text('📞 ${courier['phone'] ?? 'غير متوفر'}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white12, height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildStatColumn('إجمالي الطلبات', '${courierAllOrders.length} طلب', Colors.white70),
+                        _buildStatColumn('الطلبات المكتملة', '${courierCompletedOrders.length} طلب', Colors.greenAccent),
+                        _buildStatColumn('إجمالي عمولة التوصيل', '${totalCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.amber),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStatColumn(String title, String value, Color valueColor) {
+    return Column(
+      children: [
+        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14)),
+      ],
+    );
+  }
+
+  Widget _buildSettingsTab(AppState appState) {
+    final startHourController = TextEditingController(text: appState.startHour.toString());
+    final endHourController = TextEditingController(text: appState.endHour.toString());
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: ListView(
+        children: [
+          const Text('إعدادات وقته ومواعيد عمل التطبيق ⏰', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('تحديد ساعات فتح وإغلاق التطبيق يومياً:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: startHourController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(labelText: 'ساعة الفتح (مثال: 8)', labelStyle: TextStyle(color: Colors.grey), border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: endHourController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(labelText: 'ساعة الإغلاق (مثال: 23)', labelStyle: TextStyle(color: Colors.grey), border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 44)),
+                  onPressed: () async {
+                    int? newStart = int.tryParse(startHourController.text);
+                    int? newEnd = int.tryParse(endHourController.text);
+                    if (newStart != null && newEnd != null) {
+                      await appState.updateStoreHours(newStart, newEnd);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث أوقات العمل بنجاح ✅')));
+                      }
+                    }
+                  },
+                  child: const Text('حفظ وتحديث أوقات العمل 💾', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            tileColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            leading: const Icon(Icons.star, color: Colors.amber),
+            title: const Text('عرض تقييمات المطاعم الشهرية ⭐', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            onTap: () => _showRestaurantRatingsDialog(context),
+          ),
+          const SizedBox(height: 10),
+          ListTile(
+            tileColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            leading: const Icon(Icons.campaign, color: Colors.amber),
+            title: const Text('إدارة البنرات الترويجية 📢', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            onTap: () => _showBannersManagementDialog(context, appState),
+          ),
+        ],
+      ),
     );
   }
 
@@ -457,7 +633,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         body: Column(
           children: [
             _buildNetworkStatusBar(appState),
-
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -522,7 +697,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 ],
               ),
             ),
-
             Expanded(
               child: adminPages[_selectedNavIndex],
             ),
@@ -594,17 +768,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final orderId = order['id'].toString();
         final rawStatus = order['status'] ?? '';
         final arabicStatus = _getArabicStatus(rawStatus);
-        final assignedCourier = order['assigned_courier']?.toString() ?? 'لم يتم التعيين';
 
         final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
 
-        // 💰 فصل الأسعار بدقة: سعر المنتجات لوحده، رسوم التوصيل لوحدها، والإجمالي الكلي (مجموعهما)
         final double productsPrice = double.tryParse(
-          order['products_total']?.toString() ?? 
-          order['products_price']?.toString() ?? 
-          order['total_price']?.toString() ?? '0'
+            order['products_total']?.toString() ??
+                order['products_price']?.toString() ??
+                order['total_price']?.toString() ?? '0'
         ) ?? 0.0;
-        
+
         final double deliveryFeeAmount = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
         final double grandTotal = productsPrice + deliveryFeeAmount;
 
@@ -676,7 +848,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   Text('🛒 تفاصيل الطلب: ${order['items_description'] ?? 'بدون وصف'}', style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
                   const Divider(color: Colors.white12, height: 16),
 
-                  // 💰 عرض سعر المنتجات وحدها، رسوم التوصيل وحدها، والإجمالي الكلي (مجموعهما)
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
@@ -691,70 +862,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       ],
                     ),
                   ),
-
-                  const SizedBox(height: 8),
-                  Text('المندوب المسند: $assignedCourier', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-
-                  // إذا كان الطلب بانتظار التسعير، اظهر خانة اختيار المندوب وتحديد رسوم التوصيل وإرسال السعر
-                  if (rawStatus == 'waitingForPricing') ...[
-                    const SizedBox(height: 12),
-                    
-                    // 🚴‍♂️ قائمة اختيار المندوب المتاح
-                    DropdownButtonFormField<String>(
-                      dropdownColor: const Color(0xFF1E1E1E),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'إسناد لمندوب',
-                        labelStyle: const TextStyle(color: Colors.amber),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.amber.withOpacity(0.3))),
-                        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.amber)),
-                      ),
-                      value: _selectedCouriersForOrder[orderId] ?? (appState.couriers.isNotEmpty ? appState.couriers.first['name']?.toString() : null),
-                      items: appState.couriers.map<DropdownMenuItem<String>>((courier) {
-                        return DropdownMenuItem<String>(
-                          value: courier['name']?.toString() ?? '',
-                          child: Text(courier['name']?.toString() ?? 'مندوب', style: const TextStyle(color: Colors.white)),
-                        );
-                      }).toList(),
-                      onChanged: (String? newCourier) {
-                        if (newCourier != null) {
-                          setState(() {
-                            _selectedCouriersForOrder[orderId] = newCourier;
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 10),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _feeControllers[orderId],
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'حدد رسوم التوصيل (ر.ي)',
-                              labelStyle: TextStyle(color: Colors.grey),
-                              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.amber)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
-                          onPressed: () {
-                            final fee = double.tryParse(_feeControllers[orderId]?.text ?? '0') ?? 0.0;
-                            final chosenCourier = _selectedCouriersForOrder[orderId] ?? 
-                                                  (appState.couriers.isNotEmpty ? appState.couriers.first['name'] : 'مندوب عام');
-                            appState.setOrderDeliveryFee(orderId, fee, chosenCourier);
-                          },
-                          child: const Text('إرسال السعر', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -766,71 +873,5 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
   Widget _buildProductsManagement(AppState appState) {
     return const AdminProductsScreen();
-  }
-
-  Widget _buildCouriersManagement(AppState appState) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: appState.couriers.isEmpty
-          ? const Center(child: Text('لا توجد مناديب مضافة حالياً 🛵', style: TextStyle(color: Colors.grey)))
-          : ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: appState.couriers.length,
-        itemBuilder: (context, index) {
-          final courier = appState.couriers[index];
-          return Card(
-            color: const Color(0xFF1E1E1E),
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            child: ListTile(
-              title: Text(courier['name'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text('📞 ${courier['phone']} | الحالة: ${courier['status']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              trailing: Switch(
-                activeColor: Colors.amber,
-                value: courier['status'] == 'available',
-                onChanged: (val) {
-                  appState.setCourierAvailability(courier['id'].toString(), val);
-                },
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSettingsTab(AppState appState) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ListTile(
-          tileColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          leading: const Icon(Icons.campaign, color: Colors.amber),
-          title: const Text('إدارة البنرات الترويجية والخصومات 📢', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
-          onTap: () => _showBannersManagementDialog(context, appState),
-        ),
-        const SizedBox(height: 12),
-        ListTile(
-          tileColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          leading: const Icon(Icons.star, color: Colors.amber),
-          title: const Text('تقييمات وملاحظات المطاعم ⭐', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
-          onTap: () => _showRestaurantRatingsDialog(context),
-        ),
-        const SizedBox(height: 12),
-        ListTile(
-          tileColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          leading: const Icon(Icons.assessment, color: Colors.amber),
-          title: const Text('تقارير الأرباح والمبيعات 📈', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
-          onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminReportsScreen()));
-          },
-        ),
-      ],
-    );
   }
 }
