@@ -21,6 +21,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   late TabController _ordersTabController;
 
   final Map<String, TextEditingController> _feeControllers = {};
+  // 🛵 خريطة لحفظ المندوب المختار لكل طلب أثناء التسعير
+  final Map<String, String> _selectedCouriersForOrder = {};
 
   @override
   void initState() {
@@ -597,7 +599,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
 
         // 💰 فصل الأسعار بدقة: سعر المنتجات لوحده، رسوم التوصيل لوحدها، والإجمالي الكلي (مجموعهما)
-        final double productsPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
+        final double productsPrice = double.tryParse(
+          order['products_total']?.toString() ?? 
+          order['products_price']?.toString() ?? 
+          order['total_price']?.toString() ?? '0'
+        ) ?? 0.0;
+        
         final double deliveryFeeAmount = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
         final double grandTotal = productsPrice + deliveryFeeAmount;
 
@@ -685,12 +692,40 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text('المندوب المسند: $assignedCourier', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
 
-                  // إذا كان الطلب بانتظار التسعير، اظهر حقل تعديل وإرسال الرسوم للمشرف
+                  // إذا كان الطلب بانتظار التسعير، اظهر خانة اختيار المندوب وتحديد رسوم التوصيل وإرسال السعر
                   if (rawStatus == 'waitingForPricing') ...[
                     const SizedBox(height: 12),
+                    
+                    // 🚴‍♂️ قائمة اختيار المندوب المتاح
+                    DropdownButtonFormField<String>(
+                      dropdownColor: const Color(0xFF1E1E1E),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'إسناد لمندوب',
+                        labelStyle: const TextStyle(color: Colors.amber),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.amber.withOpacity(0.3))),
+                        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.amber)),
+                      ),
+                      value: _selectedCouriersForOrder[orderId] ?? (appState.couriers.isNotEmpty ? appState.couriers.first['name']?.toString() : null),
+                      items: appState.couriers.map<DropdownMenuItem<String>>((courier) {
+                        return DropdownMenuItem<String>(
+                          value: courier['name']?.toString() ?? '',
+                          child: Text(courier['name']?.toString() ?? 'مندوب', style: const TextStyle(color: Colors.white)),
+                        );
+                      }).toList(),
+                      onChanged: (String? newCourier) {
+                        if (newCourier != null) {
+                          setState(() {
+                            _selectedCouriersForOrder[orderId] = newCourier;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 10),
+
                     Row(
                       children: [
                         Expanded(
@@ -711,7 +746,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
                           onPressed: () {
                             final fee = double.tryParse(_feeControllers[orderId]?.text ?? '0') ?? 0.0;
-                            appState.setOrderDeliveryFee(orderId, fee, appState.couriers.isNotEmpty ? appState.couriers.first['name'] : 'مندوب عام');
+                            final chosenCourier = _selectedCouriersForOrder[orderId] ?? 
+                                                  (appState.couriers.isNotEmpty ? appState.couriers.first['name'] : 'مندوب عام');
+                            appState.setOrderDeliveryFee(orderId, fee, chosenCourier);
                           },
                           child: const Text('إرسال السعر', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
