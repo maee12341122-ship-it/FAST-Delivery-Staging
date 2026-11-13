@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة بالكامل
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الأصلية الكاملة 1700 سطر
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -27,14 +27,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _initializeApplicationState() async {
-    await checkPrivacyPolicyStatus(); // 🛡️ قراءة حالة الموافقة على سياسة الخصوصية
+    await checkPrivacyPolicyStatus();
     _loadAdminSession();
     _loadCourierSession();
     _loadUserSession();
     await fetchStoreSettings();
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
-    await fetchRestaurantAverages(); // 🌟 جلب متوسطات تقييمات المطاعم التراكمية
+    await fetchRestaurantAverages();
     await recordVisitorVisit(); 
     await fetchTotalVisitorsCount(); 
     await fetchAdminFinancialReports(); 
@@ -43,9 +43,6 @@ class AppState extends ChangeNotifier {
     initializeInternetListener(); 
   }
 
-  // ==========================================
-  // --- 📦 دالة جلب الطلبات ---
-  // ==========================================
   Future<void> fetchOrders() async {
     try {
       final initialData = await supabase.from('orders').select();
@@ -58,9 +55,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 🛡️ قسم سياسة الخصوصية والاستخدام ---
-  // ==========================================
   bool hasAcceptedPrivacyPolicy = false;
 
   Future<void> checkPrivacyPolicyStatus() async {
@@ -84,9 +78,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 🌐 قسم مراقبة اتصال الإنترنت لحظياً ---
-  // ==========================================
   bool isConnectedToInternet = true;
   final Connectivity _connectivity = Connectivity();
 
@@ -112,7 +103,7 @@ class AppState extends ChangeNotifier {
     if (previousState && !isConnectedToInternet) {
       addLocalNotification(
         '⚠️ انقطاع الاتصال بالإنترنت',
-        'تم فقدان الاتصال بالشبكة! يرجى التحقق من الإنترنت لتحديث بيانات الطلبات والمراسلات.',
+        'تم فقدان الاتصال بالشبكة! يرجى التحقق من الإنترنت.',
         type: 'network_alert',
       );
     } else if (!previousState && isConnectedToInternet) {
@@ -126,9 +117,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================
-  // --- 📊 قسم عداد الزوار والتتبع ---
-  // ==========================================
   int totalVisitorsCount = 0;
 
   Future<void> recordVisitorVisit() async {
@@ -151,9 +139,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 📈 قسم تقارير المبيعات والأرباح للمشرف ---
-  // ==========================================
   double totalRevenue = 0.0;
   int completedOrdersCount = 0;
   int pendingOrdersCount = 0;
@@ -193,9 +178,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 🎟️ قسم كوبونات الخصم والعروض ---
-  // ==========================================
   String? activeCouponCode;
   double couponDiscountAmount = 0.0;
 
@@ -251,9 +233,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================
-  // --- 🍔 قسم إضافات وخصائص المنتجات (Modifiers) ---
-  // ==========================================
   List productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
@@ -297,9 +276,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 🔔 قسم الإشعارات ---
-  // ==========================================
   String? get latestNotificationMessage {
     if (notifications.isNotEmpty) {
       return notifications.first['body']?.toString() ?? notifications.first['title']?.toString();
@@ -315,9 +291,6 @@ class AppState extends ChangeNotifier {
     if (targetPlayerId.isEmpty) return;
   }
 
-  // ==========================================
-  // --- ❤️ إدارة المنتجات المفضلة ---
-  // ==========================================
   final List<String> _favoriteProductIds = [];
   List<String> get favoriteProductIds => _favoriteProductIds;
 
@@ -341,9 +314,6 @@ class AppState extends ChangeNotifier {
         .cast<ProductModel>();
   }
 
-  // ==========================================
-  // --- 🏠 قائمة وعناوين العميل المحفوظة ---
-  // ==========================================
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
@@ -471,9 +441,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 🗺️ ترجمة الحالات ومعرفات المشرفين ---
-  // ==========================================
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -537,6 +504,50 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> getReceiverPlayerIdForChat({
+    required dynamic orderId,
+    required String senderRole,
+    required String targetChat,
+  }) async {
+    try {
+      final orderRes = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      if (orderRes == null) return null;
+
+      if (targetChat == 'admin_customer') {
+        if (senderRole == 'admin') {
+          String customerPhone = orderRes['phone']?.toString() ?? '';
+          if (customerPhone.isNotEmpty) {
+            final custRes = await supabase
+                .from('customers')
+                .select('onesignal_player_id')
+                .eq('phone', customerPhone)
+                .maybeSingle();
+            return custRes?['onesignal_player_id']?.toString();
+          }
+        } else {
+          List<String> admins = await getAllAdminPlayerIds();
+          return admins.isNotEmpty ? admins.first : null;
+        }
+      } else if (targetChat == 'admin_courier') {
+        if (senderRole == 'admin') {
+          String courierName = orderRes['assigned_courier']?.toString() ?? '';
+          return await getCourierPlayerIdByName(courierName);
+        } else {
+          List<String> admins = await getAllAdminPlayerIds();
+          return admins.isNotEmpty ? admins.first : null;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
+    }
+    return null;
+  }
+
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
@@ -565,10 +576,6 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
-
-  // ==========================================
-  // --- 💬 إدارة المحادثات والشات ---
-  // ==========================================
   Stream getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -609,9 +616,6 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  // ==========================================
-  // --- 📍 الأذونات والإعدادات والدوام ---
-  // ==========================================
   Future<void> requestLocationAndNotificationPermissions() async {
     try {
       LocationPermission locationPermission = await Geolocator.checkPermission();
@@ -682,7 +686,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🛠️ الدالة المطابقة تماماً لاستدعاء شاشة المشرف (Admin Screen)
   Future<void> updateStoreHours(int newStart, int newEnd) async {
     await updateStoreSettings(newStart, newEnd);
   }
@@ -697,9 +700,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // --- 👑 إدارة جلسة المشرف (Admin Session) ---
-  // ==========================================
   bool isAdminLoggedIn = false;
 
   void _loadAdminSession() async {
@@ -736,9 +736,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================
-  // --- 👤 إدارة جلسة المستخدم / العميل ---
-  // ==========================================
   Map<String, dynamic>? userProfile;
   dynamic generatedDynamicOtp;
   String? lastOrderTrackingCode;
@@ -976,9 +973,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================
-  // --- 🛵 إدارة المناديب وعملياتهم ---
-  // ==========================================
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -1081,9 +1075,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================
-  // --- 🛒 إدارة سلة المشتريات (Cart) ---
-  // ==========================================
   final List<CartItemModel> _cartItems = [];
   List<CartItemModel> get cartItems => _cartItems;
 
@@ -1180,9 +1171,6 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
   }
 
-  // ==========================================
-  // --- 📦 إدارة المنتجات والطلبات ---
-  // ==========================================
   Future<void> removeProduct(String id) async {
     await supabase.from('products').delete().eq('id', id);
     await fetchProductsFromSupabase();
@@ -1616,3 +1604,52 @@ class _UserMock {
   final String phone;
   _UserMock(this.name, this.phone);
 }
+  /// 🛠️ الدالة المطابقة تماماً لاستدعاء شاشة المشرف (Admin Screen)
+  Future<void> updateStoreHours(int newStart, int newEnd) async {
+    await updateStoreSettings(newStart, newEnd);
+  }
+
+  /// 💬 دالة جلب Player ID الخاص بالمستقبل في شاشة المحادثة
+  Future<String?> getReceiverPlayerIdForChat({
+    required dynamic orderId,
+    required String senderRole,
+    required String targetChat,
+  }) async {
+    try {
+      final orderRes = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      if (orderRes == null) return null;
+
+      if (targetChat == 'admin_customer') {
+        if (senderRole == 'admin') {
+          String customerPhone = orderRes['phone']?.toString() ?? '';
+          if (customerPhone.isNotEmpty) {
+            final custRes = await supabase
+                .from('customers')
+                .select('onesignal_player_id')
+                .eq('phone', customerPhone)
+                .maybeSingle();
+            return custRes?['onesignal_player_id']?.toString();
+          }
+        } else {
+          List<String> admins = await getAllAdminPlayerIds();
+          return admins.isNotEmpty ? admins.first : null;
+        }
+      } else if (targetChat == 'admin_courier') {
+        if (senderRole == 'admin') {
+          String courierName = orderRes['assigned_courier']?.toString() ?? '';
+          return await getCourierPlayerIdByName(courierName);
+        } else {
+          List<String> admins = await getAllAdminPlayerIds();
+          return admins.isNotEmpty ? admins.first : null;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
+    }
+    return null;
+  }
