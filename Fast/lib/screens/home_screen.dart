@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -222,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            '• لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع ارسال البيان. 🪪',
+                            '• لو الحساب إيداع، الإيداع يتم بعد استلاستلام الطلب مباشرة مع ارسال البيان. 🪪',
                             style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                           ),
                           const SizedBox(height: 6),
@@ -283,22 +284,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // 📞 تحديث رابط الواتساب بالرقم الجديد 776857316
   Future<void> _launchWhatsApp() async {
-    final Uri url = Uri.parse('https://wa.me/967775145534?text=مرحباً، أود الاستفسار عن خدمة التوصيل');
+    final Uri url = Uri.parse('https://wa.me/967776857316?text=مرحباً، أود الاستفسار عن خدمة التوصيل');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
+  // 📞 تحديث رقم الاتصال الهاتفي بالرقم الجديد 776857316
   Future<void> _launchPhoneCall() async {
-    final Uri url = Uri.parse('tel:775145534');
+    final Uri url = Uri.parse('tel:776857316');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     }
   }
 
+  // 📢 تحديث رابط واتساب الإعلانات بالرقم الجديد 776857316
   Future<void> _launchWhatsAppForAd() async {
-    final Uri url = Uri.parse('https://wa.me/967775145534?text=مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
+    final Uri url = Uri.parse('https://wa.me/967776857316?text=مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
@@ -482,7 +486,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _showProductModifiersDialog(context, appState, product);
     }
   }
-    void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
+
+  void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
 
@@ -814,6 +819,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ],
     );
   }
+
   void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController priceController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
@@ -1154,7 +1160,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Navigator.pop(ctx);
                         setState(() => _currentIndex = 2);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
+                          SnackBar(content: Text('تم استلاستلام الطلب. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
                         );
                       } catch (e) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
@@ -1170,6 +1176,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
+
   void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
     int rating = 5;
     final commentController = TextEditingController();
@@ -2708,15 +2715,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         
         final formattedAddress = formatLocationAddress(order['address']);
 
-        // 💰 الأسعار مفصولة ومنظمة بدقة تامة
+        // 💰 تصحيح الأسعار لضمان عدم ظهور 0 ومطابقتها التامة مع لوحة الإدارة
         final double productsPrice = double.tryParse(
           order['products_total']?.toString() ?? 
           order['products_price']?.toString() ?? 
+          order['product_price']?.toString() ?? 
+          order['items_price']?.toString() ?? 
           order['item_price']?.toString() ?? 
+          order['subtotal']?.toString() ?? 
           order['total_price']?.toString() ?? '0'
         ) ?? 0.0;
         
-        final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double deliveryFee = double.tryParse(
+          order['delivery_fee']?.toString() ?? 
+          order['delivery_price']?.toString() ?? '0'
+        ) ?? 0.0;
+        
         final double grandTotal = productsPrice + deliveryFee;
 
         return Card(
@@ -2777,9 +2791,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   'رقم الطلب: #${order['id']}\n'
                                   'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
                                   'العنوان: $formattedAddress\n'
-                                  'سعر المنتجات: $productsPrice ر.ي\n'
-                                  'رسوم التوصيل: $deliveryFee ر.ي\n'
-                                  'الإجمالي الكلي: $grandTotal ر.ي\n'
+                                  'سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي\n'
+                                  'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي\n'
+                                  'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي\n'
                                   'الحالة: $arabicStatus';
                               Share.share(invoiceText);
                             },
@@ -3148,4 +3162,3 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 }
-
