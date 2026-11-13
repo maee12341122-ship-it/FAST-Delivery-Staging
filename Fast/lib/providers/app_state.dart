@@ -574,7 +574,7 @@ class AppState extends ChangeNotifier {
   int deliveryFee = 500;
   int get workStartHour => startHour;
   int get workEndHour => endHour;
-  String customerSupportPhone = '775145534';
+  String customerSupportPhone = '776857316';
 
   bool isDarkMode = true;
   void toggleTheme() {
@@ -628,7 +628,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التسجيل في تطبيق Fast Delivery App.'}) async {
-    final uri = Uri.parse('https://wa.me/967775145534?text=${Uri.encodeComponent(message)}');
+    final uri = Uri.parse('https://wa.me/967776857316?text=${Uri.encodeComponent(message)}');
     if (!await canLaunchUrl(uri)) {
       throw Exception('تعذر فتح واتساب أو المتصفح.');
     }
