@@ -178,9 +178,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    final double productsTotal = double.tryParse(order['products_total']?.toString() ?? '0') ?? 0.0;
+    // 💰 فصل الأسعار بدقة تامة وتوافق مع باقي الشاشات
+    final double productsPrice = double.tryParse(
+      order['products_total']?.toString() ?? 
+      order['products_price']?.toString() ?? 
+      order['item_price']?.toString() ?? 
+      order['total_price']?.toString() ?? '0'
+    ) ?? 0.0;
+    
     final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-    final double grandTotal = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
+    final double grandTotal = productsPrice + deliveryFee;
 
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
@@ -359,7 +366,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // 🧾 بطاقة تفاصيل الطلب المالية والمنتجات
+              // 🧾 بطاقة تفاصيل الطلب المالية والمنتجات (منسقة بصندوق الأسعار المفصول)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -375,29 +382,25 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 8),
                     Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    const Divider(color: Colors.white12, height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('سعر المنتجات:', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        Text('$productsTotal ر.ي', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('رسوم التوصيل:', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        Text('$deliveryFee ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12, height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('الإجمالي الكلي:', style: TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.bold)),
-                        Text('$grandTotal ر.ي', style: const TextStyle(color: Colors.greenAccent, fontSize: 15, fontWeight: FontWeight.bold)),
-                      ],
+                    const SizedBox(height: 12),
+
+                    // 📦 صندوق الأسعار المفصول والمنظم كالـ Admin و Courier
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.black26, 
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                          const Divider(color: Colors.white12, height: 8),
+                          Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                        ],
+                      ),
                     ),
                   ],
                 ),
