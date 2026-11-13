@@ -284,7 +284,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 📞 تحديث رابط الواتساب بالرقم الجديد 776857316
   Future<void> _launchWhatsApp() async {
     final Uri url = Uri.parse('https://wa.me/967776857316?text=مرحباً، أود الاستفسار عن خدمة التوصيل');
     if (await canLaunchUrl(url)) {
@@ -292,7 +291,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 📞 تحديث رقم الاتصال الهاتفي بالرقم الجديد 776857316
   Future<void> _launchPhoneCall() async {
     final Uri url = Uri.parse('tel:776857316');
     if (await canLaunchUrl(url)) {
@@ -300,7 +298,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 📢 تحديث رابط واتساب الإعلانات بالرقم الجديد 776857316
   Future<void> _launchWhatsAppForAd() async {
     final Uri url = Uri.parse('https://wa.me/967776857316?text=مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
     if (await canLaunchUrl(url)) {
@@ -1522,7 +1519,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       onTap: () => FocusScope.of(context).unfocus(),
       child: PopScope(
         canPop: false,
-        onPopInvoked: (didPop) {
+        onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
           showExitConfirmationDialog(context, cardBg, textColor);
         },
