@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الآمنة والمحدثة بالكامل
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -44,7 +44,7 @@ class AppState extends ChangeNotifier {
   }
 
   // ==========================================
-  // --- 📦 دالة جلب الطلبات (المضافة حديثاً لحل المشكلة) ---
+  // --- 📦 دالة جلب الطلبات ---
   // ==========================================
   Future<void> fetchOrders() async {
     try {
@@ -63,7 +63,6 @@ class AppState extends ChangeNotifier {
   // ==========================================
   bool hasAcceptedPrivacyPolicy = false;
 
-  /// 1️⃣ قراءة حالة الموافقة محلياً من ذاكرة الهاتف
   Future<void> checkPrivacyPolicyStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -74,7 +73,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 2️⃣ حفظ موافقة العميل دائمياً عند الضغط على "موافق واستمرار"
   Future<void> setPrivacyPolicyAccepted(bool accepted) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -138,7 +136,6 @@ class AppState extends ChangeNotifier {
       await supabase.from('visitor_logs').insert({
         'visitor_identifier': userProfile?['phone'] ?? 'guest_${DateTime.now().millisecondsSinceEpoch}',
       });
-      debugPrint('📊 تم تسجيل زيارة جديدة بنجاح في قاعدة البيانات');
     } catch (e) {
       debugPrint('⚠️ خطأ في تسجيل الزيارة: $e');
     }
@@ -149,7 +146,6 @@ class AppState extends ChangeNotifier {
       final response = await supabase.from('visitor_logs').select('id');
       totalVisitorsCount = (response as List).length;
       notifyListeners();
-      debugPrint('📊 إجمالي عدد الزوار الحالي: $totalVisitorsCount');
     } catch (e) {
       debugPrint('❌ خطأ في جلب عدد الزوار: $e');
     }
@@ -192,7 +188,6 @@ class AppState extends ChangeNotifier {
       cancelledOrdersCount = cancelled;
       
       notifyListeners();
-      debugPrint('📊 تم تحديث تقارير المبيعات بنجاح: إجمالي الأرباح = $revenue');
     } catch (e) {
       debugPrint('❌ خطأ في جلب تقارير المبيعات: $e');
     }
@@ -226,7 +221,7 @@ class AppState extends ChangeNotifier {
       final int timesUsed = int.tryParse(response['times_used'].toString()) ?? 0;
 
       if (timesUsed >= maxUses) {
-        return 'عذراً، انتهت صلاحية هذا الكوبون (استنفذ الحد الأقصى للاستخدام) 🚫';
+        return 'عذراً، انتهت صلاحية هذا الكوبون 🚫';
       }
 
       final double discountValue = double.tryParse(response['discount_percentage'].toString()) ?? 0.0;
@@ -246,8 +241,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return 'تم تطبيق الكوبون بنجاح! خصم بقيمة ${couponDiscountAmount.toStringAsFixed(0)} ر.ي 🎉';
     } catch (e) {
-      debugPrint('❌ خطأ في تطبيق الكوبون: $e');
-      return 'حدث خطأ أثناء التحقق من الكوبون. حاول مرة أخرى.';
+      return 'حدث خطأ أثناء التحقق من الكوبون.';
     }
   }
 
@@ -277,7 +271,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🌟 جلب متوسطات تقييمات المطاعم التراكمية من الـ View للمنافسة (مع معالجة الأخطاء)
   Future<void> fetchRestaurantAverages() async {
     try {
       final response = await supabase.from('restaurant_ratings').select('restaurant_name, rating');
@@ -300,14 +293,13 @@ class AppState extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب معدلات تقييمات المطاعم: $e');
+      debugPrint('⚠️ خطأ في جلب تقييمات المطاعم: $e');
     }
   }
 
   // ==========================================
   // --- 🔔 قسم الإشعارات ---
   // ==========================================
-  
   String? get latestNotificationMessage {
     if (notifications.isNotEmpty) {
       return notifications.first['body']?.toString() ?? notifications.first['title']?.toString();
@@ -321,7 +313,6 @@ class AppState extends ChangeNotifier {
     required String body,
   }) async {
     if (targetPlayerId.isEmpty) return;
-    debugPrint('ℹ️ تنبيه: تم تعطيل الإرسال المباشر للمفاتيح السرية من التطبيق لأسباب أمنية.');
   }
 
   // ==========================================
@@ -384,7 +375,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب العناوين من Supabase: $e');
       _loadUserAddressesFromPrefs(); 
     }
   }
@@ -399,7 +389,7 @@ class AppState extends ChangeNotifier {
 
     if (userProfile != null && userProfile!['phone'] != null) {
       try {
-        final cleanPhone = _normalizePhone(userProfile!['phone'] != null ? userProfile!['phone']! : '');
+        final cleanPhone = _normalizePhone(userProfile!['phone'] ?? '');
         await supabase.from('customer_addresses').insert({
           'customer_phone': cleanPhone,
           'title': address.title.trim(),
@@ -409,7 +399,7 @@ class AppState extends ChangeNotifier {
         });
         await fetchUserAddressesFromSupabase();
       } catch (e) {
-        debugPrint('❌ خطأ في حفظ العنوان سحابياً: $e');
+        debugPrint('❌ خطأ في حفظ العنوان: $e');
       }
     }
   }
@@ -427,7 +417,7 @@ class AppState extends ChangeNotifier {
         await supabase.from('customer_addresses').delete().eq('id', id);
       }
     } catch (e) {
-      debugPrint('❌ خطأ في حذف العنوان من Supabase: $e');
+      debugPrint('❌ خطأ في حذف العنوان: $e');
     }
   }
 
@@ -461,7 +451,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في تحميل العناوين المحفوظة محلياً: $e');
+      debugPrint('⚠️ خطأ في تحميل العناوين: $e');
     }
   }
 
@@ -477,7 +467,7 @@ class AppState extends ChangeNotifier {
       }).toList();
       await prefs.setString('user_saved_addresses_json', jsonEncode(listToEncode));
     } catch (e) {
-      debugPrint('⚠️ خطأ في حفظ العناوين محلياً: $e');
+      debugPrint('⚠️ خطأ في حفظ العناوين: $e');
     }
   }
 
@@ -526,7 +516,6 @@ class AppState extends ChangeNotifier {
           .where((id) => id.isNotEmpty)
           .toList();
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب معرفات المشرفين: $e');
       return [];
     }
   }
@@ -543,51 +532,7 @@ class AppState extends ChangeNotifier {
         return response['onesignal_player_id'].toString();
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب Player ID للمندوب بالاسم: $e');
-    }
-    return null;
-  }
-
-  Future<String?> getReceiverPlayerIdForChat({
-    required String orderId,
-    required String senderRole,
-    required String targetChat,
-  }) async {
-    try {
-      final orderRes = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
-
-      if (orderRes == null) return null;
-
-      if (targetChat == 'admin_customer') {
-        if (senderRole == 'admin') {
-          String customerPhone = orderRes['phone']?.toString() ?? '';
-          if (customerPhone.isNotEmpty) {
-            final custRes = await supabase
-                .from('customers')
-                .select('onesignal_player_id')
-                .eq('phone', customerPhone)
-                .maybeSingle();
-            return custRes?['onesignal_player_id']?.toString();
-          }
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      } else if (targetChat == 'admin_courier') {
-        if (senderRole == 'admin') {
-          String courierName = orderRes['assigned_courier']?.toString() ?? '';
-          return await getCourierPlayerIdByName(courierName);
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
+      debugPrint('⚠️ خطأ: $e');
     }
     return null;
   }
@@ -597,7 +542,7 @@ class AppState extends ChangeNotifier {
   int deliveryFee = 500;
   int get workStartHour => startHour;
   int get workEndHour => endHour;
-  String customerSupportPhone = '776857316'; // تم التحديث للرقم الجديد
+  String customerSupportPhone = '776857316';
 
   bool isDarkMode = true;
   void toggleTheme() {
@@ -644,16 +589,15 @@ class AppState extends ChangeNotifier {
 
     try {
       await supabase.from('messages').insert(newMessage);
-      debugPrint('✅ تم إرسال الرسالة بنجاح');
     } catch (e) {
-      debugPrint('❌ خطأ في إرسال رسالة الشات: $e');
+      debugPrint('❌ خطأ في إرسال الرسالة: $e');
     }
   }
 
-  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد حجز إعلاني أو التواصل مع خدمة العملاء.'}) async {
-    final uri = Uri.parse('https://wa.me/967776857316?text=${Uri.encodeComponent(message)}'); // تحديث الرقم الجديد 776857316
+  Future<void> openFastWhatsApp({String message = 'مرحباً، أريد التواصل مع خدمة العملاء.'}) async {
+    final uri = Uri.parse('https://wa.me/967776857316?text=${Uri.encodeComponent(message)}');
     if (!await canLaunchUrl(uri)) {
-      throw Exception('تعذر فتح واتساب أو المتصفح.');
+      throw Exception('تعذر فتح واتساب.');
     }
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -684,11 +628,11 @@ class AppState extends ChangeNotifier {
         try {
           await OneSignal.Notifications.requestPermission(true);
         } catch (e) {
-          debugPrint('⚠️ خطأ في تفعيل OneSignal بعد الاذن: $e');
+          debugPrint('⚠️ OneSignal Error: $e');
         }
       }
     } catch (e) {
-      debugPrint('❌ خطأ في طلب الأذونات: $e');
+      debugPrint('❌ خطأ في الأذونات: $e');
     }
   }
 
@@ -702,7 +646,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب إعدادات الدوام: $e');
+      debugPrint('⚠️ خطأ في الإعدادات: $e');
     }
   }
 
@@ -717,7 +661,7 @@ class AppState extends ChangeNotifier {
         }
       });
     } catch (e) {
-      debugPrint('⚠️ خطأ في الاستماع للإعدادات: $e');
+      debugPrint('⚠️ خطأ: $e');
     }
   }
 
@@ -734,8 +678,13 @@ class AppState extends ChangeNotifier {
         'delivery_fee': deliveryFee,
       });
     } catch (e) {
-      debugPrint('❌ خطأ في حفظ أوقات الدوام: $e');
+      debugPrint('❌ خطأ في حفظ الأوقات: $e');
     }
+  }
+
+  /// 🛠️ الدالة المطابقة تماماً لاستدعاء شاشة المشرف (Admin Screen)
+  Future<void> updateStoreHours(int newStart, int newEnd) async {
+    await updateStoreSettings(newStart, newEnd);
   }
 
   bool get isStoreOpen {
@@ -777,7 +726,6 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Admin auth failed: $e');
       return false;
     }
   }
@@ -828,7 +776,7 @@ class AppState extends ChangeNotifier {
           return;
         }
       } catch (e) {
-        debugPrint('⚠️ خطأ في استعادة الجلسة: $e');
+        debugPrint('⚠️ خطأ: $e');
       }
 
       userProfile = {
@@ -862,7 +810,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('تعذر استعادة الطلب الأخير: $e');
+      debugPrint('تعذر استعادة الطلب: $e');
     }
   }
 
@@ -904,26 +852,21 @@ class AppState extends ChangeNotifier {
       }
       return false;
     } catch (e) {
-      debugPrint('❌ خطأ في فحص العميل: $e');
       return false;
     }
   }
 
   Future<dynamic> requestOtpForPhone(String phone) async {
-    final cleanPhone = _normalizePhone(phone);
-
     try {
-      debugPrint('🚀 جاري التحقق من رقم الهاتف...');
       generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
       
       await openFastWhatsApp(
-        message: 'مرحباً، رمز التحقق الخاص بك لتطبيق Fast Delivery App هو: $generatedDynamicOtp'
+        message: 'مرحباً، رمز التحقق الخاص بك هو: $generatedDynamicOtp'
       );
 
-      return {'exists': false, 'message': 'تم إرسال رمز التحقق بنجاح عبر واتساب'};
+      return {'exists': false, 'message': 'تم إرسال رمز التحقق بنجاح'};
     } catch (e) {
-      debugPrint('❌ خطأ أثناء إرسال الرمز: $e');
-      throw Exception('تعذر إرسال رمز التحقق. يرجى المحاولة لاحقاً.');
+      throw Exception('تعذر إرسال رمز التحقق.');
     } finally {
       notifyListeners();
     }
@@ -963,7 +906,7 @@ class AppState extends ChangeNotifier {
           await supabase.from('customers').update({'onesignal_player_id': playerId}).eq('phone', phone);
         }
       } catch (e) {
-        debugPrint('❌ خطأ في حفظ العميل: $e');
+        debugPrint('❌ خطأ: $e');
       }
 
       notifyListeners();
@@ -1118,7 +1061,6 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Courier authentication failed: $e');
       return false;
     }
   }
@@ -1424,8 +1366,6 @@ class AppState extends ChangeNotifier {
     final normalizedPhone = _normalizePhone(phone);
 
     try {
-      debugPrint('🚀 جاري إرسال الطلب الآمن إلى Supabase...');
-
       final response = await supabase.from('orders').insert({
         'customer_name': customerName.trim(),
         'phone': normalizedPhone,
@@ -1474,7 +1414,7 @@ class AppState extends ChangeNotifier {
       removeCoupon(); 
       await fetchAdminFinancialReports(); 
       
-      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
@@ -1520,23 +1460,6 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ خطأ تحديث الرسوم: $e');
     }
-  }
-
-  Future<String?> getPlayerIdForUser(String userIdOrPhone, String tableName) async {
-    try {
-      final response = await supabase
-          .from(tableName)
-          .select('onesignal_player_id')
-          .eq(tableName == 'customers' ? 'phone' : 'id', userIdOrPhone)
-          .maybeSingle();
-      
-      if (response != null && response['onesignal_player_id'] != null) {
-        return response['onesignal_player_id'].toString();
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في جلب Player ID: $e');
-    }
-    return null;
   }
 
   Future<void> _submitCustomerOrderAction(dynamic orderId, String action) async {
@@ -1682,7 +1605,6 @@ class AppState extends ChangeNotifier {
       }
       
       await fetchRestaurantAverages();
-      debugPrint('⭐ تم حفظ تقييم المطعم ($restaurantName) بنجاح');
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
     }
