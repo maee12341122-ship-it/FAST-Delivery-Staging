@@ -17,10 +17,10 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    // إضافة هذه البوابة لتجاوز أخطاء Lint التي توقف البناء في الخادم
+    // التصحيح الصحيح لخصائص الـ Lint في Kotlin DSL الحديثة
     lint {
-        isCheckReleaseBuilds = false
-        isAbortOnError = false
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     defaultConfig {
