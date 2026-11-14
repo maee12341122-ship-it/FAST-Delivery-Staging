@@ -762,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               children: [
                 _buildInstructionStep(
                   '1️⃣ تصفح المنتجات أو اطلب خدمة خاصة',
-                  'اختر قسمك المفضل (مطاعم، بقالات، خضار وفواكه...) أو اطلب خدمة خاصة من تبويب "طلبات أخرى".',
+                  'اختر قسمك المفضل (مطاعم، حلويات ومعجنات، بقالات...) أو اطلب خدمة خاصة من تبويب "طلبات أخرى".',
                   textColor,
                 ),
                 const Divider(color: Colors.white12, height: 16),
@@ -2519,7 +2519,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
-    final categories = ['الكل', 'المطاعم', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
+    // تم إضافة 'حلويات ومعجنات' هنا لتظهر للعملاء في واجهة التطبيق
+    final categories = ['الكل', 'المطاعم', 'حلويات ومعجنات', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
 
     return SizedBox(
       height: 52,
@@ -2776,7 +2777,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: () {
-              // 🌟 الانتقال المباشر لشاشة تتبع الطلب عند الضغط على البطاقة للعميل
               Navigator.push(
                 context,
                 PageRouteBuilder(
