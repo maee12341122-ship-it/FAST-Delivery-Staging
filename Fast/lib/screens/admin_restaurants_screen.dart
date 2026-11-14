@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import '../models/product_model.dart';
 
@@ -11,12 +12,98 @@ class AdminRestaurantsScreen extends StatefulWidget {
 }
 
 class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
-  final _restaurantNameController = TextEditingController();
+  List> _restaurants = [];
+  bool _isLoading = true;
 
   @override
-  void dispose() {
-    _restaurantNameController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _fetchRestaurants();
+  }
+
+  Future<void> _fetchRestaurants() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await Supabase.instance.client.from('restaurants').select();
+      setState(() {
+        _restaurants = List>.from(response);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showEditRestaurantDialog(Map<String, dynamic>? restaurant) {
+    final nameController = TextEditingController(text: restaurant?['name'] ?? '');
+    final logoController = TextEditingController(text: restaurant?['logo_url'] ?? '');
+    final ratingController = TextEditingController(text: restaurant?['rating']?.toString() ?? '5.0');
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(restaurant == null ? 'إضافة مطعم جديد 🍽️' : 'تعديل بيانات المطعم ✏️', style: const TextStyle(color: Colors.amber)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'اسم المطعم', labelStyle: TextStyle(color: Colors.grey)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: logoController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'رابط الشعار (Logo URL)', labelStyle: TextStyle(color: Colors.grey)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ratingController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'التقييم الافتراضي أو اليدوي', labelStyle: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+              onPressed: () async {
+                if (nameController.text.isNotEmpty) {
+                  final data = {
+                    'name': nameController.text.trim(),
+                    'logo_url': logoController.text.trim(),
+                    'rating': double.tryParse(ratingController.text.trim()) ?? 5.0,
+                  };
+
+                  if (restaurant == null) {
+                    await Supabase.instance.client.from('restaurants').insert(data);
+                  } else {
+                    await Supabase.instance.client.from('restaurants').update(data).eq('id', restaurant['id']);
+                  }
+
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  _fetchRestaurants();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ بيانات المطعم بنجاح ✅')));
+                }
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -26,30 +113,7 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
 
-    // تجميع المطاعم وحساب مبيعات كل مطعم من جدول الطلبات
     final List<ProductModel> allProducts = (appState.products as List).map((e) => e as ProductModel).toList();
-    final Set<String> restaurantsList = allProducts
-        .where((p) => p.category == 'المطاعم' && p.restaurantName.isNotEmpty)
-        .map((p) => p.restaurantName)
-        .toSet();
-
-    // حساب الإحصائيات العامة
-    final Map<String, int> restaurantOrdersCount = {};
-    final Map<String, double> restaurantTotalSales = {};
-
-    for (var order in appState.orders) {
-      if (order['status'] == 'delivered') {
-        final itemsDesc = order['items_desc'] ?? order['items_description'] ?? '';
-        final double price = double.tryParse(order['products_total']?.toString() ?? '0') ?? 0.0;
-
-        for (var restName in restaurantsList) {
-          if (itemsDesc.toString().contains(restName)) {
-            restaurantOrdersCount[restName] = (restaurantOrdersCount[restName] ?? 0) + 1;
-            restaurantTotalSales[restName] = (restaurantTotalSales[restName] ?? 0.0) + price;
-          }
-        }
-      }
-    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -57,105 +121,125 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
         backgroundColor: themeBg,
         appBar: AppBar(
           backgroundColor: cardBg,
-          title: const Text('إدارة المطاعم والمبيعات 🍽️', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+          title: const Text('إدارة المطاعم والشعارات والتقييمات العادلة 🍽️', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
           iconTheme: const IconThemeData(color: Colors.amber),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // بطاقة ملخص مبيعات المطاعم
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.amber.withOpacity(0.4)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('إجمالي المطاعم المسجلة', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 4),
-                  Text('${restaurantsList.length} مطعم', style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
-                ],
-              ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.add_circle, color: Colors.amber),
+              tooltip: 'إضافة مطعم',
+              onPressed: () => _showEditRestaurantDialog(null),
             ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('قائمة المطاعم وتقارير مبيعاتها', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            restaurantsList.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(30),
-                    child: const Center(
-                      child: Text('لا توجد مطاعم قائمة حالياً', style: TextStyle(color: Colors.grey)),
-                    ),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: restaurantsList.length,
-                    itemBuilder: (context, index) {
-                      final restName = restaurantsList.elementAt(index);
-                      final int orderCount = restaurantOrdersCount[restName] ?? 0;
-                      final double sales = restaurantTotalSales[restName] ?? 0.0;
-                      final int totalProductsCount = allProducts.where((p) => p.restaurantName == restName).length;
-
-                      return Card(
-                        color: cardBg,
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        child: ExpansionTile(
-                          iconColor: Colors.amber,
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.amber,
-                            child: Icon(Icons.store, color: Colors.black),
-                          ),
-                          title: Text(restName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-                          subtitle: Text('عدد الوجبات: $totalProductsCount | إجمالي الطلبات المكتملة: $orderCount', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Divider(color: Colors.white12),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text('إجمالي المبيعات المحققة:', style: TextStyle(color: Colors.grey)),
-                                      Text('$sales ر.ي', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Text('الوجبات التابعة لهذا المطعم:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  ...allProducts.where((p) => p.restaurantName == restName).map(
-                                        (p) => Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 2.0),
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text('• ${p.name}', style: TextStyle(color: textColor, fontSize: 13)),
-                                              Text('${p.price} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
           ],
         ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('إجمالي المطاعم المسجلة ونظام التقييم', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Text('${_restaurants.length} مطعم نشط', style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('قائمة المطاعم والشعارات والتقييم العادل', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _restaurants.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(30),
+                          child: Center(
+                            child: Text('لا توجد مطاعم مسجلة، اضغط على زر الإضافة أعلى الصفحة ➕', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _restaurants.length,
+                          itemBuilder: (context, index) {
+                            final rest = _restaurants[index];
+                            final restName = rest['name'] ?? '';
+                            final logoUrl = rest['logo_url'] ?? '';
+                            final rating = rest['rating'] ?? 5.0;
+                            final totalProductsCount = allProducts.where((p) => p.restaurantName == restName).length;
+
+                            return Card(
+                              color: cardBg,
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              child: ExpansionTile(
+                                iconColor: Colors.amber,
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: logoUrl.isNotEmpty
+                                      ? Image.network(logoUrl, width: 45, height: 45, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.store, color: Colors.amber))
+                                      : Container(
+                                          width: 45,
+                                          height: 45,
+                                          color: Colors.amber.withOpacity(0.2),
+                                          child: const Icon(Icons.store, color: Colors.amber),
+                                        ),
+                                ),
+                                title: Text(restName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                                subtitle: Row(
+                                  children: [
+                                    const Icon(Icons.star, color: Colors.amber, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text('$rating (تقييم عادل)', style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    const Text(' | ', style: TextStyle(color: Colors.grey)),
+                                    Text('الوجبات: $totalProductsCount', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                  ],
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blueAccent),
+                                  onPressed: () => _showEditRestaurantDialog(rest),
+                                ),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Divider(color: Colors.white12),
+                                        const Text('الوجبات التابعة لهذا المطعم:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                                        const SizedBox(height: 6),
+                                        ...allProducts.where((p) => p.restaurantName == restName).map(
+                                              (p) => Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 2.0),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text('• ${p.name}', style: TextStyle(color: textColor, fontSize: 13)),
+                                                    Text('${p.price} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ],
+              ),
       ),
     );
   }
