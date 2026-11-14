@@ -25,6 +25,10 @@ dependencies:
   connectivity_plus: ^6.1.5
   flutter_local_notifications: 17.2.4
   google_maps_flutter: ^2.10.0
+  
+  # 💾 حزم التخزين المحلي وقاعدة البيانات (للعمل بدون إنترنت)
+  sqflite: ^2.3.0
+  path: ^1.8.3
 
 dev_dependencies:
   flutter_test:
