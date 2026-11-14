@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
@@ -284,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 📞 دالة فتح الواتساب المباشر المحدثة
+  // 📞 دالة فتح الواتساب المباشر
   Future<void> _launchWhatsApp({String message = 'مرحباً، أود الاستفسار عن خدمة التوصيل'}) async {
     final appState = Provider.of<AppState>(context, listen: false);
     await appState.openFastWhatsApp(message: message);
@@ -1108,7 +1108,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلاستلام فقط')),
+                          DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام فقط')),
                         ],
                         onChanged: (val) {
                           setDialogState(() {
@@ -1476,6 +1476,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // 🔔 شريط التنبيه الثابت في أعلى الصفحة (عدم إغلاق الإنترنت أو الخروج)
+  Widget _buildOrderWarningNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.amber[700],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.black, size: 18),
+          SizedBox(width: 8),
+          Text(
+            '⚠️ الرجاء عدم إغلاق الإنترنت أو الخروج من التطبيق أثناء الطلب',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -1807,6 +1841,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             body: Column(
               children: [
                 _buildNetworkStatusBar(appState),
+                _buildOrderWarningNotice(), // 👈 شريط التنبيه الثابت المضاف حديثاً
                 Expanded(
                   child: Stack(
                     children: [
@@ -2794,7 +2829,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 const Divider(color: Colors.grey, height: 20),
 
-                // 🟢 زر الموافقة أو الإلغاء السريع يظهر حصراً عندما تكون الحالة pricingSentToCustomer
                 if (status == 'pricingSentToCustomer') ...[
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -2857,7 +2891,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
                 const SizedBox(height: 8),
 
-                // 📦 صندوق عرض الأسعار المفصول
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
@@ -2991,7 +3024,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     Text('📞 ${profile['phone']} | 📍 تعز', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     if (profile['address'] != null && profile['address'].toString().isNotEmpty)
                       InkWell(
-                        // 🔗 1. ربط العنوان بالضغط المباشر ليفتح واتساب المشرف
                         onTap: () => _launchWhatsApp(message: 'مرحباً، بخصوص عنواني المسجل في التطبيق: ${profile['address']} 📍'),
                         child: Text(
                           '🏠 العنوان: ${formatLocationAddress(profile['address'])} (اضغط للتواصل 💬)',
