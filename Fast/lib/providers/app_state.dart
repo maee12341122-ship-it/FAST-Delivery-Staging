@@ -204,7 +204,6 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
-      // تحديث البيانات فور عودة الاتصال
       fetchProductsFromSupabase();
     }
 
@@ -535,6 +534,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 🌐 دالة ترجمة حالات الطلبات إلى اللغة العربية الفصحى (محدثة لدعم كافة الحالات والإشعارات)
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -549,7 +549,11 @@ class AppState extends ChangeNotifier {
         return 'بانتظار موافقة المندوب 🛵';
       case 'acceptedByCourier':
       case 'accepted':
-        return 'وافق المندوب على التوصيل 🚀';
+      case 'assigned':
+        return 'تم قبول الطلب وتعيين المندوب 🚀';
+      case 'onTheWay':
+      case 'on_the_way':
+        return '🟢 المندوب في الطريق إليك';
       case 'rejectedByCourier':
       case 'rejected':
         return 'رفض المندوب الطلب ⚠️';
@@ -559,6 +563,7 @@ class AppState extends ChangeNotifier {
       case 'delivered':
         return 'تم تسليم الطلب بنجاح ✅';
       case 'cancelled':
+      case 'cancelledByCustomer':
         return 'تم إلغاء الطلب 🚫';
       default:
         return status ?? 'قيد المعالجة 🔄';
@@ -1295,7 +1300,6 @@ class AppState extends ChangeNotifier {
 
   List products = [];
 
-  /// 🌐 جلب المنتجات من Supabase مع حفظها تلقائياً محلياً (Offline Caching)
   Future<void> fetchProductsFromSupabase() async {
     try {
       final response = await supabase.from('products').select();
@@ -1312,14 +1316,12 @@ class AppState extends ChangeNotifier {
         isVariablePrice: p['is_variable_price'] ?? false,
       )).toList();
 
-      // 💾 حفظ المنتجات محلياً لاستخدامها عند انقطاع الإنترنت
       await _localStorage.cacheProducts(response);
 
       notifyListeners();
     } catch (e) {
       debugPrint('⚠️ انقطاع الإنترنت أو خطأ في الاتصال، جاري جلب المنتجات من التخزين المحلي...: $e');
       
-      // 🔌 في حال انقطاع الإنترنت، جلب البيانات من القاعدة المحلية sqflite
       final localProducts = await _localStorage.getCachedProducts();
       if (localProducts.isNotEmpty) {
         products = localProducts;
@@ -1513,7 +1515,7 @@ class AppState extends ChangeNotifier {
       removeCoupon();
       await fetchAdminFinancialReports();
 
-      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
