@@ -6,7 +6,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
-import '../widgets/RatingWidget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   final Map<String, dynamic>? orderMap;
@@ -61,25 +60,25 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     _orderChannel = Supabase.instance.client
         .channel('public:orders:id=eq.$orderId')
         .onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'orders',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'id',
-        value: orderId,
-      ),
-      callback: (payload) {
-        if (payload.newRecord.isNotEmpty && mounted) {
-          setState(() {});
-          _extractCustomerCoordinates(payload.newRecord);
-          final courierName = payload.newRecord['assigned_courier']?.toString();
-          if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
-            _fetchAndListenCourierLocation(courierName);
-          }
-        }
-      },
-    )
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: orderId,
+          ),
+          callback: (payload) {
+            if (payload.newRecord.isNotEmpty && mounted) {
+              setState(() {});
+              _extractCustomerCoordinates(payload.newRecord);
+              final courierName = payload.newRecord['assigned_courier']?.toString();
+              if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
+                _fetchAndListenCourierLocation(courierName);
+              }
+            }
+          },
+        )
         .subscribe();
   }
 
@@ -100,25 +99,180 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       _locationChannel = Supabase.instance.client
           .channel('public:courier_locations:courier_id=eq.$courierId')
           .onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'courier_locations',
-        callback: (payload) {
-          final newData = payload.newRecord;
-          if (newData.isNotEmpty && mounted) {
-            final lat = newData['latitude'] as double;
-            final lng = newData['longitude'] as double;
-            setState(() {
-              _courierPosition = LatLng(lat, lng);
-            });
-            _mapController.move(_courierPosition!, 17.0);
-          }
-        },
-      )
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'courier_locations',
+            callback: (payload) {
+              final newData = payload.newRecord;
+              if (newData.isNotEmpty && mounted) {
+                final lat = newData['latitude'] as double;
+                final lng = newData['longitude'] as double;
+                setState(() {
+                  _courierPosition = LatLng(lat, lng);
+                });
+                _mapController.move(_courierPosition!, 17.0);
+              }
+            },
+          )
           .subscribe();
     } catch (e) {
       debugPrint('⚠️ خطأ في متابعة موقع المندوب: $e');
     }
+  }
+
+  void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId) {
+    double rating = 5.0;
+    final TextEditingController reviewController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('تقييم المطعم وجودة الوجبة 🍽️⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('كيف وجدت طعم وجودة الأكل من المطعم؟', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    return IconButton(
+                      icon: Icon(
+                        index < rating ? Icons.star : Icons.star_border,
+                        color: Colors.amber,
+                        size: 32,
+                      ),
+                      onPressed: () {
+                        setDialogState(() {
+                          rating = (index + 1).toDouble();
+                        });
+                      },
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reviewController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'اكتب ملاحظتك للمطعم (اختياري)',
+                    labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                onPressed: () async {
+                  await appState.submitRestaurantRating(
+                    orderId: orderId,
+                    rating: rating,
+                    reviewText: reviewController.text.trim(),
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح ⭐')),
+                    );
+                  }
+                },
+                child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCourierRatingDialog(BuildContext context, AppState appState, String orderId, String courierName) {
+    double rating = 5.0;
+    final TextEditingController reviewController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('تقييم أداء المندوب وسرعة التوصيل 🛵⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('كيف كانت سرعة والتزام المندوب بالتوصيل؟', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    return IconButton(
+                      icon: Icon(
+                        index < rating ? Icons.star : Icons.star_border,
+                        color: Colors.amber,
+                        size: 32,
+                      ),
+                      onPressed: () {
+                        setDialogState(() {
+                          rating = (index + 1).toDouble();
+                        });
+                      },
+                    );
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reviewController,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'اكتب ملاحظتك عن المندوب (اختياري)',
+                    labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                onPressed: () async {
+                  await appState.submitCourierRating(
+                    orderId: orderId,
+                    courierName: courierName,
+                    rating: rating,
+                    reviewText: reviewController.text.trim(),
+                  );
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المندوب بنجاح ⭐')),
+                    );
+                  }
+                },
+                child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -133,9 +287,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final appState = Provider.of<AppState>(context);
     final String targetId = widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
 
-    // جلب الطلب المحدث لحظياً من الـ AppState أو الـ widgetMap
     final order = appState.orders.firstWhere(
-          (o) => o['id'].toString() == targetId,
+      (o) => o['id'].toString() == targetId,
       orElse: () => widget.orderMap ?? {},
     );
 
@@ -179,7 +332,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    // 🛒 منطق الأسعار الموحد
     final double productsPrice = double.tryParse(
         order['total_price']?.toString() ??
             order['items_price']?.toString() ??
@@ -204,15 +356,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         ? dbTotalAmount
         : (finalProductsPrice + deliveryFee);
 
-    final int numericOrderId = int.tryParse(targetId) ?? 0;
-    final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
     final String courierId = order['assigned_courier']?.toString() ?? 'general_courier';
-    
-    // 🛑 التحقق مما إذا كان المستخدم الحالي مشرفاً أو مندوباً (هم فقط من يرون التتبع الحي)
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
 
     final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
     final String courierReview = order['courier_review']?.toString() ?? '';
+
+    final double? restaurantRating = double.tryParse(order['restaurant_rating']?.toString() ?? '');
+    final String restaurantReview = order['restaurant_review']?.toString() ?? '';
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -229,7 +380,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🌟 شريط التقدم الأفقي (يظهر للجميع)
+              // شريط التقدم الأفقي
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -277,7 +428,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🛑 🗺️ الخريطة الحية ومسار التتبع الميداني (تظهر حصرياً للمشرف والمندوب فقط، وتختفي تماماً عن العميل)
+              // الخريطة الحية (للمشرف والمندوب فقط)
               if (isManagerOrCourier) ...[
                 Container(
                   height: 240,
@@ -285,7 +436,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 12, offset: const Offset(0, 6))],
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(
@@ -327,64 +477,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           ),
                         ],
                       ),
-                      Positioned(
-                        top: 12,
-                        left: 12,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.radar, color: Colors.amber, size: 16),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    appState.getArabicStatus(rawStatus),
-                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                              const Text('📡 مباشر (خاص بالمشرف والمندوب)', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // زر خرائط جوجل للمشرف/المندوب
-                if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 48),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.map_outlined),
-                    label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () async {
-                      final String addressText = order['address']?.toString() ?? '';
-                      String mapsQuery = addressText.contains('13.') ? addressText : 'Taiz, Yemen';
-                      final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$mapsQuery');
-                      if (await canLaunchUrl(googleMapsUrl)) {
-                        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
               ] else ...[
-                // رسالة توضيحية للعميل أن الطلب تحت المتابعة دون الحاجة للخريطة الميدانية
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -408,7 +505,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // 🧾 بطاقة تفاصيل الطلب المالية والمنتجات
+              // تفاصيل الطلب المالية والمنتجات
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -421,12 +518,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   children: [
                     const Text('تفاصيل الطلب والأسعار 🧾', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                     const Divider(color: Colors.white12, height: 16),
-                    Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? order['itemsdesc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 8),
                     Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 12),
-
-                    // 📦 صندوق الأسعار
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -449,29 +544,39 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ⭐ قسم التقييم عند التسليم
+              // ⭐ قسم التقييم الثنائي عند التسليم (للعميل والمشرف)
               if (rawStatus == 'delivered') ...[
                 if (!isManagerOrCourier) ...[
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber,
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.star, color: Colors.black),
-                    label: const Text('تقييم التجربة والمندوب ⭐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => RatingDialogWidget(
-                          orderId: numericOrderId,
-                          customerPhone: customerPhone,
-                          targetId: courierId,
-                          targetType: 'courier',
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.store, size: 18),
+                          label: const Text('تقييم المطعم 🍽️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: () => _showRestaurantRatingDialog(context, appState, targetId),
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                            minimumSize: const Size(double.infinity, 48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.two_wheeler, size: 18),
+                          label: const Text('تقييم المندوب 🛵', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: () => _showCourierRatingDialog(context, appState, targetId, courierId),
+                        ),
+                      ),
+                    ],
                   ),
                 ] else ...[
                   Container(
@@ -485,31 +590,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('⭐ تقييم العميل لهذا الطلب:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
-                        const SizedBox(height: 8),
-                        if (courierRating != null) ...[
-                          Row(
-                            children: [
-                              Text('$courierRating / 5', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                              const SizedBox(width: 8),
-                              Row(
-                                children: List.generate(5, (index) {
-                                  return Icon(
-                                    index < courierRating ? Icons.star : Icons.star_border,
-                                    color: Colors.amber,
-                                    size: 18,
-                                  );
-                                }),
-                              ),
-                            ],
-                          ),
-                          if (courierReview.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text('ملاحظة العميل: "$courierReview"', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                          ],
-                        ] else ...[
-                          const Text('لم يتم تقييم هذا الطلب من قبل العميل بعد ⏳', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        ],
+                        const Text('⭐ تقييمات العميل لهذا الطلب:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 10),
+                        Text('🍽️ تقييم المطعم: ${restaurantRating != null ? "$restaurantRating / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        if (restaurantReview.isNotEmpty) Text('ملاحظة المطعم: "$restaurantReview"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        const Divider(color: Colors.white12),
+                        Text('🛵 تقييم المندوب: ${courierRating != null ? "$courierRating / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        if (courierReview.isNotEmpty) Text('ملاحظة المندوب: "$courierReview"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
                   ),
