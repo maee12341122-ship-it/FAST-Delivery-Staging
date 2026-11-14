@@ -12,7 +12,7 @@ class AdminRestaurantsScreen extends StatefulWidget {
 }
 
 class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
-  List> _restaurants = [];
+  List _restaurants = [];
   bool _isLoading = true;
 
   @override
@@ -21,12 +21,12 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
     _fetchRestaurants();
   }
 
-  Future<void> _fetchRestaurants() async {
+  Future _fetchRestaurants() async {
     setState(() => _isLoading = true);
     try {
       final response = await Supabase.instance.client.from('restaurants').select();
       setState(() {
-        _restaurants = List>.from(response);
+        _restaurants = response is List ? response : [];
         _isLoading = false;
       });
     } catch (e) {
@@ -34,7 +34,7 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
     }
   }
 
-  void _showEditRestaurantDialog(Map<String, dynamic>? restaurant) {
+  void _showEditRestaurantDialog(Map? restaurant) {
     final nameController = TextEditingController(text: restaurant?['name'] ?? '');
     final logoController = TextEditingController(text: restaurant?['logo_url'] ?? '');
     final ratingController = TextEditingController(text: restaurant?['rating']?.toString() ?? '5.0');
@@ -113,7 +113,7 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
 
-    final List<ProductModel> allProducts = (appState.products as List).map((e) => e as ProductModel).toList();
+    final allProducts = appState.products;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -172,7 +172,7 @@ class _AdminRestaurantsScreenState extends State<AdminRestaurantsScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _restaurants.length,
                           itemBuilder: (context, index) {
-                            final rest = _restaurants[index];
+                            final rest = _restaurants[index] as Map;
                             final restName = rest['name'] ?? '';
                             final logoUrl = rest['logo_url'] ?? '';
                             final rating = rest['rating'] ?? 5.0;
