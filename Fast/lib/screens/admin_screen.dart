@@ -255,13 +255,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 future: Supabase.instance.client
                     .from('restaurant_ratings')
                     .select()
-                    .order('rating', ascending: false), // تم التصحيح ليتوافق مع العمود الموجود في الجدول
+                    .order('rating', ascending: false),
                 builder: (BuildContext context, AsyncSnapshot snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator(color: Colors.amber));
                   }
                   if (snapshot.hasError) {
-                    return Center(child: Text('لا توجد تقييمات مسجلة أو خطأ في الجدول', style: const TextStyle(color: Colors.grey)));
+                    return const Center(child: Text('لا توجد تقييمات مسجلة أو خطأ في الجدول', style: TextStyle(color: Colors.grey)));
                   }
 
                   final dynamic rawData = snapshot.data;
@@ -344,7 +344,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             final courier = couriers[index];
             final courierName = courier['name']?.toString() ?? courier['full_name']?.toString() ?? 'مندوب';
 
-            // حساب عدد الطلبات الكل والمكتملة وعمولات التوصيل لهذا المندوب بدقة من قائمة الطلبات العامة
             final courierAllOrders = appState.orders.where((o) =>
             (o['assigned_courier']?.toString() ?? '') == courierName ||
                 (o['courier_name']?.toString() ?? '') == courierName
