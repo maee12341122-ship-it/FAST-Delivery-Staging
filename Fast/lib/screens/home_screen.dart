@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            '• لو الحساب إيداع، الإيداع يتم بعد استلاستلام الطلب مباشرة مع ارسال البيان. 🪪',
+                            '• لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع ارسال البيان. 🪪',
                             style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                           ),
                           const SizedBox(height: 6),
@@ -1095,7 +1095,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ],
 
                       const SizedBox(height: 16),
-                      // 💳 بطاقة حاسب الكريمي أثناء إتمام الطلب
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -1193,216 +1192,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     }
                   },
                   child: const Text('تأكيد وإرسال', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
-    int rating = 5;
-    final commentController = TextEditingController();
-    final FocusNode commentFocus = FocusNode();
-
-    showDialog(
-      context: context,
-      builder: (context) => GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: StatefulBuilder(
-          builder: (context, setState) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Row(
-                children: [
-                  Icon(Icons.star, color: Colors.amber),
-                  SizedBox(width: 10),
-                  Text('تقييم المندوب والطلب', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('كيف وجدت سرعة الخدمة وتعامُل المندوب معك؟', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 15),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          index < rating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 30,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            rating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: commentController,
-                    focusNode: commentFocus,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) async {
-                      await appState.submitCourierRating(
-                        orderId: orderId,
-                        courierName: courierName.isNotEmpty ? courierName : 'المندوب',
-                        rating: rating.toDouble(),
-                        reviewText: commentController.text.trim(),
-                      );
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('شكراً لك! تم إرسال تقييمك للمندوب بنجاح ⭐')),
-                      );
-                    },
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      labelText: 'ملاحظاتك أو شكر للمندوب (اختياري)',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () async {
-                    await appState.submitCourierRating(
-                      orderId: orderId,
-                      courierName: courierName.isNotEmpty ? courierName : 'المندوب',
-                      rating: rating.toDouble(),
-                      reviewText: commentController.text.trim(),
-                    );
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('شكراً لك! تم إرسال تقييمك للمندوب بنجاح ⭐')),
-                    );
-                  },
-                  child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, String restaurantName, Color cardBg, Color textColor) {
-    int rating = 5;
-    final commentController = TextEditingController();
-    final FocusNode commentFocus = FocusNode();
-
-    showDialog(
-      context: context,
-      builder: (context) => GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: StatefulBuilder(
-          builder: (context, setState) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: [
-                  const Icon(Icons.restaurant, color: Colors.amber),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text('تقييم مطعم: $restaurantName 🍽️', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold))),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('كيف وجدت جودة وطعم الطعام من المطعم؟', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 15),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
-                        icon: Icon(
-                          index < rating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 30,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            rating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: commentController,
-                    focusNode: commentFocus,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) async {
-                      await appState.submitRestaurantRating(
-                        orderId: orderId,
-                        rating: rating.toDouble(),
-                        reviewText: commentController.text.trim(),
-                      );
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح وإشعار المشرف ⭐')),
-                      );
-                    },
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      labelText: 'ملاحظاتك عن الطعام والمطعم (اختياري)',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () async {
-                    await appState.submitRestaurantRating(
-                      orderId: orderId,
-                      rating: rating.toDouble(),
-                      reviewText: commentController.text.trim(),
-                    );
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح وإشعار المشرف ⭐')),
-                    );
-                  },
-                  child: const Text('إرسال تقييم المطعم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
                 ),
               ],
             ),
@@ -2137,26 +1926,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     final searchQuery = _searchController.text.trim().toLowerCase();
-
-    List uniqueRestaurants = [];
     List filteredProducts = [];
 
-    if (selectedCategory == 'المطاعم') {
-      if (selectedRestaurantName == null) {
-        uniqueRestaurants = appState.products
-            .where((p) => p.category.trim() == 'المطاعم')
-            .map((p) => p.restaurantName)
-            .toSet()
-            .toList();
-      } else {
-        filteredProducts = appState.products.where((p) {
-          final matchesCategory = p.category.trim() == 'المطاعم';
-          final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
-          final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
-          return matchesCategory && matchesRestaurant && matchesSearch;
-        }).toList();
-      }
-    } else {
+    if (selectedCategory == 'المطاعم' && selectedRestaurantName != null) {
+      filteredProducts = appState.products.where((p) {
+        final matchesCategory = p.category.trim() == 'المطاعم';
+        final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
+        final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
+        return matchesCategory && matchesRestaurant && matchesSearch;
+      }).toList();
+    } else if (selectedCategory != 'المطاعم') {
       filteredProducts = appState.products.where((p) {
         final matchesCategory = selectedCategory == 'الكل' || p.category.trim() == selectedCategory.trim();
         final matchesSearch = searchQuery.isEmpty ||
@@ -2264,52 +2043,131 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
+          // 🍽️ عرض المطاعم والشعارات والتقييمات الذكية مع صدارة FAST
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-              child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
-            ),
-            uniqueRestaurants.isEmpty
-                ? const Padding(
-              padding: EdgeInsets.all(40.0),
-              child: Center(child: Text('لا توجد مطاعم متاحة حالياً 🍽️', style: TextStyle(color: Colors.grey))),
-            )
-                : ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: uniqueRestaurants.length,
-              itemBuilder: (context, index) {
-                final restaurantName = uniqueRestaurants[index];
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.amber.withOpacity(0.2)),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 3)),
-                    ],
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(
-                        color: Colors.amber,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.restaurant_menu, color: Colors.black, size: 22),
+            FutureBuilder<List<dynamic>>(
+              future: Supabase.instance.client.from('restaurants').select(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(40.0),
+                    child: Center(child: CircularProgressIndicator(color: Colors.amber)),
+                  );
+                }
+
+                List<dynamic> restaurantsList = snapshot.data ?? [];
+
+                if (restaurantsList.isEmpty) {
+                  final Set<String> productRestaurants = appState.products
+                      .where((p) => p.category.trim() == 'المطاعم' && p.restaurantName.isNotEmpty)
+                      .map((p) => p.restaurantName)
+                      .toSet();
+                  restaurantsList = productRestaurants.map((name) => {
+                    'name': name,
+                    'logo_url': '',
+                    'rating': 4.8,
+                  }).toList();
+                }
+
+                if (restaurantsList.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(40.0),
+                    child: Center(child: Text('لا توجد مطاعم متاحة حالياً 🍽️', style: TextStyle(color: Colors.grey))),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
+                      child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
-                    title: Text(restaurantName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
-                    subtitle: const Text('اضغط لعرض الوجبات الخاصة بهذا المطعم فقط 📋', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() {
-                        selectedRestaurantName = restaurantName;
-                      });
-                    },
-                  ),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: restaurantsList.length,
+                      itemBuilder: (context, index) {
+                        final rest = restaurantsList[index];
+                        final restaurantName = rest['name']?.toString() ?? 'مطعم';
+                        final logoUrl = rest['logo_url']?.toString() ?? '';
+                        final double rating = double.tryParse(rest['rating']?.toString() ?? '4.8') ?? 4.8;
+                        final int totalProductsCount = appState.products.where((p) => p.restaurantName.trim() == restaurantName.trim()).length;
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 3)),
+                            ],
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: logoUrl.isNotEmpty
+                                  ? Image.network(
+                                      logoUrl,
+                                      width: 52,
+                                      height: 52,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (c, e, s) => Container(
+                                        width: 52,
+                                        height: 52,
+                                        color: Colors.amber.withOpacity(0.2),
+                                        child: const Icon(Icons.restaurant, color: Colors.amber),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.restaurant, color: Colors.amber, size: 26),
+                                    ),
+                            ),
+                            title: Text(
+                              restaurantName,
+                              style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star, color: Colors.amber, size: 15),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$rating (تقييم عادل)',
+                                      style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                                    ),
+                                    const Text(' | ', style: TextStyle(color: Colors.grey)),
+                                    Text(
+                                      'الوجبات: $totalProductsCount',
+                                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                selectedRestaurantName = restaurantName;
+                              });
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 );
               },
             ),
@@ -2749,7 +2607,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return Column(
       children: [
-        // 💳 بطاقة حاسب الكريمي الثابتة في أعلى شاشة طلباتي مع زر النسخ السريع
         Container(
           margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           padding: const EdgeInsets.all(12),
