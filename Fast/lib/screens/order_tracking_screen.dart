@@ -179,7 +179,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    // 🛒 منطق المندوب والمشرف الموحد والمضمون 100% للأسعار
+    // 🛒 منطق الأسعار الموحد
     final double productsPrice = double.tryParse(
         order['total_price']?.toString() ??
             order['items_price']?.toString() ??
@@ -196,7 +196,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             order['total']?.toString() ?? '0'
     ) ?? 0.0;
 
-    // معادلة ذكية تضمن عدم ظهور الصفر نهائياً
     final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
         ? (dbTotalAmount - deliveryFee)
         : productsPrice;
@@ -208,6 +207,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
     final String courierId = order['assigned_courier']?.toString() ?? 'general_courier';
+    
+    // 🛑 التحقق مما إذا كان المستخدم الحالي مشرفاً أو مندوباً (هم فقط من يرون التتبع الحي)
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
 
     final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
@@ -228,7 +229,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🌟 شريط التقدم الأفقي العالمي
+              // 🌟 شريط التقدم الأفقي (يظهر للجميع)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -276,108 +277,133 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🗺️ الخريطة الحية الفخمة
-              Container(
-                height: 240,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 12, offset: const Offset(0, 6))],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _courierPosition ?? _customerPosition,
-                        initialZoom: 16.5,
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.fast.taiz',
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _customerPosition,
-                              width: 45,
-                              height: 45,
-                              child: const Icon(Icons.location_pin, color: Colors.redAccent, size: 42),
-                            ),
-                            if (_courierPosition != null)
-                              Marker(
-                                point: _courierPosition!,
-                                width: 50,
-                                height: 50,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8)],
-                                  ),
-                                  child: const Icon(Icons.two_wheeler_rounded, color: Colors.black, size: 26),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.radar, color: Colors.amber, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  appState.getArabicStatus(rawStatus),
-                                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                            const Text('📡 مباشر', style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 🗺️ زر خرائط جوجل السريع
-              if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              // 🛑 🗺️ الخريطة الحية ومسار التتبع الميداني (تظهر حصرياً للمشرف والمندوب فقط، وتختفي تماماً عن العميل)
+              if (isManagerOrCourier) ...[
+                Container(
+                  height: 240,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 12, offset: const Offset(0, 6))],
                   ),
-                  icon: const Icon(Icons.map_outlined),
-                  label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: () async {
-                    final String addressText = order['address']?.toString() ?? '';
-                    String mapsQuery = addressText.contains('13.') ? addressText : 'Taiz, Yemen';
-                    final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$mapsQuery');
-                    if (await canLaunchUrl(googleMapsUrl)) {
-                      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
-                    }
-                  },
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _courierPosition ?? _customerPosition,
+                          initialZoom: 16.5,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.fast.taiz',
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _customerPosition,
+                                width: 45,
+                                height: 45,
+                                child: const Icon(Icons.location_pin, color: Colors.redAccent, size: 42),
+                              ),
+                              if (_courierPosition != null)
+                                Marker(
+                                  point: _courierPosition!,
+                                  width: 50,
+                                  height: 50,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8)],
+                                    ),
+                                    child: const Icon(Icons.two_wheeler_rounded, color: Colors.black, size: 26),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.radar, color: Colors.amber, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    appState.getArabicStatus(rawStatus),
+                                    style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                              const Text('📡 مباشر (خاص بالمشرف والمندوب)', style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // زر خرائط جوجل للمشرف/المندوب
+                if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') ...[
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () async {
+                      final String addressText = order['address']?.toString() ?? '';
+                      String mapsQuery = addressText.contains('13.') ? addressText : 'Taiz, Yemen';
+                      final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$mapsQuery');
+                      if (await canLaunchUrl(googleMapsUrl)) {
+                        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ] else ...[
+                // رسالة توضيحية للعميل أن الطلب تحت المتابعة دون الحاجة للخريطة الميدانية
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.greenAccent, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'حالة طلبك الحالية: ${appState.getArabicStatus(rawStatus)} ✅',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
               ],
@@ -400,7 +426,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 12),
 
-                    // 📦 صندوق الأسعار الموحد تماماً كلوحة المندوب
+                    // 📦 صندوق الأسعار
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
