@@ -4,7 +4,7 @@ class ProductModel {
   final String description; // وصف المنتج
   final String restaurantName;
   final double price;
-  final String category; // المطاعم، البقالات، الخضار والفواكه، الصيدلية الآمنة
+  final String category; // المطاعم، حلويات ومعجنات، البقالات، الخضار والفواكه، الصيدلية الآمنة، هدايا واكسسوارات
   final bool available;
   final String imageUrl;
   final String unit; // كيلو، حبة، صندوق، جرام (مهم للخضار والفواكه)
