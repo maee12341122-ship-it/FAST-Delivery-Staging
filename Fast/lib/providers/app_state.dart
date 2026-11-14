@@ -35,12 +35,12 @@ class AppState extends ChangeNotifier {
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
     await fetchRestaurantAverages();
-    await recordVisitorVisit(); 
-    await fetchTotalVisitorsCount(); 
-    await fetchAdminFinancialReports(); 
+    await recordVisitorVisit();
+    await fetchTotalVisitorsCount();
+    await fetchAdminFinancialReports();
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
-    initializeInternetListener(); 
+    initializeInternetListener();
   }
 
   Future<void> fetchOrders() async {
@@ -48,7 +48,7 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
       _sortOrders();
-      await fetchAdminFinancialReports(); 
+      await fetchAdminFinancialReports();
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في جلب الطلبات: $e');
@@ -93,7 +93,7 @@ class AppState extends ChangeNotifier {
 
   void _updateConnectionStatus(dynamic result) {
     bool previousState = isConnectedToInternet;
-    
+
     if (result is List<ConnectivityResult>) {
       isConnectedToInternet = !result.contains(ConnectivityResult.none);
     } else if (result is ConnectivityResult) {
@@ -113,7 +113,7 @@ class AppState extends ChangeNotifier {
         type: 'network_success',
       );
     }
-    
+
     notifyListeners();
   }
 
@@ -147,7 +147,7 @@ class AppState extends ChangeNotifier {
   Future<void> fetchAdminFinancialReports() async {
     try {
       final response = await supabase.from('orders').select('total_price, status');
-      
+
       double revenue = 0.0;
       int completed = 0;
       int pending = 0;
@@ -171,7 +171,7 @@ class AppState extends ChangeNotifier {
       completedOrdersCount = completed;
       pendingOrdersCount = pending;
       cancelledOrdersCount = cancelled;
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في جلب تقارير المبيعات: $e');
@@ -242,7 +242,7 @@ class AppState extends ChangeNotifier {
           .from('product_modifiers')
           .select()
           .eq('product_id', productId);
-      
+
       productModifiers = response;
       notifyListeners();
     } catch (e) {
@@ -254,7 +254,7 @@ class AppState extends ChangeNotifier {
     try {
       final response = await supabase.from('restaurant_ratings').select('restaurant_name, rating');
       restaurantRatingsCache.clear();
-      
+
       Map<String, List<double>> tempRatings = {};
       for (var row in response) {
         String name = row['restaurant_name']?.toString().trim() ?? '';
@@ -319,7 +319,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchUserAddressesFromSupabase() async {
     if (userProfile == null || userProfile!['phone'] == null || userProfile!['phone']!.isEmpty) {
-      _loadUserAddressesFromPrefs(); 
+      _loadUserAddressesFromPrefs();
       return;
     }
 
@@ -341,11 +341,11 @@ class AppState extends ChangeNotifier {
             instructions: row['instructions']?.toString() ?? '',
           ));
         }
-        _saveUserAddressesFromPrefs(); 
+        _saveUserAddressesFromPrefs();
         notifyListeners();
       }
     } catch (e) {
-      _loadUserAddressesFromPrefs(); 
+      _loadUserAddressesFromPrefs();
     }
   }
 
@@ -554,7 +554,7 @@ class AppState extends ChangeNotifier {
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
-  
+
   int get workStartHour => startHour;
   int get workEndHour => endHour;
   String customerSupportPhone = '776857316';
@@ -566,7 +566,7 @@ class AppState extends ChangeNotifier {
   }
 
   ThemeMode get themeMode => isDarkMode ? ThemeMode.dark : ThemeMode.light;
-  
+
   void setThemeMode(ThemeMode mode) {
     isDarkMode = (mode == ThemeMode.dark);
     notifyListeners();
@@ -709,7 +709,7 @@ class AppState extends ChangeNotifier {
 
   void _loadAdminSession() async {
     final user = supabase.auth.currentUser;
-    isAdminLoggedIn = user != null; 
+    isAdminLoggedIn = user != null;
     notifyListeners();
   }
 
@@ -861,9 +861,9 @@ class AppState extends ChangeNotifier {
   Future<dynamic> requestOtpForPhone(String phone) async {
     try {
       generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
-      
+
       await openFastWhatsApp(
-        message: 'مرحباً، رمز التحقق الخاص بك هو: $generatedDynamicOtp'
+          message: 'مرحباً، رمز التحقق الخاص بك هو: $generatedDynamicOtp'
       );
 
       return {'exists': false, 'message': 'تم إرسال رمز التحقق بنجاح'};
@@ -1008,9 +1008,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> addCourier(String name, String phone, String username, String password) async {
     if (password.length < 6) throw Exception('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف.');
-    
+
     final email = '${username.trim().toLowerCase()}@courier.fast.local';
-    
+
     final authRes = await supabase.auth.signUp(
       email: email,
       password: password,
@@ -1035,14 +1035,14 @@ class AppState extends ChangeNotifier {
     try {
       final email = '${username.trim().toLowerCase()}@courier.fast.local';
       final auth = await supabase.auth.signInWithPassword(email: email, password: password);
-      
+
       if (auth.user == null || auth.user!.appMetadata['role']?.toString() != 'courier') {
         await supabase.auth.signOut();
         return false;
       }
 
       final row = await supabase.from('couriers').select().eq('auth_user_id', auth.user!.id).maybeSingle();
-      
+
       if (row == null || row['status']?.toString() == 'disabled') {
         await supabase.auth.signOut();
         return false;
@@ -1120,7 +1120,7 @@ class AppState extends ChangeNotifier {
 
   void clearCart() {
     _cartItems.clear();
-    removeCoupon(); 
+    removeCoupon();
     notifyListeners();
   }
 
@@ -1240,7 +1240,7 @@ class AppState extends ChangeNotifier {
 
   List orders = [];
   List notifications = [];
-  
+
   int get unreadNotificationsCount => notifications.length;
 
   String _normalizePhone(String phone) {
@@ -1296,37 +1296,37 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
       _sortOrders();
-      await fetchAdminFinancialReports(); 
+      await fetchAdminFinancialReports();
       notifyListeners();
 
       supabase
           .channel('public_orders_realtime_channel')
           .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'orders',
-            callback: (payload) {
-              if (payload.eventType == PostgresChangeEvent.insert) {
-                orders.add(payload.newRecord);
-                addLocalNotification('طلب جديد 📦', 'تم إضافة طلب جديد إلى النظام');
-              } else if (payload.eventType == PostgresChangeEvent.update) {
-                final index = orders.indexWhere((o) => o['id'].toString() == payload.newRecord['id'].toString());
-                if (index != -1) {
-                  orders[index] = payload.newRecord;
-                } else {
-                  orders.add(payload.newRecord);
-                }
-                String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
-                addLocalNotification('تحديث الطلب #${payload.newRecord['id']} 🔔', 'الحالة الجديدة: $newStatus');
-              } else if (payload.eventType == PostgresChangeEvent.delete) {
-                orders.removeWhere((o) => o['id'].toString() == payload.oldRecord['id'].toString());
-              }
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'orders',
+        callback: (payload) {
+          if (payload.eventType == PostgresChangeEvent.insert) {
+            orders.add(payload.newRecord);
+            addLocalNotification('طلب جديد 📦', 'تم إضافة طلب جديد إلى النظام');
+          } else if (payload.eventType == PostgresChangeEvent.update) {
+            final index = orders.indexWhere((o) => o['id'].toString() == payload.newRecord['id'].toString());
+            if (index != -1) {
+              orders[index] = payload.newRecord;
+            } else {
+              orders.add(payload.newRecord);
+            }
+            String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
+            addLocalNotification('تحديث الطلب #${payload.newRecord['id']} 🔔', 'الحالة الجديدة: $newStatus');
+          } else if (payload.eventType == PostgresChangeEvent.delete) {
+            orders.removeWhere((o) => o['id'].toString() == payload.oldRecord['id'].toString());
+          }
 
-              _sortOrders();
-              fetchAdminFinancialReports(); 
-              notifyListeners();
-            },
-          )
+          _sortOrders();
+          fetchAdminFinancialReports();
+          notifyListeners();
+        },
+      )
           .subscribe();
 
     } catch (e) {
@@ -1390,7 +1390,7 @@ class AppState extends ChangeNotifier {
 
       lastOrderTrackingCode = trackingCode;
       userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userPhone', normalizedPhone);
       await prefs.setString('userName', customerName);
@@ -1398,15 +1398,15 @@ class AppState extends ChangeNotifier {
       await prefs.setString('userCity', currentCity);
       await prefs.setString('fast_last_order_id', orderId.toString());
       await prefs.setString('fast_last_order_token', trackingCode);
-      
+
       orders.removeWhere((o) => o['id'].toString() == orderId.toString());
       orders.add(order);
       _sortOrders();
-      
+
       _cartItems.clear();
-      removeCoupon(); 
-      await fetchAdminFinancialReports(); 
-      
+      removeCoupon();
+      await fetchAdminFinancialReports();
+
       addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
@@ -1516,7 +1516,7 @@ class AppState extends ChangeNotifier {
     }).eq('id', orderId).select().single();
 
     final updated = Map<String, dynamic>.from(response);
-    
+
     final index = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
     if (index >= 0) {
       orders[index] = updated;
@@ -1525,7 +1525,7 @@ class AppState extends ChangeNotifier {
     }
     _sortOrders();
     await fetchAdminFinancialReports();
-    notifyListeners(); 
+    notifyListeners();
   }
 
   Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
@@ -1578,8 +1578,8 @@ class AppState extends ChangeNotifier {
 
       String restaurantName = 'المطعم العام';
       if (orderRes != null) {
-        restaurantName = orderRes['restaurant_name']?.toString() ?? 
-                         (orderRes['items_description']?.toString().contains('مطعم') == true ? 'مطعم محدد' : 'مطعم متنوع');
+        restaurantName = orderRes['restaurant_name']?.toString() ??
+            (orderRes['items_description']?.toString().contains('مطعم') == true ? 'مطعم محدد' : 'مطعم متنوع');
       }
 
       await supabase.from('restaurant_ratings').insert({
@@ -1596,7 +1596,7 @@ class AppState extends ChangeNotifier {
         orders[index]['restaurant_review'] = reviewText;
         notifyListeners();
       }
-      
+
       await fetchRestaurantAverages();
     } catch (e) {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');

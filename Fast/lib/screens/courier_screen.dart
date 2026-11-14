@@ -143,7 +143,6 @@ class _CourierScreenState extends State<CourierScreen> {
     final appState = Provider.of<AppState>(context);
     final courier = appState.currentCourier;
 
-    // إذا سجل الكابتن دخوله، نبدأ فوراً بث إحداثياته الجغرافية الحية
     if (courier != null) {
       final String courierId = (courier['id'] ?? courier['name'] ?? '').toString().trim();
       if (courierId.isNotEmpty) {
@@ -255,7 +254,7 @@ class _CourierScreenState extends State<CourierScreen> {
                   icon: const Icon(Icons.logout, color: Colors.redAccent),
                   tooltip: 'تسجيل الخروج',
                   onPressed: () {
-                    _locationSubscription?.cancel(); // إيقاف البث عند الخروج
+                    _locationSubscription?.cancel();
                     appState.logoutCourier();
                   },
                 ),
@@ -364,7 +363,6 @@ class _CourierScreenState extends State<CourierScreen> {
                 .update({'onesignal_player_id': playerId})
                 .eq('id', courierId);
 
-            // بدء بث الموقع مباشرة بعد تسجيل الدخول الناجح
             _startLiveLocationUpdates(courierId);
           }
         }
@@ -531,13 +529,9 @@ class _CourierScreenState extends State<CourierScreen> {
         final String customerAddress = order['address'] ?? '';
         final String orderStatus = order['status'] ?? '';
 
-        // 💰 فصل الأسعار بدقة: سعر المنتجات لوحده، رسوم التوصيل لوحدها، والإجمالي الكلي (مجموعهما)
         final double productsPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
         final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
         final double grandTotal = productsPrice + deliveryFee;
-
-        final ratingValue = order['rating'];
-        final ratingComment = order['rating_comment']?.toString();
 
         return Card(
           color: const Color(0xFF1E1E1E),
@@ -604,7 +598,6 @@ class _CourierScreenState extends State<CourierScreen> {
                   ),
                   const Divider(color: Colors.white12, height: 16),
 
-                  // 🚀 زر تتبع الطلب الواضح جداً بالنص العربي
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber,
@@ -633,20 +626,31 @@ class _CourierScreenState extends State<CourierScreen> {
                     children: [
                       const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('العنوان: $customerAddress', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                      Expanded(
+                        child: Text(
+                          'العنوان: $customerAddress',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
-                    height: 36,
+                    height: 40,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.amber),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       icon: const Icon(Icons.map, color: Colors.amber, size: 16),
-                      label: const Text('فتح اتجاهات الملاحة في خرائط جوجل 🗺️', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                      label: const Text(
+                        'فتح اتجاهات الملاحة في خرائط جوجل 🗺️',
+                        style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       onPressed: () => _openMap(customerAddress),
                     ),
                   ),
@@ -660,7 +664,6 @@ class _CourierScreenState extends State<CourierScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // 💰 عرض سعر المنتجات وحدها، التوصيل لوحده، والإجمالي الكلي (مجموعهما)
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
@@ -681,8 +684,16 @@ class _CourierScreenState extends State<CourierScreen> {
 
                   const SizedBox(height: 12),
 
-                  // 🛵 أزرار تحكم المندوب بمراحل التوصيل (قبول، في الطريق، تم الوصول، تسليم)
-                  if (orderStatus == 'waitingCourierApproval' || orderStatus == 'pricingSentToCustomer') ...[
+                  // 🛵 أزرار تحكم المندوب حسب حالة الطلب
+                  if (orderStatus == 'pricingSentToCustomer') ...[
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                      child: const Center(
+                        child: Text('⏳ بانتظار موافقة العميل على السعر...', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ] else if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -692,17 +703,14 @@ class _CourierScreenState extends State<CourierScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('قبول الطلب والبدء 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        onPressed: () async {
-                          await Supabase.instance.client.from('orders').update({
-                            'status': 'acceptedByCourier',
-                          }).eq('id', orderId);
-                          appState.fetchOrders();
+                        onPressed: () {
+                          appState.updateOrderStatus(orderId, 'onTheWay');
                         },
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('قبول الطلب والبدء 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
-                  ] else if (orderStatus == 'acceptedByCourier' || orderStatus == 'approvedByCustomer') ...[
+                  ] else if (orderStatus == 'onTheWay') ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -712,17 +720,14 @@ class _CourierScreenState extends State<CourierScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        icon: const Icon(Icons.two_wheeler),
-                        label: const Text('بدء التوصيل (في الطريق) 🛵', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        onPressed: () async {
-                          await Supabase.instance.client.from('orders').update({
-                            'status': 'onTheWay',
-                          }).eq('id', orderId);
-                          appState.fetchOrders();
+                        onPressed: () {
+                          appState.updateOrderStatus(orderId, 'arrived');
                         },
+                        icon: const Icon(Icons.location_pin),
+                        label: const Text('وصلت إلى الموقع 📍', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
-                  ] else if (orderStatus == 'onTheWay') ...[
+                  ] else if (orderStatus == 'arrived') ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -732,58 +737,11 @@ class _CourierScreenState extends State<CourierScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        icon: const Icon(Icons.location_on),
-                        label: const Text('تم الوصول لموقع العميل 📍', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        onPressed: () async {
-                          await Supabase.instance.client.from('orders').update({
-                            'status': 'arrivedToCustomer',
-                          }).eq('id', orderId);
-                          appState.fetchOrders();
+                        onPressed: () {
+                          appState.updateOrderStatus(orderId, 'delivered');
                         },
-                      ),
-                    ),
-                  ] else if (orderStatus == 'arrivedToCustomer' || orderStatus == 'arrived') ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
                         icon: const Icon(Icons.done_all),
-                        label: const Text('تأكيد تسليم الطلب للعميل 🏁', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        onPressed: () async {
-                          await Supabase.instance.client.from('orders').update({
-                            'status': 'delivered',
-                          }).eq('id', orderId);
-                          appState.fetchOrders();
-                        },
-                      ),
-                    ),
-                  ],
-
-                  if (ratingValue != null) ...[
-                    const Divider(color: Colors.white12, height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(8)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.star, color: Colors.amber, size: 16),
-                              const SizedBox(width: 4),
-                              Text('تقييم العميل: $ratingValue / 5', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
-                            ],
-                          ),
-                          if (ratingComment != null && ratingComment.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text('التعليق: $ratingComment', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                          ],
-                        ],
+                        label: const Text('تم التسليم بنجاح ✅', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],

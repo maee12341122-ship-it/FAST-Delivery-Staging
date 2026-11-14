@@ -61,25 +61,25 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     _orderChannel = Supabase.instance.client
         .channel('public:orders:id=eq.$orderId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'orders',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: orderId,
-          ),
-          callback: (payload) {
-            if (payload.newRecord.isNotEmpty && mounted) {
-              setState(() {});
-              _extractCustomerCoordinates(payload.newRecord);
-              final courierName = payload.newRecord['assigned_courier']?.toString();
-              if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
-                _fetchAndListenCourierLocation(courierName);
-              }
-            }
-          },
-        )
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'orders',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: orderId,
+      ),
+      callback: (payload) {
+        if (payload.newRecord.isNotEmpty && mounted) {
+          setState(() {});
+          _extractCustomerCoordinates(payload.newRecord);
+          final courierName = payload.newRecord['assigned_courier']?.toString();
+          if (courierName != null && courierName.isNotEmpty && _locationChannel == null) {
+            _fetchAndListenCourierLocation(courierName);
+          }
+        }
+      },
+    )
         .subscribe();
   }
 
@@ -100,21 +100,21 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       _locationChannel = Supabase.instance.client
           .channel('public:courier_locations:courier_id=eq.$courierId')
           .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'courier_locations',
-            callback: (payload) {
-              final newData = payload.newRecord;
-              if (newData.isNotEmpty && mounted) {
-                final lat = newData['latitude'] as double;
-                final lng = newData['longitude'] as double;
-                setState(() {
-                  _courierPosition = LatLng(lat, lng);
-                });
-                _mapController.move(_courierPosition!, 17.0);
-              }
-            },
-          )
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'courier_locations',
+        callback: (payload) {
+          final newData = payload.newRecord;
+          if (newData.isNotEmpty && mounted) {
+            final lat = newData['latitude'] as double;
+            final lng = newData['longitude'] as double;
+            setState(() {
+              _courierPosition = LatLng(lat, lng);
+            });
+            _mapController.move(_courierPosition!, 17.0);
+          }
+        },
+      )
           .subscribe();
     } catch (e) {
       debugPrint('⚠️ خطأ في متابعة موقع المندوب: $e');
@@ -132,9 +132,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final String targetId = widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
-    
+
+    // جلب الطلب المحدث لحظياً من الـ AppState أو الـ widgetMap
     final order = appState.orders.firstWhere(
-      (o) => o['id'].toString() == targetId,
+          (o) => o['id'].toString() == targetId,
       orElse: () => widget.orderMap ?? {},
     );
 
@@ -156,7 +157,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
 
     final String rawStatus = order['status'] ?? 'waitingForPricing';
-    
+
     int currentStep = 0;
     if (rawStatus == 'waitingForPricing') {
       currentStep = 0;
@@ -178,31 +179,37 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    // 🛒 جلب سعر المنتجات الحقيقي مع فحص كافة الاحتمالات في قاعدة البيانات لتجنب ظهور 0
+    // 🛒 منطق المندوب والمشرف الموحد والمضمون 100% للأسعار
     final double productsPrice = double.tryParse(
-      order['products_total']?.toString() ?? 
-      order['products_price']?.toString() ?? 
-      order['product_price']?.toString() ?? 
-      order['items_price']?.toString() ?? 
-      order['item_price']?.toString() ?? 
-      order['subtotal']?.toString() ?? 
-      order['total_price']?.toString() ?? '0'
+        order['total_price']?.toString() ??
+            order['items_price']?.toString() ??
+            order['products_total']?.toString() ??
+            order['products_price']?.toString() ?? '0'
     ) ?? 0.0;
-    
-    // 🏍️ رسوم التوصيل
+
     final double deliveryFee = double.tryParse(
-      order['delivery_fee']?.toString() ?? 
-      order['delivery_price']?.toString() ?? '0'
+        order['delivery_fee']?.toString() ?? '0'
     ) ?? 0.0;
-    
-    // 💰 الإجمالي الكلي الصحيح
-    final double grandTotal = productsPrice + deliveryFee;
+
+    final double dbTotalAmount = double.tryParse(
+        order['total_amount']?.toString() ??
+            order['total']?.toString() ?? '0'
+    ) ?? 0.0;
+
+    // معادلة ذكية تضمن عدم ظهور الصفر نهائياً
+    final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
+        ? (dbTotalAmount - deliveryFee)
+        : productsPrice;
+
+    final double grandTotal = dbTotalAmount > 0
+        ? dbTotalAmount
+        : (finalProductsPrice + deliveryFee);
 
     final int numericOrderId = int.tryParse(targetId) ?? 0;
     final String customerPhone = order['phone'] ?? appState.userProfile?['phone'] ?? '';
     final String courierId = order['assigned_courier']?.toString() ?? 'general_courier';
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
-    
+
     final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
     final String courierReview = order['courier_review']?.toString() ?? '';
 
@@ -221,7 +228,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🌟 شريط التقدم الأفقي العالمي (Horizontal Stepper)
+              // 🌟 شريط التقدم الأفقي العالمي
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -375,7 +382,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // 🧾 بطاقة تفاصيل الطلب المالية والمنتجات (منسقة بصندوق الأسعار المفصول)
+              // 🧾 بطاقة تفاصيل الطلب المالية والمنتجات
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -388,22 +395,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   children: [
                     const Text('تفاصيل الطلب والأسعار 🧾', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                     const Divider(color: Colors.white12, height: 16),
-                    Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text('🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? order['itemsdesc'] ?? 'غير متوفرة'}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 8),
                     Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 12),
 
-                    // 📦 صندوق الأسعار المفصول والمنظم كالـ Admin و Courier
+                    // 📦 صندوق الأسعار الموحد تماماً كلوحة المندوب
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.black26, 
+                        color: Colors.black26,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                          Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                           const SizedBox(height: 4),
                           Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                           const Divider(color: Colors.white12, height: 8),

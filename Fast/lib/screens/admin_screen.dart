@@ -530,10 +530,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
     final int totalCompletedOrdersCount = appState.orders.where((o) => o['status'] == 'delivered').length;
 
+    // 📊 قائمة صفحات المشرف (متضمنة شاشة التقارير المالية والأرباح)
     final List<Widget> adminPages = [
       _buildOrdersManagementWithTabs(appState),
       _buildProductsManagement(appState),
       _buildCouriersManagement(appState),
+      const AdminReportsScreen(), // شاشة التقارير
       _buildSettingsTab(appState),
     ];
 
@@ -701,6 +703,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ),
           ],
         ),
+        // 🗂️ شريط التنقل السفلي متضمناً أيقونة التقارير (5 تبويبات)
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedNavIndex,
           onTap: (index) => setState(() => _selectedNavIndex = index),
@@ -712,6 +715,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'الطلبات'),
             BottomNavigationBarItem(icon: Icon(Icons.fastfood), label: 'المنتجات'),
             BottomNavigationBarItem(icon: Icon(Icons.delivery_dining), label: 'المناديب'),
+            BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'التقارير'),
             BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'الإعدادات'),
           ],
         ),
@@ -768,7 +772,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final rawStatus = order['status'] ?? '';
         final arabicStatus = _getArabicStatus(rawStatus);
 
-        final bool isLocked = rawStatus != 'waitingForPricing' && rawStatus != 'pricingSentToCustomer';
+        final bool isWaitingPricing = rawStatus == 'waitingForPricing';
 
         final double productsPrice = double.tryParse(
             order['products_total']?.toString() ??
@@ -789,7 +793,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: isLocked ? Colors.green.withOpacity(0.4) : Colors.amber.withOpacity(0.3), width: 1.5),
+            side: BorderSide(color: isWaitingPricing ? Colors.amber : Colors.green.withOpacity(0.4), width: 1.5),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -829,11 +833,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: isLocked ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.15),
+                              color: isWaitingPricing ? Colors.amber.withOpacity(0.15) : Colors.green.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isLocked ? Colors.green : Colors.amber.withOpacity(0.3)),
+                              border: Border.all(color: isWaitingPricing ? Colors.amber : Colors.green),
                             ),
-                            child: Text(arabicStatus, style: TextStyle(color: isLocked ? Colors.greenAccent : Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                            child: Text(arabicStatus, style: TextStyle(color: isWaitingPricing ? Colors.amber : Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
@@ -861,6 +865,81 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+
+                  if (isWaitingPricing) ...[
+                    const Text('⚙️ تسعير الطلب وتعيين المندوب:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _feeControllers[orderId],
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'رسوم التوصيل (ر.ي)',
+                              labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            dropdownColor: const Color(0xFF1E1E1E),
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                            decoration: const InputDecoration(
+                              labelText: 'اختر المندوب',
+                              labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            items: appState.couriers.map<DropdownMenuItem<String>>((courier) {
+                              String name = courier['name'] ?? 'مندوب';
+                              return DropdownMenuItem<String>(
+                                value: name,
+                                child: Text(name),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                _selectedCouriersForOrder[orderId] = val;
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size(double.infinity, 38),
+                      ),
+                      onPressed: () async {
+                        double? fee = double.tryParse(_feeControllers[orderId]?.text ?? '0');
+                        String? selectedCourier = _selectedCouriersForOrder[orderId];
+
+                        if (fee == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
+                          return;
+                        }
+                        if (selectedCourier == null || selectedCourier.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
+                          return;
+                        }
+
+                        await appState.setOrderDeliveryFee(orderId, fee, selectedCourier);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
+                        }
+                      },
+                      child: const Text('إرسال التسعير وتعيين المندوب 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ],
               ),
             ),
