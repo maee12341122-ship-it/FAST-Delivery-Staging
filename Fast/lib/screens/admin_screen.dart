@@ -530,12 +530,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
     final int totalCompletedOrdersCount = appState.orders.where((o) => o['status'] == 'delivered').length;
 
-    // 📊 قائمة صفحات المشرف (متضمنة شاشة التقارير المالية والأرباح)
     final List<Widget> adminPages = [
       _buildOrdersManagementWithTabs(appState),
       _buildProductsManagement(appState),
       _buildCouriersManagement(appState),
-      const AdminReportsScreen(), // شاشة التقارير
+      const AdminReportsScreen(),
       _buildSettingsTab(appState),
     ];
 
@@ -703,7 +702,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ),
           ],
         ),
-        // 🗂️ شريط التنقل السفلي متضمناً أيقونة التقارير (5 تبويبات)
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedNavIndex,
           onTap: (index) => setState(() => _selectedNavIndex = index),
