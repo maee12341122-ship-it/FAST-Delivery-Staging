@@ -10,6 +10,8 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../models/address_model.dart';
@@ -17,10 +19,100 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
+/// 💾 خدمة التخزين المحلي (Local Database Service) - للعمل بدون إنترنت
+/// ===========================================================================
+class LocalStorageService {
+  static Database? _database;
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('fast_delivery_local.db');
+    return _database!;
+  }
+
+  Future<Database> _initDB(String filePath) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, filePath);
+
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE local_products (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            description TEXT,
+            restaurant_name TEXT,
+            price REAL,
+            category TEXT,
+            available INTEGER,
+            image_url TEXT,
+            unit TEXT,
+            is_variable_price INTEGER
+          )
+        ''');
+      },
+    );
+  }
+
+  Future<void> cacheProducts(List<dynamic> productsList) async {
+    try {
+      final db = await database;
+      Batch batch = db.batch();
+      for (var p in productsList) {
+        batch.insert(
+          'local_products',
+          {
+            'id': p['id'].toString(),
+            'name': p['name'] ?? '',
+            'description': p['description'] ?? '',
+            'restaurant_name': p['restaurant_name'] ?? 'متجر عام',
+            'price': double.tryParse(p['price'].toString()) ?? 0.0,
+            'category': p['category'] ?? 'المطاعم',
+            'available': (p['available'] ?? true) ? 1 : 0,
+            'image_url': p['image_url'] ?? '',
+            'unit': p['unit'] ?? 'حبة',
+            'is_variable_price': (p['is_variable_price'] ?? false) ? 1 : 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (e) {
+      debugPrint('⚠️ خطأ في تخزين المنتجات محلياً: $e');
+    }
+  }
+
+  Future<List<ProductModel>> getCachedProducts() async {
+    try {
+      final db = await database;
+      final result = await db.query('local_products');
+      return result.map((p) => ProductModel(
+        id: p['id'].toString(),
+        name: p['name']?.toString() ?? '',
+        description: p['description']?.toString() ?? '',
+        restaurantName: p['restaurant_name']?.toString() ?? 'متجر عام',
+        price: double.tryParse(p['price'].toString()) ?? 0.0,
+        category: p['category']?.toString() ?? 'المطاعم',
+        available: p['available'] == 1,
+        imageUrl: p['image_url']?.toString() ?? '',
+        unit: p['unit']?.toString() ?? 'حبة',
+        isVariablePrice: p['is_variable_price'] == 1,
+      )).toList();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في قراءة المنتجات المحلية: $e');
+      return [];
+    }
+  }
+}
+
+/// ===========================================================================
 /// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة النهائية المتكاملة
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
+  final LocalStorageService _localStorage = LocalStorageService();
 
   AppState() {
     _initializeApplicationState();
@@ -103,7 +195,7 @@ class AppState extends ChangeNotifier {
     if (previousState && !isConnectedToInternet) {
       addLocalNotification(
         '⚠️ انقطاع الاتصال بالإنترنت',
-        'تم فقدان الاتصال بالشبكة! يرجى التحقق من الإنترنت.',
+        'تم فقدان الاتصال بالشبكة! يتم استخدام البيانات المخزنة محلياً.',
         type: 'network_alert',
       );
     } else if (!previousState && isConnectedToInternet) {
@@ -112,6 +204,8 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
+      // تحديث البيانات فور عودة الاتصال
+      fetchProductsFromSupabase();
     }
 
     notifyListeners();
@@ -1201,6 +1295,7 @@ class AppState extends ChangeNotifier {
 
   List products = [];
 
+  /// 🌐 جلب المنتجات من Supabase مع حفظها تلقائياً محلياً (Offline Caching)
   Future<void> fetchProductsFromSupabase() async {
     try {
       final response = await supabase.from('products').select();
@@ -1216,9 +1311,20 @@ class AppState extends ChangeNotifier {
         unit: p['unit'] ?? 'حبة',
         isVariablePrice: p['is_variable_price'] ?? false,
       )).toList();
+
+      // 💾 حفظ المنتجات محلياً لاستخدامها عند انقطاع الإنترنت
+      await _localStorage.cacheProducts(response);
+
       notifyListeners();
     } catch (e) {
-      debugPrint('❌ خطأ في جلب المنتجات: $e');
+      debugPrint('⚠️ انقطاع الإنترنت أو خطأ في الاتصال، جاري جلب المنتجات من التخزين المحلي...: $e');
+      
+      // 🔌 في حال انقطاع الإنترنت، جلب البيانات من القاعدة المحلية sqflite
+      final localProducts = await _localStorage.getCachedProducts();
+      if (localProducts.isNotEmpty) {
+        products = localProducts;
+        notifyListeners();
+      }
     }
   }
 
@@ -1602,7 +1708,7 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
     }
   }
-} // <--- 🛑 نهاية كلاس AppState الأساسي والسليم تماماً هنا
+}
 
 class _UserMock {
   final String name;
