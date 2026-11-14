@@ -1095,6 +1095,39 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ],
 
                       const SizedBox(height: 16),
+                      // 💳 بطاقة حاسب الكريمي أثناء إتمام الطلب
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('حساب الكريمي (حاسب):', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text('2655872', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, color: Colors.amber, size: 20),
+                              tooltip: 'نسخ رقم الحساب',
+                              onPressed: () {
+                                Clipboard.setData(const ClipboardData(text: '2655872'));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('تم نسخ رقم حاسب الكريمي (2655872) بنجاح 📋✅')),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
                       const Text('اختر طريقة الدفع:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
@@ -2519,7 +2552,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
-    // تم إضافة 'حلويات ومعجنات' هنا لتظهر للعملاء في واجهة التطبيق
     final categories = ['الكل', 'المطاعم', 'حلويات ومعجنات', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
 
     return SizedBox(
@@ -2715,259 +2747,312 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
     final customerOrders = appState.customerOrders;
 
-    if (customerOrders.isEmpty) {
-      return EmptyStateWidget(
-        icon: Icons.receipt_long_outlined,
-        title: 'لا توجد طلبات سابقة!',
-        subtitle: 'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز ⚡',
-        buttonText: 'اطلب الآن 🛵',
-        onButtonPressed: () {
-          setState(() => _currentIndex = 0);
-        },
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: customerOrders.length,
-      itemBuilder: (context, index) {
-        final order = customerOrders[index];
-        final status = order['status'] ?? '';
-        final arabicStatus = _getArabicStatus(status);
-        final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
-        final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
-
-        bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
-        String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
-
-        final formattedAddress = formatLocationAddress(order['address']);
-
-        final double productsPrice = double.tryParse(
-            order['total_price']?.toString() ??
-                order['items_price']?.toString() ??
-                order['products_total']?.toString() ??
-                order['products_price']?.toString() ?? '0'
-        ) ?? 0.0;
-
-        final double deliveryFee = double.tryParse(
-            order['delivery_fee']?.toString() ?? '0'
-        ) ?? 0.0;
-
-        final double dbTotalAmount = double.tryParse(
-            order['total_amount']?.toString() ??
-                order['total']?.toString() ?? '0'
-        ) ?? 0.0;
-
-        final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
-            ? (dbTotalAmount - deliveryFee)
-            : productsPrice;
-
-        final double grandTotal = dbTotalAmount > 0
-            ? dbTotalAmount
-            : (finalProductsPrice + deliveryFee);
-
-        return Card(
-          color: cardBg,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+    return Column(
+      children: [
+        // 💳 بطاقة حاسب الكريمي الثابتة في أعلى شاشة طلباتي مع زر النسخ السريع
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.amber.withOpacity(0.6), width: 1.5),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 2)),
+            ],
           ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              Navigator.push(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderMap: order),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const Icon(Icons.account_balance_wallet, color: Colors.amber, size: 24),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Text('طلب #${order['id']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.touch_app, color: Colors.amber700, size: 16),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.black12),
-                            icon: const Icon(Icons.share, color: Colors.amber, size: 18),
-                            tooltip: 'مشاركة الفاتورة',
-                            onPressed: () {
-                              final invoiceText = '⚡ فاتورة تطبيق FAST - تعز\n'
-                                  'رقم الطلب: #${order['id']}\n'
-                                  'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
-                                  'العنوان: $formattedAddress\n'
-                                  'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي\n'
-                                  'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي\n'
-                                  'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي\n'
-                                  'الحالة: $arabicStatus';
-                              Share.share(invoiceText);
-                            },
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.blueGrey.withOpacity(0.2)),
-                            icon: const Icon(Icons.chat, color: Colors.amber, size: 18),
-                            tooltip: 'مراسلة الإدارة ودعم الطلب',
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                PageRouteBuilder(
-                                  pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
-                                    orderId: order['id'].toString(),
-                                    userRole: 'customer',
-                                    targetChat: 'admin_customer',
-                                  ),
-                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                    return FadeTransition(opacity: animation, child: child);
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
+                      const Text('حساب حاسب الكريمي (للدفع الإلكتروني):', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text('2655872', style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                     ],
                   ),
-                  const Divider(color: Colors.grey, height: 20),
-
-                  if (status == 'pricingSentToCustomer') ...[
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.amber),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  onPressed: () {
-                                    appState.customerConfirmOrder(order['id']);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('تم تأكيد الطلب وإرساله للمندوب بنجاح! ✅')),
-                                    );
-                                  },
-                                  child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.redAccent,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  onPressed: () {
-                                    appState.customerCancelOrder(order['id']);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('تم رفض الطلب وإلغاؤه ❌')),
-                                    );
-                                  },
-                                  child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
-                  Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
-                  const SizedBox(height: 8),
-
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
-                        const SizedBox(height: 4),
-                        Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                        const Divider(color: Colors.white12, height: 8),
-                        Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
-                      ],
-                    ),
-                  ),
-
-                  if (status == 'delivered' || status == 'arrived') ...[
-                    const SizedBox(height: 14),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber.withOpacity(0.15),
-                        foregroundColor: Colors.amber,
-                        minimumSize: const Size(double.infinity, 42),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: Colors.amber.withOpacity(0.5)),
-                        ),
-                      ),
-                      onPressed: () {
-                        _showRatingDialog(context, appState, order['id'].toString(), assignedCourierName, cardBg, textColor);
-                      },
-                      icon: const Icon(Icons.star, size: 18),
-                      label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    if (isRestaurantOrder) ...[
-                      const SizedBox(height: 8),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber.withOpacity(0.15),
-                          foregroundColor: Colors.amber,
-                          minimumSize: const Size(double.infinity, 42),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(color: Colors.amber.withOpacity(0.5)),
-                          ),
-                        ),
-                        onPressed: () {
-                          _showRestaurantRatingDialog(context, appState, order['id'].toString(), detectedRestaurantName, cardBg, textColor);
-                        },
-                        icon: const Icon(Icons.restaurant_menu, size: 18),
-                        label: Text('قيم مطعم ($detectedRestaurantName) وجودة الطعام 🍽️', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ],
                 ],
               ),
-            ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Clipboard.setData(const ClipboardData(text: '2655872'));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تم نسخ رقم حاسب الكريمي (2655872) بنجاح 📋✅')),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 14),
+                label: const Text('نسخ الحساب', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+
+        Expanded(
+          child: customerOrders.isEmpty
+              ? EmptyStateWidget(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'لا توجد طلبات سابقة!',
+                  subtitle: 'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز ⚡',
+                  buttonText: 'اطلب الآن 🛵',
+                  onButtonPressed: () {
+                    setState(() => _currentIndex = 0);
+                  },
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: customerOrders.length,
+                  itemBuilder: (context, index) {
+                    final order = customerOrders[index];
+                    final status = order['status'] ?? '';
+                    final arabicStatus = _getArabicStatus(status);
+                    final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
+                    final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
+
+                    bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
+                    String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
+
+                    final formattedAddress = formatLocationAddress(order['address']);
+
+                    final double productsPrice = double.tryParse(
+                        order['total_price']?.toString() ??
+                            order['items_price']?.toString() ??
+                            order['products_total']?.toString() ??
+                            order['products_price']?.toString() ?? '0'
+                    ) ?? 0.0;
+
+                    final double deliveryFee = double.tryParse(
+                        order['delivery_fee']?.toString() ?? '0'
+                    ) ?? 0.0;
+
+                    final double dbTotalAmount = double.tryParse(
+                        order['total_amount']?.toString() ??
+                            order['total']?.toString() ?? '0'
+                    ) ?? 0.0;
+
+                    final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
+                        ? (dbTotalAmount - deliveryFee)
+                        : productsPrice;
+
+                    final double grandTotal = dbTotalAmount > 0
+                        ? dbTotalAmount
+                        : (finalProductsPrice + deliveryFee);
+
+                    return Card(
+                      color: cardBg,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderMap: order),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text('طلب #${order['id']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.touch_app, color: Colors.amber700, size: 16),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      IconButton(
+                                        style: IconButton.styleFrom(backgroundColor: Colors.black12),
+                                        icon: const Icon(Icons.share, color: Colors.amber, size: 18),
+                                        tooltip: 'مشاركة الفاتورة',
+                                        onPressed: () {
+                                          final invoiceText = '⚡ فاتورة تطبيق FAST - تعز\n'
+                                              'رقم الطلب: #${order['id']}\n'
+                                              'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
+                                              'العنوان: $formattedAddress\n'
+                                              'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي\n'
+                                              'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي\n'
+                                              'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي\n'
+                                              'الحالة: $arabicStatus';
+                                          Share.share(invoiceText);
+                                        },
+                                      ),
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        style: IconButton.styleFrom(backgroundColor: Colors.blueGrey.withOpacity(0.2)),
+                                        icon: const Icon(Icons.chat, color: Colors.amber, size: 18),
+                                        tooltip: 'مراسلة الإدارة ودعم الطلب',
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            PageRouteBuilder(
+                                              pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
+                                                orderId: order['id'].toString(),
+                                                userRole: 'customer',
+                                                targetChat: 'admin_customer',
+                                              ),
+                                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                                return FadeTransition(opacity: animation, child: child);
+                                              },
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const Divider(color: Colors.grey, height: 20),
+
+                              if (status == 'pricingSentToCustomer') ...[
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.amber),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.green,
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              ),
+                                              onPressed: () {
+                                                appState.customerConfirmOrder(order['id']);
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('تم تأكيد الطلب وإرساله للمندوب بنجاح! ✅')),
+                                                );
+                                              },
+                                              child: const Text('موافقة ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.redAccent,
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              ),
+                                              onPressed: () {
+                                                appState.customerCancelOrder(order['id']);
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('تم رفض الطلب وإلغاؤه ❌')),
+                                                );
+                                              },
+                                              child: const Text('إلغاء الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              Text('الحالة: $arabicStatus', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                              const SizedBox(height: 6),
+                              Text('العنوان: $formattedAddress', style: TextStyle(color: textColor, fontSize: 13)),
+                              Text('المنتجات: ${order['items_desc'] ?? order['items_description']}', style: TextStyle(color: textColor, fontSize: 13)),
+                              const SizedBox(height: 8),
+
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
+                                    const SizedBox(height: 4),
+                                    Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                                    const Divider(color: Colors.white12, height: 8),
+                                    Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ],
+                                ),
+                              ),
+
+                              if (status == 'delivered' || status == 'arrived') ...[
+                                const SizedBox(height: 14),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber.withOpacity(0.15),
+                                    foregroundColor: Colors.amber,
+                                    minimumSize: const Size(double.infinity, 42),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    _showRatingDialog(context, appState, order['id'].toString(), assignedCourierName, cardBg, textColor);
+                                  },
+                                  icon: const Icon(Icons.star, size: 18),
+                                  label: const Text('قيم المندوب وخدمة التوصيل ⭐', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                                if (isRestaurantOrder) ...[
+                                  const SizedBox(height: 8),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.amber.withOpacity(0.15),
+                                      foregroundColor: Colors.amber,
+                                      minimumSize: const Size(double.infinity, 42),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      _showRestaurantRatingDialog(context, appState, order['id'].toString(), detectedRestaurantName, cardBg, textColor);
+                                    },
+                                    icon: const Icon(Icons.restaurant_menu, size: 18),
+                                    label: Text('قيم مطعم ($detectedRestaurantName) وجودة الطعام 🍽️', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
