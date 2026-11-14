@@ -17,7 +17,7 @@ import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة الأصلية الكاملة 1700 سطر
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة النهائية المتكاملة
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -548,9 +548,13 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  // ==========================================
+  // --- ⚙️ إعدادات المتجر وأوقات الدوام ---
+  // ==========================================
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
+  
   int get workStartHour => startHour;
   int get workEndHour => endHour;
   String customerSupportPhone = '776857316';
@@ -576,6 +580,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+
   Stream getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -1597,197 +1602,10 @@ class AppState extends ChangeNotifier {
       debugPrint('❌ خطأ في تقديم تقييم المطعم: $e');
     }
   }
-}
+} // <--- 🛑 نهاية كلاس AppState الأساسي والسليم تماماً هنا
 
 class _UserMock {
   final String name;
   final String phone;
   _UserMock(this.name, this.phone);
 }
-  /// 🛠️ الدالة المطابقة تماماً لاستدعاء شاشة المشرف (Admin Screen)
-  Future<void> updateStoreHours(int newStart, int newEnd) async {
-    await updateStoreSettings(newStart, newEnd);
-  }
-
-  /// 💬 دالة جلب Player ID الخاص بالمستقبل في شاشة المحادثة
-  Future<String?> getReceiverPlayerIdForChat({
-    required dynamic orderId,
-    required String senderRole,
-    required String targetChat,
-  }) async {
-    try {
-      final orderRes = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
-
-      if (orderRes == null) return null;
-
-      if (targetChat == 'admin_customer') {
-        if (senderRole == 'admin') {
-          String customerPhone = orderRes['phone']?.toString() ?? '';
-          if (customerPhone.isNotEmpty) {
-            final custRes = await supabase
-                .from('customers')
-                .select('onesignal_player_id')
-                .eq('phone', customerPhone)
-                .maybeSingle();
-            return custRes?['onesignal_player_id']?.toString();
-          }
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      } else if (targetChat == 'admin_courier') {
-        if (senderRole == 'admin') {
-          String courierName = orderRes['assigned_courier']?.toString() ?? '';
-          return await getCourierPlayerIdByName(courierName);
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
-    }
-    return null;
-      // ==========================================
-  // --- ⚙️ إعدادات المتجر وأوقات الدوام ---
-  // ==========================================
-  int startHour = 8;
-  int endHour = 24;
-  int deliveryFee = 500;
-  
-  int get workStartHour => startHour;
-  int get workEndHour => endHour;
-  String customerSupportPhone = '776857316';
-
-  Future<void> fetchStoreSettings() async {
-    try {
-      final response = await supabase.from('settings').select().maybeSingle();
-      if (response != null) {
-        startHour = int.tryParse(response['start_hour'].toString()) ?? 8;
-        endHour = int.tryParse(response['end_hour'].toString()) ?? 24;
-        deliveryFee = int.tryParse(response['delivery_fee']?.toString() ?? '500') ?? 500;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في الإعدادات: $e');
-    }
-  }
-
-  Future<void> updateStoreSettings(int start, int end) async {
-    startHour = start;
-    endHour = end;
-    notifyListeners();
-
-    try {
-      await supabase.from('settings').upsert({
-        'id': 1,
-        'start_hour': start,
-        'end_hour': end,
-        'delivery_fee': deliveryFee,
-      });
-    } catch (e) {
-      debugPrint('❌ خطأ في حفظ الأوقات: $e');
-    }
-  }
-
-  // هذه هي الدالة التي تستدعيها شاشة المشرف (Admin Screen)
-  Future<void> updateStoreHours(int newStart, int newEnd) async {
-    await updateStoreSettings(newStart, newEnd);
-  }
-
-  bool get isStoreOpen {
-    final now = DateTime.now();
-    final currentHour = now.hour;
-    if (endHour > startHour) {
-      return currentHour >= startHour && currentHour < endHour;
-    } else {
-      return currentHour >= startHour || currentHour < endHour;
-    }
-  }
-
-  // ==========================================
-  // --- 💬 دوال الإشعارات والشات (Player IDs) ---
-  // ==========================================
-  Future<List<String>> getAllAdminPlayerIds() async {
-    try {
-      final response = await supabase
-          .from('admins')
-          .select('onesignal_player_id')
-          .not('onesignal_player_id', 'is', null);
-
-      return response
-          .map((e) => e['onesignal_player_id'].toString())
-          .where((id) => id.isNotEmpty)
-          .toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<String?> getCourierPlayerIdByName(String courierName) async {
-    try {
-      final response = await supabase
-          .from('couriers')
-          .select('onesignal_player_id')
-          .eq('name', courierName.trim())
-          .maybeSingle();
-
-      if (response != null && response['onesignal_player_id'] != null) {
-        return response['onesignal_player_id'].toString();
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ: $e');
-    }
-    return null;
-  }
-
-  // هذه هي الدالة التي تستدعيها شاشة المحادثة (Chat Screen)
-  Future<String?> getReceiverPlayerIdForChat({
-    required dynamic orderId,
-    required String senderRole,
-    required String targetChat,
-  }) async {
-    try {
-      final orderRes = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
-
-      if (orderRes == null) return null;
-
-      if (targetChat == 'admin_customer') {
-        if (senderRole == 'admin') {
-          String customerPhone = orderRes['phone']?.toString() ?? '';
-          if (customerPhone.isNotEmpty) {
-            final custRes = await supabase
-                .from('customers')
-                .select('onesignal_player_id')
-                .eq('phone', customerPhone)
-                .maybeSingle();
-            return custRes?['onesignal_player_id']?.toString();
-          }
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      } else if (targetChat == 'admin_courier') {
-        if (senderRole == 'admin') {
-          String courierName = orderRes['assigned_courier']?.toString() ?? '';
-          return await getCourierPlayerIdByName(courierName);
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
-    }
-    return null;
-  }
-
-  }
