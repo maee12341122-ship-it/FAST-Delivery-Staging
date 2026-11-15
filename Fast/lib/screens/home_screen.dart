@@ -321,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.amber[800]!, Colors.amber[600]!, Colors.orangeAccent],
+                    colors: [Colors.amber.shade800, Colors.amber.shade600, Colors.orangeAccent],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -1460,7 +1460,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.amber[700],
+        color: Colors.amber,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.2),
@@ -1550,7 +1550,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(width: 10),
                   Text(
                     'FAST – تعز',
-                    style: TextStyle(color: Colors.amber[700], fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -1844,7 +1844,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
-                                    colors: [Colors.amber[800]!, Colors.amber[600]!],
+                                    colors: [Colors.amber.shade800, Colors.amber.shade600],
                                     begin: Alignment.centerLeft,
                                     end: Alignment.centerRight,
                                   ),
@@ -2218,7 +2218,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 if (restaurantsList.isEmpty) {
                   final Set<String> productRestaurants = appState.products
                       .where((p) => p.category.trim() == 'المطاعم' && p.restaurantName.isNotEmpty)
-                      .map((p) => p.restaurantName)
+                      .map<String>((p) => p.restaurantName)
                       .toSet();
                   restaurantsList = productRestaurants.map((name) => {
                     'name': name,
@@ -2239,7 +2239,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-                      child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                     ListView.builder(
                       shrinkWrap: true,
@@ -2896,7 +2896,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     children: [
                                       Text('طلب #${order['id']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(width: 8),
-                                      const Icon(Icons.touch_app, color: Colors.amber700, size: 16),
+                                      const Icon(Icons.touch_app, color: Colors.amber, size: 16),
                                     ],
                                   ),
                                   Row(
@@ -3233,7 +3233,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(height: 4),
               Text(
                 'تم التطوير بواسطة Eng. Maeen Almurish',
-                style: TextStyle(color: Colors.amber[700], fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(color: Colors.amber.shade700, fontSize: 12, fontWeight: FontWeight.bold),
               ),
             ],
           ),
