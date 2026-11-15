@@ -1,12 +1,12 @@
-Import 'package:flutter/material.dart';
-Import 'package:provider/provider.dart';
-Import 'package:supabase_flutter/supabase_flutter.dart';
-Import '../providers/app_state.dart';
-Import 'chat_screen.dart';
-Import 'order_tracking_screen.dart';
-Import 'admin/admin_products_screen.dart';
-Import 'admin/admin_reports_screen.dart';
-Import 'admin_restaurants_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../providers/app_state.dart';
+import 'chat_screen.dart';
+import 'order_tracking_screen.dart';
+import 'admin/admin_products_screen.dart';
+import 'admin/admin_reports_screen.dart';
+import 'admin_restaurants_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -775,7 +775,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
 
-        // ⭐ الدالة الصحيحة والمطابقة لجلب أسعار المنتجات ورسوم التوصيل والإجمالي الكلي
         final double productsPrice = double.tryParse(
             order['total_price']?.toString() ??
                 order['items_price']?.toString() ??
@@ -904,26 +903,35 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: DropdownButtonFormField<String>(
-                            dropdownColor: const Color(0xFF1E1E1E),
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                            decoration: const InputDecoration(
-                              labelText: 'اختر المندوب',
-                              labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items: appState.couriers.map<DropdownMenuItem<String>>((courier) {
-                              String name = courier['name'] ?? 'مندوب';
-                              return DropdownMenuItem<String>(
-                                value: name,
-                                child: Text(name),
+                          child: FutureBuilder<List<dynamic>>(
+                            future: Supabase.instance.client.from('couriers').select(),
+                            builder: (context, courierSnapshot) {
+                              final couriersList = courierSnapshot.data ?? [];
+                              return DropdownButtonFormField<String>(
+                                value: _selectedCouriersForOrder[orderId],
+                                dropdownColor: const Color(0xFF1E1E1E),
+                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                decoration: const InputDecoration(
+                                  labelText: 'اختر المندوب',
+                                  labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                items: couriersList.map<DropdownMenuItem<String>>((courier) {
+                                  String name = courier['name']?.toString() ?? courier['full_name']?.toString() ?? 'مندوب';
+                                  return DropdownMenuItem<String>(
+                                    value: name,
+                                    child: Text(name),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      _selectedCouriersForOrder[orderId] = val;
+                                    });
+                                  }
+                                },
                               );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                _selectedCouriersForOrder[orderId] = val;
-                              }
                             },
                           ),
                         ),
