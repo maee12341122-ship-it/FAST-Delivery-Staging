@@ -729,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
             ),
           ],
         ),
@@ -1064,7 +1064,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -1538,7 +1538,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          showExitConfirmationDialog(context, cardBg, textColor);
+          // ⭐ تعديل زر الرجوع: إذا لم يكن في الرئيسية يرجع للرئيسية أولاً بتسلسل، وإذا كان في الرئيسية يظهر تأكيد الخروج
+          if (_currentIndex != 0) {
+            setState(() {
+              _currentIndex = 0;
+            });
+          } else {
+            showExitConfirmationDialog(context, cardBg, textColor);
+          }
         },
         child: Directionality(
           textDirection: TextDirection.rtl,
@@ -1777,7 +1784,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(context),
-                                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
                               ),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -2210,7 +2217,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _buildInteractiveCategoriesBar(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          // 🍽️ عرض المطاعم والشعارات والتقييمات الذكية مع صدارة FAST
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
             FutureBuilder<List<dynamic>>(
               future: Supabase.instance.client.from('restaurants').select(),
