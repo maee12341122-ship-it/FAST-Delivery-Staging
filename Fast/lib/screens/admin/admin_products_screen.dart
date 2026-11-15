@@ -17,7 +17,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingImage = false;
 
-  // 🗺️ خريطة المحلات والصيدليات والهدايا والمعجنات حسب طلبك الدقيق
+  // 🗺️ خريطة شاملة لكافة الأقسام والمتاجر التابعة لها لتجنب أي نقص في القائمة المنسدلة
   final Map<String, List<String>> _categoryShopsMap = {
     'المطاعم': [
       'مدينتي', 'السعيد', 'الشميري', 'تاج مول', 'تاج شمسان', 'ماريوت',
@@ -26,7 +26,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       'افندي', 'متميزة في المطبخ'
     ],
     'حلويات ومعجنات': [
-      'روزماري', 'كاندي', 'سويت سيتي', 'سيت هوم', 'ابو خالد'
+      'روزماري', 'كاندي', 'سويت سيتي', 'سيت هوم', 'ابو خالد', 'حلويات عامة'
+    ],
+    'البقالات': [
+      'سوبرماركت المدينة', 'بقالة العائلة', 'مارت تعز', 'بقالة السعادة', 'متجر مواد غذائية عامة'
+    ],
+    'الخضار والفواكه': [
+      'سوق الخضار المركزي', 'مكتبة الخضار الطازجة', 'مفروشات الخضار والفواكه'
     ],
     'الصيدلية الآمنة': [
       'صيدليه الوافي', 'صيدليه البريطانيه', 'صيدليه كريم',
@@ -145,14 +151,14 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     ),
                     const SizedBox(height: 8),
 
-                    // القائمة المنسدلة لأسماء المحلات والصيدليات والهدايا تلقائياً بناءً على القسم
+                    // القائمة المنسدلة لأسماء المحلات والصيدليات تلقائياً بناءً على القسم
                     if (availableStores != null && availableStores.isNotEmpty) ...[
                       DropdownButtonFormField<String>(
                         value: availableStores.contains(selectedStore) ? selectedStore : availableStores.first,
                         dropdownColor: const Color(0xFF1E1E1E),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'اختر اسم $selectedCategory *',
+                          labelText: 'اختر اسم المتجر/المكان *',
                           labelStyle: const TextStyle(color: Colors.amber),
                           border: const OutlineInputBorder(),
                         ),
@@ -330,7 +336,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     );
   }
 
-  // 🛑 نافذة تأكيد الحذف الآمنة للمنتج
   void _showDeleteConfirmationDialog(BuildContext context, AppState appState, String productId, String productName) {
     showDialog(
       context: context,
@@ -361,7 +366,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
-                Navigator.pop(context); // إغلاق نافذة التأكيد
+                Navigator.pop(context);
                 await appState.removeProduct(productId);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
