@@ -182,89 +182,65 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Icon(Icons.shield_outlined, color: Colors.amber, size: 26),
                 SizedBox(width: 8),
                 Text(
-                  'سياسة الخصوصية وشروط الاستخدام 🛡️',
+                  'شروط وسياسة تطبيق FAST 🛡️',
                   style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             content: SizedBox(
               width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+              height: 380,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                ),
+                child: ListView(
+                  shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST – تعز! نحن نحرص على حماية بياناتك وتقديم أسرع خدمة توصيل.',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات 🚀\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
                     const SizedBox(height: 12),
-                    _buildPrivacyPoint('1️⃣ جمع واستخدام البيانات:', 'نقوم بجمع معلومات أساسية مثل (الاسم، رقم الهاتف، العنوان، وإحداثيات الموقع الجغرافي GPS) حصراً لتسهيل عملية توصيل الطلبات بدقة وسرعة عبر المناديب المعتمدين.'),
-                    const SizedBox(height: 12),
-
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '🛑 تنبيهات هامة:',
-                            style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '• يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك. ✅',
-                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            '• لو الحساب إيداع، الإيداع يتم بعد استلاستلام الطلب مباشرة مع ارسال البيان. 🪪',
-                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            '• لا تغلق تلفونك حتى تتم عملية التوصيل. 🏍️',
-                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
-                          ),
-                        ],
-                      ),
+                    const Divider(color: Colors.white12),
+                    const SizedBox(height: 8),
+                    _buildPrivacyPoint(
+                      '1. مراجعة وتأكيد تفاصيل الطلب:',
+                      'يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك. ✅',
                     ),
                     const SizedBox(height: 12),
-                    _buildPrivacyPoint('2️⃣ أمان وحماية البيانات:', 'جميع بيانات المعاملات والعملاء مشفرة وآمنة عبر قواعد بيانات سحابية متقدمة، ولا يتم مشاركتها مع أي طرف ثالث سوى فريق التوصيل والإدارة لإتمام الخدمة.'),
-                    const SizedBox(height: 8),
-                    _buildPrivacyPoint('3️⃣ الدعم والتواصل:', 'لأي استفسارات أو مساعدة حول سياسة الخصوصية أو الخدمة، يمكنك التواصل مع إدارة التطبيق في تعز، اليمن.'),
+                    _buildPrivacyPoint(
+                      '2. سياسة الحسابات والإيداع المالي:',
+                      'لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع إرسال البيان. 🪪',
+                    ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'باستخدامك للتطبيق، فإنك توافق على الشروط وسياسة الخصوصية الموضحة أعلاه.',
-                      style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
+                    _buildPrivacyPoint(
+                      '3. التواصل والاتصال بالمندوب:',
+                      'لا تغلق تلفونك حتى تتم عملية التوصيل. 🏍️',
                     ),
                   ],
                 ),
               ),
-            ),
+            ],
             actions: [
-              TextButton(
-                onPressed: () {
-                  SystemNavigator.pop();
-                },
-                child: const Text('رفض وخروج ❌', style: TextStyle(color: Colors.grey)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    appState.setPrivacyPolicyAccepted(true);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('أقر وأوافق، متابعة للتطبيق ✅', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
-                onPressed: () {
-                  appState.setPrivacyPolicyAccepted(true);
-                  Navigator.pop(context);
-                },
-                child: const Text('موافق واستمرار 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -278,8 +254,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-        const SizedBox(height: 2),
-        Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 12, height: 1.3)),
+        const SizedBox(height: 3),
+        Text(desc, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
       ],
     );
   }
@@ -1538,7 +1514,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          // ⭐ تعديل زر الرجوع: إذا لم يكن في الرئيسية يرجع للرئيسية أولاً بتسلسل، وإذا كان في الرئيسية يظهر تأكيد الخروج
           if (_currentIndex != 0) {
             setState(() {
               _currentIndex = 0;
