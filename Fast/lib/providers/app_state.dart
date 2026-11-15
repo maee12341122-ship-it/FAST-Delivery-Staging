@@ -680,7 +680,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 🛑 تفعيل الشات المفلتر بدقة لكل طلب وقناة تواصل (تم تصحيح الـ Syntax)
+  /// 🛑 تفعيل الشات المفلتر بدقة لكل طلب وقناة تواصل (تم تصحيح تعريف الـ List بدون أقواس زائدة)
   Stream<List>> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
