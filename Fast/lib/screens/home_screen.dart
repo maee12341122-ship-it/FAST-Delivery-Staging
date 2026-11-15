@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            '• لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع ارسال البيان. 🪪',
+                            '• لو الحساب إيداع، الإيداع يتم بعد استلاستلام الطلب مباشرة مع ارسال البيان. 🪪',
                             style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
                           ),
                           const SizedBox(height: 6),
@@ -2311,12 +2311,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     const Icon(Icons.star, color: Colors.amber, size: 15),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '$rating (تقييم عادل)',
+                                      '$rating (تقييم عادل)',[span_0](start_span)[span_0](end_span)
                                       style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                     const Text(' | ', style: TextStyle(color: Colors.grey)),
                                     Text(
-                                      'الوجبات: $totalProductsCount',
+                                      'الوجبات: $totalProductsCount',[span_1](start_span)[span_1](end_span)
                                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                                     ),
                                   ],
