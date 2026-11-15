@@ -380,7 +380,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // شريط التقدم الأفقي
+              // شريط التقدم الأفقي للحالات
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -428,7 +428,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // الخريطة الحية (للمشرف والمندوب فقط)
+              // الخريطة الحية (تظهر فقط للمشرف والمندوب، وتُخفي تماماً عن العميل)
               if (isManagerOrCourier) ...[
                 Container(
                   height: 240,
@@ -482,6 +482,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
               ] else ...[
+                // تنبيه حالة الطلب للعميل بدلاً من الخريطة
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
