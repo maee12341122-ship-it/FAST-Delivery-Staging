@@ -108,7 +108,7 @@ class LocalStorageService {
 }
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة لضبط الصلاحيات والإشعارات
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة والمصححة
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -680,7 +680,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 🛑 تفعيل الشات المفلتر بدقة لكل طلب وقناة تواصل منعاً لتداخل الرسائل
+  /// 🛑 تفعيل الشات المفلتر بدقة لكل طلب وقناة تواصل (تم تصحيح الـ Syntax)
   Stream<List>> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -1421,7 +1421,6 @@ class AppState extends ChangeNotifier {
           if (payload.eventType == PostgresChangeEvent.insert) {
             orders.add(payload.newRecord);
             
-            // ✅ إشعار الطلب الجديد يذهب للمشرف فقط (منع وصوله للمندوب خطأً)
             if (isAdminLoggedIn) {
               addLocalNotification(
                 'طلب جديد 📦',
@@ -1440,7 +1439,6 @@ class AppState extends ChangeNotifier {
             String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
             String assignedCourier = payload.newRecord['assigned_courier']?.toString() ?? '';
 
-            // ✅ التوجيه الصحيح للإشعارات بحسب دور المستخدم الحالي
             if (currentCourier != null && assignedCourier.trim() == currentCourier!['name']?.toString().trim()) {
               addLocalNotification(
                 'تحديث الطلب #${payload.newRecord['id']} 🛵',
@@ -1543,7 +1541,7 @@ class AppState extends ChangeNotifier {
       removeCoupon();
       await fetchAdminFinancialReports();
 
-      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
 
     } catch (e) {
