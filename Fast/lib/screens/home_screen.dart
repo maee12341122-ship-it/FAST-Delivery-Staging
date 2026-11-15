@@ -2311,12 +2311,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     const Icon(Icons.star, color: Colors.amber, size: 15),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '$rating (تقييم عادل)',[span_0](start_span)[span_0](end_span)
+                                      '$rating (تقييم عادل)',
                                       style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                     const Text(' | ', style: TextStyle(color: Colors.grey)),
                                     Text(
-                                      'الوجبات: $totalProductsCount',[span_1](start_span)[span_1](end_span)
+                                      'الوجبات: $totalProductsCount',
                                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                                     ),
                                   ],
