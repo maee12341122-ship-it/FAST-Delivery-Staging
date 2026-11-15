@@ -342,14 +342,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           itemCount: couriers.length,
           itemBuilder: (context, index) {
             final courier = couriers[index];
-            final courierName = courier['name']?.toString() ?? courier['full_name']?.toString() ?? 'مندوب';
+            final courierName = courier['name']?.toString().trim() ?? courier['full_name']?.toString().trim() ?? '';
 
-            final courierAllOrders = appState.orders.where((o) =>
-            (o['assigned_courier']?.toString() ?? '') == courierName ||
-                (o['courier_name']?.toString() ?? '') == courierName
+            // ربط دقيق لطلبات المندوب بالاسم أو المعرف المخصص
+            final courierAllOrders = appState.orders.where((o) {
+              final assigned = o['assigned_courier']?.toString().trim() ?? '';
+              final name = o['courier_name']?.toString().trim() ?? '';
+              return assigned == courierName || name == courierName;
+            }).toList();
+
+            final courierCompletedOrders = courierAllOrders.where((o) => 
+              o['status']?.toString().trim() == 'delivered'
             ).toList();
-
-            final courierCompletedOrders = courierAllOrders.where((o) => o['status'] == 'delivered').toList();
 
             double totalCourierEarnings = 0.0;
             for (var order in courierCompletedOrders) {
@@ -375,7 +379,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           children: [
                             const Icon(Icons.two_wheeler, color: Colors.amber, size: 24),
                             const SizedBox(width: 10),
-                            Text(courierName, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text(courierName.isNotEmpty ? courierName : 'مندوب', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
                           ],
                         ),
                         Container(
@@ -426,7 +430,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       padding: const EdgeInsets.all(16.0),
       child: ListView(
         children: [
-          const Text('إعدادات وقته ومواعيد عمل التطبيق ⏰', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('إعدادات ومواعيد عمل التطبيق ⏰', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(16),
@@ -772,14 +776,19 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
 
+        // تصحيح جلب سعر المنتجات ليطابق كافة الاحتمالات في قاعدة البيانات
         final double productsPrice = double.tryParse(
             order['products_total']?.toString() ??
                 order['products_price']?.toString() ??
+                order['items_price']?.toString() ??
                 order['total_price']?.toString() ?? '0'
         ) ?? 0.0;
 
         final double deliveryFeeAmount = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final double grandTotal = productsPrice + deliveryFeeAmount;
+        
+        // إذا كان total_price مسجلاً كإجمالي شامل في القاعدة، نتأكد من حسابه بدقة
+        final double dbTotalAmount = double.tryParse(order['total_amount']?.toString() ?? order['total']?.toString() ?? '0') ?? 0.0;
+        final double grandTotal = dbTotalAmount > 0 ? dbTotalAmount : (productsPrice + deliveryFeeAmount);
 
         if (!_feeControllers.containsKey(orderId)) {
           _feeControllers[orderId] = TextEditingController(text: order['delivery_fee']?.toString() ?? '0');
@@ -846,7 +855,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   const SizedBox(height: 6),
                   Text('📍 العنوان: ${order['address'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 6),
-                  Text('🛒 تفاصيل الطلب: ${order['items_description'] ?? 'بدون وصف'}', style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                  Text('🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}', style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
                   const Divider(color: Colors.white12, height: 16),
 
                   Container(
