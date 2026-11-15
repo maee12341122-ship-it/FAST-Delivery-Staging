@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../providers/app_state.dart';
-import 'chat_screen.dart';
-import 'order_tracking_screen.dart';
-import 'admin/admin_products_screen.dart';
-import 'admin/admin_reports_screen.dart';
-import 'admin_restaurants_screen.dart';
+Import 'package:flutter/material.dart';
+Import 'package:provider/provider.dart';
+Import 'package:supabase_flutter/supabase_flutter.dart';
+Import '../providers/app_state.dart';
+Import 'chat_screen.dart';
+Import 'order_tracking_screen.dart';
+Import 'admin/admin_products_screen.dart';
+Import 'admin/admin_reports_screen.dart';
+Import 'admin_restaurants_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -344,7 +344,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             final courier = couriers[index];
             final courierName = courier['name']?.toString().trim() ?? courier['full_name']?.toString().trim() ?? '';
 
-            // ربط دقيق لطلبات المندوب بالاسم أو المعرف المخصص
             final courierAllOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
               final name = o['courier_name']?.toString().trim() ?? '';
@@ -776,19 +775,30 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
 
-        // تصحيح جلب سعر المنتجات ليطابق كافة الاحتمالات في قاعدة البيانات
+        // ⭐ الدالة الصحيحة والمطابقة لجلب أسعار المنتجات ورسوم التوصيل والإجمالي الكلي
         final double productsPrice = double.tryParse(
-            order['products_total']?.toString() ??
-                order['products_price']?.toString() ??
+            order['total_price']?.toString() ??
                 order['items_price']?.toString() ??
-                order['total_price']?.toString() ?? '0'
+                order['products_total']?.toString() ??
+                order['products_price']?.toString() ?? '0'
         ) ?? 0.0;
 
-        final double deliveryFeeAmount = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        
-        // إذا كان total_price مسجلاً كإجمالي شامل في القاعدة، نتأكد من حسابه بدقة
-        final double dbTotalAmount = double.tryParse(order['total_amount']?.toString() ?? order['total']?.toString() ?? '0') ?? 0.0;
-        final double grandTotal = dbTotalAmount > 0 ? dbTotalAmount : (productsPrice + deliveryFeeAmount);
+        final double deliveryFeeAmount = double.tryParse(
+            order['delivery_fee']?.toString() ?? '0'
+        ) ?? 0.0;
+
+        final double dbTotalAmount = double.tryParse(
+            order['total_amount']?.toString() ??
+                order['total']?.toString() ?? '0'
+        ) ?? 0.0;
+
+        final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFeeAmount)
+            ? (dbTotalAmount - deliveryFeeAmount)
+            : productsPrice;
+
+        final double grandTotal = dbTotalAmount > 0
+            ? dbTotalAmount
+            : (finalProductsPrice + deliveryFeeAmount);
 
         if (!_feeControllers.containsKey(orderId)) {
           _feeControllers[orderId] = TextEditingController(text: order['delivery_fee']?.toString() ?? '0');
@@ -864,7 +874,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 4),
                         Text('🏍️ رسوم التوصيل: ${deliveryFeeAmount.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                         const Divider(color: Colors.white12, height: 8),
