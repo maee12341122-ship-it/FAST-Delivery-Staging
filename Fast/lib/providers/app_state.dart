@@ -108,7 +108,7 @@ class LocalStorageService {
 }
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة النهائية المتكاملة
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة لضبط الصلاحيات والإشعارات
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -534,7 +534,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🌐 دالة ترجمة حالات الطلبات إلى اللغة العربية الفصحى (محدثة لدعم كافة الحالات والإشعارات)
+  /// 🌐 دالة ترجمة حالات الطلبات إلى اللغة العربية الفصحى
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -680,12 +680,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream getMessagesForOrder(dynamic orderId, String targetChat) {
+  /// 🛑 تفعيل الشات المفلتر بدقة لكل طلب وقناة تواصل منعاً لتداخل الرسائل
+  Stream<List>> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('order_id', orderId)
-        .order('created_at', ascending: true);
+        .eq('target_chat', targetChat)
+        .order('created_at', ascending: true)
+        .map((rows) => rows.map((row) => Map<String, dynamic>.from(row)).toList());
   }
 
   Future<void> sendChatMessage(dynamic orderId, String senderRole, String targetChat, String messageText) async {
@@ -1399,6 +1402,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  /// 🛑 تفعيل الاستماع اللحظي للطلبات مع فصل الإشعارات بدقة بين المشرف والمندوب والعميل
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
@@ -1416,7 +1420,15 @@ class AppState extends ChangeNotifier {
         callback: (payload) {
           if (payload.eventType == PostgresChangeEvent.insert) {
             orders.add(payload.newRecord);
-            addLocalNotification('طلب جديد 📦', 'تم إضافة طلب جديد إلى النظام');
+            
+            // ✅ إشعار الطلب الجديد يذهب للمشرف فقط (منع وصوله للمندوب خطأً)
+            if (isAdminLoggedIn) {
+              addLocalNotification(
+                'طلب جديد 📦',
+                'تم إضافة طلب جديد إلى النظام من قبل العميل',
+                type: 'admin_new_order',
+              );
+            }
           } else if (payload.eventType == PostgresChangeEvent.update) {
             final index = orders.indexWhere((o) => o['id'].toString() == payload.newRecord['id'].toString());
             if (index != -1) {
@@ -1424,8 +1436,24 @@ class AppState extends ChangeNotifier {
             } else {
               orders.add(payload.newRecord);
             }
+            
             String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
-            addLocalNotification('تحديث الطلب #${payload.newRecord['id']} 🔔', 'الحالة الجديدة: $newStatus');
+            String assignedCourier = payload.newRecord['assigned_courier']?.toString() ?? '';
+
+            // ✅ التوجيه الصحيح للإشعارات بحسب دور المستخدم الحالي
+            if (currentCourier != null && assignedCourier.trim() == currentCourier!['name']?.toString().trim()) {
+              addLocalNotification(
+                'تحديث الطلب #${payload.newRecord['id']} 🛵',
+                'تم تعيينك لتوصيل هذا الطلب. الحالة: $newStatus',
+                type: 'courier_order_update',
+              );
+            } else if (isAdminLoggedIn) {
+              addLocalNotification(
+                'تحديث الطلب #${payload.newRecord['id']} 🔔',
+                'الحالة الجديدة: $newStatus',
+                type: 'admin_order_update',
+              );
+            }
           } else if (payload.eventType == PostgresChangeEvent.delete) {
             orders.removeWhere((o) => o['id'].toString() == payload.oldRecord['id'].toString());
           }
