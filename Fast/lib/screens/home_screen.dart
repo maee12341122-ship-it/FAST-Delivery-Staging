@@ -224,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-            ],
+            ),
             actions: [
               SizedBox(
                 width: double.infinity,
