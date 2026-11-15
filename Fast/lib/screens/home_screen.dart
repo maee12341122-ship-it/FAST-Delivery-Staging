@@ -875,7 +875,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  await appState.submitCourierRating(orderId, rating, commentController.text.trim());
+                  await appState.submitCourierRating(
+                    orderId: orderId,
+                    courierName: courierName,
+                    rating: rating,
+                    reviewText: commentController.text.trim(),
+                  );
                   if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -954,7 +959,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  await appState.submitRestaurantRating(orderId, restaurantName, rating, commentController.text.trim());
+                  await appState.submitRestaurantRating(
+                    orderId: orderId,
+                    rating: rating,
+                    reviewText: commentController.text.trim(),
+                  );
                   if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
