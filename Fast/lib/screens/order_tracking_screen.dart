@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -357,6 +356,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         : (finalProductsPrice + deliveryFee);
 
     final String courierId = order['assigned_courier']?.toString() ?? 'general_courier';
+    
+    // التحقق هل المستخدم الحالي هو مشرف أو مندوب؟
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
 
     final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
@@ -380,7 +381,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1️⃣ شريط التقدم الدائري العلوي للحالات (نفس شكل الصورة تماماً)
+              // شريط التقدم الأفقي للحالات
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -428,60 +429,110 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 2️⃣ بطاقة مسار الدراجة الأنيق (بديلة الخريطة للعميل تماماً كما في الصورة الثانية)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          appState.getArabicStatus(rawStatus),
-                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                      ],
+              // 🗺️ الشرط الذكي: إذا كان المشرف أو المندوب تظهر الخريطة التتبعية، وإذا كان عميل يظهر تصميم الدراجة الأنيق
+              if (isManagerOrCourier) ...[
+                Container(
+                  height: 240,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _courierPosition ?? _customerPosition,
+                      initialZoom: 16.5,
                     ),
-                    const SizedBox(height: 24),
-                    // رسم مسار الدراجة الجمالي المنحني
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          height: 4,
-                          width: double.infinity,
-                          margin: const EdgeInsets.symmetric(horizontal: 40),
-                          color: Colors.amber.withOpacity(0.3),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: const BoxDecoration(
-                            color: Colors.amber,
-                            shape: BoxShape.circle,
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.fast.taiz',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _customerPosition,
+                            width: 45,
+                            height: 45,
+                            child: const Icon(Icons.location_pin, color: Colors.redAccent, size: 42),
                           ),
-                          child: const Icon(Icons.two_wheeler, color: Colors.black, size: 28),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      rawStatus == 'delivered' ? 'بالهناء والشفاء، نتمنى تقييمك ⭐' : 'جاري العمل على توصيل طلبك بأسرع وقت 🚀',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
+                          if (_courierPosition != null)
+                            Marker(
+                              point: _courierPosition!,
+                              width: 50,
+                              height: 50,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.amber,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8)],
+                                ),
+                                child: const Icon(Icons.two_wheeler_rounded, color: Colors.black, size: 26),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ] else ...[
+                // تصميم الدراجة التجميلي الخاص بالعميل
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            appState.getArabicStatus(rawStatus),
+                            style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            height: 4,
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(horizontal: 40),
+                            color: Colors.amber.withOpacity(0.3),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              color: Colors.amber,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.two_wheeler, color: Colors.black, size: 28),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        rawStatus == 'delivered' ? 'بالهناء والشفاء، نتمنى تقييمك ⭐' : 'جاري العمل على توصيل طلبك بأسرع وقت 🚀',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
-              // 3️⃣ تفاصيل الطلب والأسعار
+              // تفاصيل الطلب والأسعار
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -520,7 +571,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 4️⃣ ⭐ أزرار التقييم الثنائي عند اكتمال الطلب والتسليم
+              // قسم التقييم الثنائي عند التسليم
               if (rawStatus == 'delivered') ...[
                 if (!isManagerOrCourier) ...[
                   Row(
