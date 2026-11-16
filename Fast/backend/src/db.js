@@ -1,30 +1,18 @@
-import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import { config } from './config.js';
 
-const { Pool } = pg;
-export const pool = new Pool({
-  connectionString: config.databaseUrl,
-  max: 15,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-  ssl: config.nodeEnv === 'production' ? { rejectUnauthorized: true } : undefined,
-});
-
-pool.on('error', (error) => {
-  console.error('خطأ غير متوقع في اتصال قاعدة البيانات:', error.message);
-});
-
-export async function withTransaction(work) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await work(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+if (!config.supabaseUrl || !config.supabaseServiceRoleKey) {
+  throw new Error('⚠️ متطلبات الاتصال بـ Supabase (URL أو Service Role Key) غير موجودة في ملفات البيئة.');
 }
+
+// إنشاء عميل Supabase للعمليات الخلفية الآمنة في السيرفر
+export const supabase = createClient(
+  config.supabaseUrl, 
+  config.supabaseServiceRoleKey, 
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
