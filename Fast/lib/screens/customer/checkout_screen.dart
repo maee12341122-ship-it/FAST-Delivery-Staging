@@ -239,7 +239,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // دالة إرسال الطلب النهائي مع تمرير السعر الحقيقي للمنتجات لتجنب ظهور 0.0 ر.ي
+  // دالة إرسال الطلب النهائي مع تمرير السعر الحقيقي للمنتجات
   Future<void> _submitOrder(AppState appState) async {
     if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
