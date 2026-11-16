@@ -281,44 +281,15 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final cleanCode = code.trim().toUpperCase();
-      // يمكن توجيه هذه العملية أيضاً لـ ApiService إن رغبت، ونبقيها هنا أو نعدلها لاحقاً
-      final response = await supabase
-          .from('coupons')
-          .select()
-          .eq('code', cleanCode)
-          .eq('is_active', true)
-          .maybeSingle();
-
-      if (response == null) {
-        return 'عذراً، هذا الكوبون غير موجود أو غير صالح ❌';
-      }
-
-      final int maxUses = int.tryParse(response['usage_limit']?.toString() ?? response['max_uses']?.toString() ?? '100') ?? 100;
-      final int timesUsed = int.tryParse(response['used_count']?.toString() ?? response['times_used']?.toString() ?? '0') ?? 0;
-
-      if (timesUsed >= maxUses) {
-        return 'عذراً، انتهت صلاحية هذا الكوبون 🚫';
-      }
-
-      final double discountValue = double.tryParse(response['discount_value']?.toString() ?? response['discount_percentage']?.toString() ?? '0.0') ?? 0.0;
-      final String discountType = response['discount_type']?.toString() ?? 'percentage';
-
-      if (discountType == 'percentage') {
-        couponDiscountAmount = (cartSubtotal * discountValue) / 100;
-      } else {
-        couponDiscountAmount = discountValue;
-      }
-
-      if (couponDiscountAmount > cartSubtotal) {
-        couponDiscountAmount = cartSubtotal;
-      }
-
-      activeCouponCode = cleanCode;
+      final response = await ApiService.validateCoupon(code.trim(), cartSubtotal);
+      
+      couponDiscountAmount = double.tryParse(response['discount_amount'].toString()) ?? 0.0;
+      activeCouponCode = response['code'];
+      
       notifyListeners();
-      return 'تم تطبيق الكوبون بنجاح! خصم بقيمة ${couponDiscountAmount.toStringAsFixed(0)} ر.ي 🎉';
+      return response['message'] ?? 'تم تطبيق الكوبون بنجاح! 🎉';
     } catch (e) {
-      return 'حدث خطأ أثناء التحقق من الكوبون.';
+      return e.toString().replaceAll('Exception: ', '');
     }
   }
 
@@ -1494,7 +1465,7 @@ class AppState extends ChangeNotifier {
     final normalizedPhone = _normalizePhone(phone);
 
     try {
-      final List> itemsPayload = _cartItems.map((cartItem) {
+      final itemsPayload = _cartItems.map((cartItem) {
         return {
           'name': cartItem.name,
           'price': cartItem.price,
