@@ -17,6 +17,7 @@ import '../models/product_model.dart';
 import '../models/address_model.dart';
 import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
+import '../services/api_service.dart';
 
 /// ===========================================================================
 /// 💾 خدمة التخزين المحلي (Local Database Service) - للعمل بدون إنترنت
@@ -281,6 +282,7 @@ class AppState extends ChangeNotifier {
 
     try {
       final cleanCode = code.trim().toUpperCase();
+      // يمكن توجيه هذه العملية أيضاً لـ ApiService إن رغبت، ونبقيها هنا أو نعدلها لاحقاً
       final response = await supabase
           .from('coupons')
           .select()
@@ -292,14 +294,14 @@ class AppState extends ChangeNotifier {
         return 'عذراً، هذا الكوبون غير موجود أو غير صالح ❌';
       }
 
-      final int maxUses = int.tryParse(response['max_uses'].toString()) ?? 100;
-      final int timesUsed = int.tryParse(response['times_used'].toString()) ?? 0;
+      final int maxUses = int.tryParse(response['usage_limit']?.toString() ?? response['max_uses']?.toString() ?? '100') ?? 100;
+      final int timesUsed = int.tryParse(response['used_count']?.toString() ?? response['times_used']?.toString() ?? '0') ?? 0;
 
       if (timesUsed >= maxUses) {
         return 'عذراً، انتهت صلاحية هذا الكوبون 🚫';
       }
 
-      final double discountValue = double.tryParse(response['discount_percentage'].toString()) ?? 0.0;
+      final double discountValue = double.tryParse(response['discount_value']?.toString() ?? response['discount_percentage']?.toString() ?? '0.0') ?? 0.0;
       final String discountType = response['discount_type']?.toString() ?? 'percentage';
 
       if (discountType == 'percentage') {
@@ -1489,38 +1491,34 @@ class AppState extends ChangeNotifier {
       throw Exception('لا يمكن إنشاء طلب بمبلغ اجمالي صفر أو سالب.');
     }
 
-    final trackingCode = Random().nextDouble().toString().substring(2, 10);
     final normalizedPhone = _normalizePhone(phone);
 
     try {
-      final response = await supabase.from('orders').insert({
-        'customer_name': customerName.trim(),
-        'phone': normalizedPhone,
-        'address': address.trim(),
-        'items_description': itemsDesc,
-        'total_price': productsTotal,
-        'tracking_code': trackingCode,
-        'status': 'waitingForPricing',
-        'payment_method': paymentMethod,
-        'payment_account': paymentAccount,
-      }).select().single();
+      final List> itemsPayload = _cartItems.map((cartItem) {
+        return {
+          'name': cartItem.name,
+          'price': cartItem.price,
+          'quantity': cartItem.quantity,
+        };
+      }).toList();
 
-      final order = Map<String, dynamic>.from(response);
-
-      final orderId = order['id'];
-      if (_cartItems.isNotEmpty && orderId != null) {
-        final List orderItemsRows = _cartItems.map((cartItem) {
-          return {
-            'order_id': orderId,
-            'product_name': cartItem.name,
-            'price': cartItem.price,
-            'quantity': cartItem.quantity,
-            'total_price': cartItem.price * cartItem.quantity,
-          };
-        }).toList();
-
-        await supabase.from('order_items').insert(orderItemsRows);
+      if (itemsPayload.isEmpty && itemsDesc.isNotEmpty) {
+        itemsPayload.add({
+          'name': itemsDesc,
+          'price': productsTotal,
+          'quantity': 1,
+        });
       }
+
+      final responseData = await ApiService.createOrder(
+        items: itemsPayload,
+        address: address.trim(),
+        notes: itemsDesc,
+      );
+
+      final order = responseData['order'];
+      final orderId = order['id'];
+      final trackingCode = order['tracking_code'] ?? Random().nextDouble().toString().substring(2, 10);
 
       lastOrderTrackingCode = trackingCode;
       userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
@@ -1545,8 +1543,8 @@ class AppState extends ChangeNotifier {
       notifyListeners();
 
     } catch (e) {
-      debugPrint('❌ خطأ أثناء إرسال الطلب: $e');
-      throw Exception('تعذر إرسال الطلب بسبب: $e');
+      debugPrint('❌ خطأ أثناء إرسال الطلب عبر الـ Backend: $e');
+      throw Exception('تعذر إرسال الطلب: $e');
     }
   }
 
