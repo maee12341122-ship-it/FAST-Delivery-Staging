@@ -1481,10 +1481,14 @@ class AppState extends ChangeNotifier {
         });
       }
 
+      // جلب التوكن الحالي للمستخدم لإرساله مع الطلب للـ Backend
+      final token = supabase.auth.currentSession?.accessToken ?? '';
+
       final responseData = await ApiService.createOrder(
         items: itemsPayload,
         address: address.trim(),
         notes: itemsDesc,
+        token: token,
       );
 
       final order = responseData['order'];
