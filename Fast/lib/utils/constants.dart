@@ -8,8 +8,8 @@ class AppConstants {
   static const Color darkBackground = Color(0xFF121212);
   static const Color surfaceColor = Color(0xFF1E1E1E);
 
-  // رابط الخادم المحلي للـ Backend
-  static const String baseUrl = 'http://localhost:3000/api';
+  // رابط الخادم الأساسي الموحد (يتم تعديله إلى رابط الإنتاج السحابي عند النشر النهائي)
+  static const String baseUrl = 'https://your-node-backend-url.com/api';
 
   // أوقات الدوام الرسمي
   static const int openingHour = 11; // 11 صباحاً
