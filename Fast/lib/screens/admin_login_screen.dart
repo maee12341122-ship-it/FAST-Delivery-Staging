@@ -38,8 +38,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     
     final appState = context.read<AppState>();
     
-    // استدعاء دالة تسجيل دخول المشرف من الـ AppState
-    bool success = await appState.loginAdmin(
+    // استدعاء دالة تسجيل دخول المشرف المصححة المتوافقة مع AppState
+    bool success = await appState.loginAdminFromSupabase(
       _usernameController.text.trim(), 
       _passwordController.text.trim()
     );
@@ -53,7 +53,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     }
 
     // جلب معرف المشرف بعد نجاح تسجيل الدخول
-    final adminId = appState.currentAdminId ?? 'admin_main';
+    final adminId = appState.supabase.auth.currentUser?.id ?? 'admin_main';
 
     // 🚀 حفظ معرف OneSignal Player ID الخاص بجهاز المشرف في جدول admins في Supabase
     await NotificationService.saveUserPlayerId(adminId, 'admins');
