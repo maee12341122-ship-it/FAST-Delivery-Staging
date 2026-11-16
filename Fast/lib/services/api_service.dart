@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
 class ApiService {
-  // قم بتغيير هذا الرابط إلى رابط الخادم الخاص بك (مثلاً عند التشغيل المحلي على المحاكي أو الإنتاج)
+  // قم بتغيير هذا الرابط إلى رابط الخادم الخاص بك 
+  // (مثلاً للمحاكي المحلي: 'http://10.0.2.2:3000/api')
   static const String baseUrl = 'https://your-node-backend-url.com/api'; 
 
   // 1. إنشاء طلب جديد عبر خادم Node.js الآمن
