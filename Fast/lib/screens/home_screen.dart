@@ -10,9 +10,7 @@ import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
 import '../widgets/fast_app_logo.dart';
 import '../widgets/empty_state_widget.dart';
-import 'admin_screen.dart';
 import 'auth/phone_auth_screen.dart';
-import 'courier_screen.dart';
 import 'chat_screen.dart';
 import 'customer/edit_profile_screen.dart';
 import 'customer/favorites_screen.dart';
@@ -434,7 +432,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // بطاقة خدمة "وصل لي" (التوصيل الخاص المرن)
   Widget _buildCustomDeliveryBanner(BuildContext context, String token) {
     return GestureDetector(
       onTap: () {
@@ -501,17 +498,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // شبكة الأقسام البصرية الجذابة الحديثة (مطابقة لطلبك والصور)
+  // شبكة الأقسام البصرية المحدثة بدقة مطابقة تماماً لتصميم التطبيق الفخم في الصور
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final List> categoriesList = [
       {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
+      {'title': 'الخضار واللحوم', 'icon': Icons.eco, 'category': 'الخضار والفواكه'},
+      {'title': 'الحلويات', 'icon': Icons.cake, 'category': 'حلويات ومعجنات'},
+      {'title': 'السوبرماركت', 'icon': Icons.local_grocery_store, 'category': 'البقالات'},
       {'title': 'المطاعم', 'icon': Icons.restaurant, 'category': 'المطاعم'},
-      {'title': 'حلويات ومعجنات', 'icon': Icons.cake, 'category': 'حلويات ومعجنات'},
-      {'title': 'البقالات', 'icon': Icons.local_grocery_store, 'category': 'البقالات'},
-      {'title': 'الخضار والفواكه', 'icon': Icons.eco, 'category': 'الخضار والفواكه'},
-      {'title': 'الصيدلية الآمنة', 'icon': Icons.local_pharmacy, 'category': 'الصيدلية الآمنة'},
-      {'title': 'هدايا واكسسوارات', 'icon': Icons.card_giftcard, 'category': 'هدايا واكسسوارات'},
-      {'title': 'طلبات أخرى', 'icon': Icons.edit_note, 'category': 'طلبات أخرى'},
+      {'title': 'وصي لي', 'icon': Icons.delivery_dining, 'category': 'طلبات أخرى'},
+      {'title': 'المشاريع المنزلية', 'icon': Icons.home_work, 'category': 'المشاريع المنزلية'},
+      {'title': 'الصيدلية والجمال', 'icon': Icons.local_pharmacy, 'category': 'الصيدلية الآمنة'},
+      {'title': 'الورود والهدايا', 'icon': Icons.card_giftcard, 'category': 'هدايا واكسسوارات'},
     ];
 
     return Padding(
@@ -531,7 +529,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 4,
-              childAspectRatio: 0.85,
+              childAspectRatio: 0.82,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
             ),
@@ -550,30 +548,37 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _searchController.clear();
                   });
                 },
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.amber.withOpacity(0.2) : cardBg,
-                    borderRadius: BorderRadius.circular(14),
+                    color: isSelected ? Colors.amber.withOpacity(0.25) : cardBg,
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.25),
-                      width: isSelected ? 1.5 : 1,
+                      width: isSelected ? 1.8 : 1,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        catItem['icon'] as IconData,
-                        color: isSelected ? Colors.amber : Colors.amber.shade700,
-                        size: 26,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          catItem['icon'] as IconData,
+                          color: isSelected ? Colors.amber : Colors.amber.shade700,
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -742,7 +747,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -1673,7 +1678,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ],
               ),
               actions: [
-                // زر المفضلة السريع (القلب) المطلوب في الواجهة الرئيسية
+                // زر المفضلة السريع (القلب)
                 IconButton(
                   icon: const Icon(Icons.favorite, color: Colors.redAccent, size: 24),
                   tooltip: 'المفضلة',
@@ -1800,122 +1805,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ],
                 ),
-
-                IconButton(
-                  icon: const Icon(Icons.two_wheeler, color: Colors.amber),
-                  tooltip: 'لوحة المندوب',
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      PageRouteBuilder(
-                        pageBuilder: (context, animation, secondaryAnimation) => const CourierScreen(),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                          return FadeTransition(opacity: animation, child: child);
-                        },
-                      ),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.admin_panel_settings, color: Colors.amber),
-                  tooltip: 'لوحة المشرف',
-                  onPressed: () {
-                    if (appState.isAdminLoggedIn) {
-                      Navigator.push(
-                        context,
-                        PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => const AdminScreen(),
-                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                            return FadeTransition(opacity: animation, child: child);
-                          },
-                        ),
-                      );
-                    } else {
-                      final passwordController = TextEditingController();
-                      final usernameController = TextEditingController();
-
-                      showDialog(
-                        context: context,
-                        builder: (context) => GestureDetector(
-                          onTap: () => FocusScope.of(context).unfocus(),
-                          child: AlertDialog(
-                            backgroundColor: cardBg,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            title: Text('تسجيل دخول المشرف الآمن', style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold)),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                TextField(
-                                  controller: usernameController,
-                                  style: TextStyle(color: textColor, fontSize: 14),
-                                  decoration: const InputDecoration(
-                                    labelText: 'اسم المستخدم',
-                                    labelStyle: TextStyle(color: Colors.grey),
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: passwordController,
-                                  obscureText: true,
-                                  style: TextStyle(color: textColor, fontSize: 14),
-                                  decoration: const InputDecoration(
-                                    labelText: 'كلمة المرور',
-                                    labelStyle: TextStyle(color: Colors.grey),
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.amber,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () async {
-                                  String username = usernameController.text.trim();
-                                  String password = passwordController.text.trim();
-
-                                  bool loginSuccess = await appState.loginAdminFromSupabase(username, password);
-
-                                  if (!context.mounted) return;
-                                  Navigator.pop(context);
-
-                                  if (loginSuccess) {
-                                    if (!context.mounted) return;
-                                    Navigator.push(
-                                      context,
-                                      PageRouteBuilder(
-                                        pageBuilder: (context, animation, secondaryAnimation) => const AdminScreen(),
-                                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                          return FadeTransition(opacity: animation, child: child);
-                                        },
-                                      ),
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('مرحباً بك، تم تسجيل دخول المشرف بنجاح! 🚀')),
-                                    );
-                                  } else {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('اسم المستخدم أو كلمة المرور غير صحيحة! ❌')),
-                                    );
-                                  }
-                                },
-                                child: const Text('دخول', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
+                // ملاحظة: تم إخفاء أزرار لوحة المندوب والمشرف بالكامل من هنا لضمان الأمان وعدم ظهورها للمستخدمين 🛡️
               ],
             ),
             body: Column(
@@ -2282,7 +2172,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
 
-          // شبكة الأقسام البصرية الحديثة بدلاً من الأزرار التقليدية
           _buildCategoriesGrid(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
