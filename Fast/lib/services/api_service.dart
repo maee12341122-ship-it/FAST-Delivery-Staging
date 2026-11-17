@@ -1,125 +1,106 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // تعريفات مخصصة لتجنب أخطاء الأقواس نهائياً
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonList = List<JsonMap>;
 
 class ApiService {
-  // رابط الخادم الأساسي (Node.js Backend) - استبدله برابط خادمك الحقيقي لاحقاً
-  static const String baseUrl = 'https://your-node-backend-url.com/api'; 
+  static final SupabaseClient _supabase = Supabase.instance.client;
 
-  // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة)
+  // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة من Supabase)
   static Future<JsonMap> fetchCatalog() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/catalog'));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('تعذر جلب البيانات من الخادم.');
-      }
+      final response = await _supabase.from('products').select();
+      return {'products': response};
     } catch (e) {
       debugPrint('❌ خطأ في جلب الكتالوج: $e');
       rethrow;
     }
   }
 
-  // 2. التحقق من الكوبون وتطبيق الخصم (متطابق مع Backend subtotal)
+  // 2. التحقق من الكوبون وتطبيق الخصم
   static Future<JsonMap> validateCoupon(String code, double subtotal) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/coupons/validate'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'code': code,
-          'subtotal': subtotal,
-        }),
-      );
+      final response = await _supabase
+          .from('coupons')
+          .select()
+          .eq('code', code.trim())
+          .maybeSingle();
 
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'الكوبون غير صالح.');
+      if (response == null) {
+        throw Exception('كود الخصم غير صالح أو منتهي الصلاحية.');
       }
+
+      double discountPercent = double.tryParse(response['discount_percent']?.toString() ?? '0') ?? 0.0;
+      double discountAmount = subtotal * (discountPercent / 100);
+
+      return {
+        'code': response['code'],
+        'discount_amount': discountAmount,
+        'message': 'تم تطبيق الكوبون بنجاح! 🎉'
+      };
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من الكوبون: $e');
       rethrow;
     }
   }
 
-  // 3. إنشاء طلب جديد عبر خادم Node.js الآمن
+  // 3. إنشاء طلب جديد مباشرة في جدول orders في Supabase
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
     required String notes,
-    required String token,
+    required String token, // يُستخدم هنا كرقم هاتف العميل
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/orders'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'items': items,
-          'address': address,
-          'notes': notes,
-        }),
-      );
-
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 201) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'فشل إنشاء الطلب.');
+      double productsTotal = 0.0;
+      for (var item in items) {
+        double price = double.tryParse(item['price'].toString()) ?? 0.0;
+        int qty = int.tryParse(item['quantity'].toString()) ?? 1;
+        productsTotal += price * qty;
       }
+
+      final response = await _supabase.from('orders').insert({
+        'phone': token,
+        'address': address.trim(),
+        'items_description': notes.trim(),
+        'total_price': productsTotal,
+        'status': 'waitingForPricing', // بانتظار تسعير الإدارة
+        'created_at': DateTime.now().toIso8601String(),
+      }).select().single();
+
+      return {
+        'order': response,
+        'message': 'تم إرسال الطلب بنجاح'
+      };
     } catch (e) {
-      debugPrint('❌ خطأ في الاتصال بالـ Backend (createOrder): $e');
-      rethrow;
+      debugPrint('❌ خطأ في إنشاء الطلب (Supabase): $e');
+      throw Exception('تعذر إرسال الطلب: $e');
     }
   }
 
-  // 4. جلب طلبات العميل الشخصية
-  static Future<List<dynamic>> fetchMyOrders(String token) async {
+  // 4. جلب طلبات العميل الشخصية بناءً على رقم الهاتف
+  static Future<List<dynamic>> fetchMyOrders(String phone) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/orders/mine'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data['orders'] ?? [];
-      } else {
-        throw Exception(data['error'] ?? 'تعذر جلب الطلبات.');
-      }
+      final response = await _supabase.from('orders').select().eq('phone', phone);
+      return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات العميل: $e');
-      rethrow;
+      return [];
     }
   }
 
   // 5. [لوحة المشرف] جلب جميع الطلبات
   static Future<List<dynamic>> fetchAdminOrders(String token, {String? status}) async {
     try {
-      String url = '$baseUrl/admin/orders';
+      var query = _supabase.from('orders').select();
       if (status != null && status.isNotEmpty) {
-        url += '?status=$status';
+        query = query.eq('status', status) as dynamic;
       }
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data['orders'] ?? [];
-      } else {
-        throw Exception(data['error'] ?? 'تعذر جلب طلبات المشرف.');
-      }
+      final response = await query;
+      return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات المشرف: $e');
       rethrow;
@@ -134,24 +115,19 @@ class ApiService {
     String assignedCourier,
   ) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/admin/orders/$orderId/pricing'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'deliveryFee': deliveryFee,
-          'assignedCourier': assignedCourier,
-        }),
-      );
+      final orderRes = await _supabase.from('orders').select('total_price').eq('id', orderId).single();
+      double productsTotal = double.tryParse(orderRes['total_price']?.toString() ?? '0') ?? 0.0;
+      double totalPrice = productsTotal + deliveryFee;
 
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'فشل تحديد السعر.');
-      }
+      final response = await _supabase.from('orders').update({
+        'delivery_fee': deliveryFee,
+        'total_price': totalPrice,
+        'assigned_courier': assignedCourier.trim(),
+        'status': 'pricingSentToCustomer',
+        'admin_message': 'تم تحديد رسوم التوصيل ($deliveryFee ر.ي). بانتظار موافقة العميل ⏳',
+      }).eq('id', orderId).select().single();
+
+      return {'order': response, 'message': 'تم تحديث السعر بنجاح'};
     } catch (e) {
       debugPrint('❌ خطأ في تسعير الطلب: $e');
       rethrow;
@@ -165,21 +141,11 @@ class ApiService {
     String status,
   ) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/admin/orders/$orderId/status'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'status': status}),
-      );
+      final response = await _supabase.from('orders').update({
+        'status': status,
+      }).eq('id', orderId).select().single();
 
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'فشل تحديث الحالة.');
-      }
+      return {'order': response, 'message': 'تم تحديث الحالة بنجاح'};
     } catch (e) {
       debugPrint('❌ خطأ في تحديث حالة الطلب للمشرف: $e');
       rethrow;
@@ -187,19 +153,10 @@ class ApiService {
   }
 
   // 8. [لوحة المندوب] جلب الطلبات المسندة للمندوب الحالي
-  static Future<List<dynamic>> fetchCourierOrders(String token) async {
+  static Future<List<dynamic>> fetchCourierOrders(String courierName) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/courier/orders'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
-
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data['orders'] ?? [];
-      } else {
-        throw Exception(data['error'] ?? 'تعذر جلب طلبات المندوب.');
-      }
+      final response = await _supabase.from('orders').select().eq('assigned_courier', courierName.trim());
+      return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات المندوب: $e');
       rethrow;
@@ -213,21 +170,11 @@ class ApiService {
     String status,
   ) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/courier/orders/$orderId/status'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'status': status}),
-      );
+      final response = await _supabase.from('orders').update({
+        'status': status,
+      }).eq('id', orderId).select().single();
 
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200) {
-        return data;
-      } else {
-        throw Exception(data['error'] ?? 'فشل تحديث حالة الطلب.');
-      }
+      return {'order': response, 'message': 'تم تحديث حالة الطلب بنجاح'};
     } catch (e) {
       debugPrint('❌ خطأ في تحديث حالة الطلب للمندوب: $e');
       rethrow;
@@ -241,22 +188,8 @@ class ApiService {
     double longitude,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/courier/location'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'latitude': latitude,
-          'longitude': longitude,
-        }),
-      );
-
-      if (response.statusCode != 201) {
-        final data = jsonDecode(response.body);
-        throw Exception(data['error'] ?? 'فشل تحديث الموقع.');
-      }
+      // يمكن ربطها بجدول الجلسات أو المناديب في Supabase إذا رغبت
+      debugPrint('📍 تحديث الموقع: $latitude, $longitude');
     } catch (e) {
       debugPrint('❌ خطأ في تحديث موقع المندوب: $e');
       rethrow;
