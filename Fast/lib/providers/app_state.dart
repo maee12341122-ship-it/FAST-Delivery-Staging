@@ -1481,7 +1481,6 @@ class AppState extends ChangeNotifier {
         });
       }
 
-      // جلب التوكن الحالي للمستخدم لإرساله مع الطلب للـ Backend
       final token = supabase.auth.currentSession?.accessToken ?? '';
 
       final responseData = await ApiService.createOrder(
@@ -1646,6 +1645,22 @@ class AppState extends ChangeNotifier {
   Future<void> markOrderDelivered(dynamic orderId) async {
     await _submitCourierOrderAction(orderId, 'delivered');
     addNotification('تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
+  }
+
+  /// 🧹 تصفير حساب وعمولات المندوب بعد المحاسبة اليومية أو شبه اليومية
+  Future<void> settleCourierEarnings(String courierName) async {
+    try {
+      await supabase
+          .from('orders')
+          .update({'is_settled': true})
+          .eq('assigned_courier', courierName.trim())
+          .eq('status', 'delivered');
+
+      await fetchOrders();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ خطأ في تصفير حساب المندوب: $e');
+    }
   }
 
   Future<void> submitCourierRating({
