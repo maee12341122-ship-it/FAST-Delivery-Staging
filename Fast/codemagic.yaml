@@ -1,7 +1,7 @@
 workflows:
   fast-delivery-android:
-    name: FAST Delivery - APK Build 🚀
-    max_build_duration: 60
+    name: FAST Delivery - Ultimate Production APK Build 🚀
+    max_build_duration: 90
     working_directory: Fast
     environment:
       flutter: 3.22.2
@@ -10,7 +10,7 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Clean and regenerate fresh Android inside Fast
+      - name: 1. Clean and generate fresh Android inside Fast
         script: |
           set -e
           echo "Cleaning old android folder inside Fast..."
@@ -18,14 +18,14 @@ workflows:
           echo "Generating fresh android project..."
           flutter create . --platforms=android --org com.example --project-name fast_delivery
           
-      - name: 2. Force exact compatible Gradle Wrapper (Gradle 8.7)
+      - name: 2. Force exact compatible Gradle Wrapper (Gradle 8.8)
         script: |
           set -e
           mkdir -p android/gradle/wrapper
           cat << 'EOF' > android/gradle/wrapper/gradle-wrapper.properties
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.8-bin.zip
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
