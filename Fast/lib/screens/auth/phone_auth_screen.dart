@@ -20,17 +20,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  
-  // 🔧 تم جعل الحقل يبدأ فارغاً أو بناءً على اختيار الخريطة الفعلي لمنع الثبات على نص معين
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController(); // 👈 حقل كلمة المرور للأدمن والمندوب
 
-  // تحسين السلاسة والانتقال عبر الكيبورد (FocusNodes لكل الحقول)
+  // FocusNodes لكل الحقول
   final FocusNode _phoneFocus = FocusNode();
   final FocusNode _otpFocus = FocusNode();
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _addressFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
 
-  // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال البروفايل
+  // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال بروفايل العميل، 3 = إدخال كلمة السر للأدمن/المندوب
   int _currentStep = 0;
   bool _isLoading = false;
 
@@ -39,6 +39,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _cleanPhoneInput = '';
   String? _generatedOtp;
   String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
+  Map<String, dynamic>? _pendingUserRecord; // تخزين بيانات المستخدم المؤقتة للتحقق من الباسورد
 
   @override
   void dispose() {
@@ -46,14 +47,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     _otpController.dispose();
     _nameController.dispose();
     _addressController.dispose();
+    _passwordController.dispose();
     _phoneFocus.dispose();
     _otpFocus.dispose();
     _nameFocus.dispose();
     _addressFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
-  // 🗺️ دالة لفتح الخريطة التفاعلية وجلب الإحداثيات والعنوان الفعلي بنظافة
   Future<void> _openInteractiveMap() async {
     final result = await Navigator.push(
       context,
@@ -72,7 +74,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           final lng = latLng.longitude;
           final formattedCoords = '($lat, $lng)';
 
-          // الدمج السليم بين العنوان المختار والإحداثيات الفعلية الحية
           if (address != null && address.isNotEmpty) {
             _addressController.text = '$address - الإحداثيات: $formattedCoords';
           } else {
@@ -85,7 +86,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات (الأدمن، المناديب، والعملاء)
+  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات لتحديد نوع المستخدم
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -113,6 +114,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       if (adminRes != null) {
         _detectedRole = 'admin';
+        _pendingUserRecord = adminRes;
         debugPrint('✅ تم التعرف على المستخدم كـ Admin');
       } else {
         // 2. فحص هل الرقم يتبع للمناديب (couriers)
@@ -124,6 +126,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
         if (courierRes != null) {
           _detectedRole = 'courier';
+          _pendingUserRecord = courierRes;
           debugPrint('✅ تم التعرف على المستخدم كـ Courier');
         } else {
           // 3. فحص هل العميل موجود مسبقاً في جدول customers
@@ -188,7 +191,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والتوجيه التلقائي حسب الصلاحية
+  // 2️⃣ التحقق من كود OTP (لو أدمن أو مندوب ➡️ ينقلهم لخطوة إدخال الباسورد، لو عميل ➡️ يكمل)
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -210,22 +213,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       if (isValid) {
         if (mounted) {
-          if (_detectedRole == 'admin') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminScreen()),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
-            );
-          } else if (_detectedRole == 'courier') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const CourierScreen()),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
-            );
+          if (_detectedRole == 'admin' || _detectedRole == 'courier') {
+            // توجيههم لخطوة إدخال كلمة المرور الخاصة بهم
+            setState(() {
+              _currentStep = 3; 
+            });
           } else {
             setState(() {
               _currentStep = 2;
@@ -253,7 +245,64 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 3️⃣ حفظ بيانات العميل النهائية
+  // 3️⃣ التحقق من كلمة المرور الخاصة بالأدمن أو المندوب
+  Future<void> _verifyAdminOrCourierPassword(AppState appState) async {
+    final enteredPassword = _passwordController.text.trim();
+    if (enteredPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال كلمة المرور')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (_pendingUserRecord != null) {
+        // التحقق من حقل password_hash أو password المخزن في الجدول
+        final storedPassword = _pendingUserRecord!['password_hash']?.toString() ?? 
+                               _pendingUserRecord!['password']?.toString() ?? '';
+
+        if (storedPassword == enteredPassword) {
+          if (!mounted) return;
+
+          if (_detectedRole == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminScreen()),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
+            );
+          } else if (_detectedRole == 'courier') {
+            // حفظ بيانات المندوب في الـ AppState
+            appState.currentCourier = _pendingUserRecord;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const CourierScreen()),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('كلمة المرور غير صحيحة ❌', backgroundColor: Colors.red)),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في التحقق من كلمة المرور: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // 4️⃣ حفظ بيانات العميل النهائية
   Future<void> _saveCustomerProfile(AppState appState) async {
     final name = _nameController.text.trim();
     final address = _addressController.text.trim();
@@ -362,7 +411,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       child: Icon(
                         _currentStep == 1
                             ? Icons.mark_chat_read_outlined
-                            : Icons.person_outline_rounded,
+                            : _currentStep == 3
+                                ? Icons.lock_outline
+                                : Icons.person_outline_rounded,
                         size: 50,
                         color: primaryGold,
                       ),
@@ -505,7 +556,69 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                     ]
 
-                    // ---------------- المرحلة الثالثة: إكمال وتأكيد البيانات الشخصية والعنوان ----------------
+                    // ---------------- المرحلة الثالثة: إدخال كلمة السر الخاصة بالأدمن أو المندوب ----------------
+                    else if (_currentStep == 3) ...[
+                      Text(
+                        _detectedRole == 'admin' ? 'تسجيل دخول المشرف 🛡️' : 'تسجيل دخول المندوب 🛵',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'أدخل كلمة المرور الخاصة بحسابك للمتابعة',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 25),
+                      TextField(
+                        controller: _passwordController,
+                        focusNode: _passwordFocus,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _verifyAdminOrCourierPassword(appState),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'كلمة المرور',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon: const Icon(Icons.lock, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 25),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryGold,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _isLoading ? null : () => _verifyAdminOrCourierPassword(appState),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                              )
+                            : const Text('تسجيل الدخول للوحة التحكم 🚀',
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
+                      ),
+                    ]
+
+                    // ---------------- المرحلة الرابعة: إكمال وتأكيد البيانات الشخصية للعميل ----------------
                     else ...[
                       const Text(
                         'استكمال وتأكيد البيانات الشخصية',
