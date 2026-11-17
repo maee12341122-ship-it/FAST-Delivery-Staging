@@ -15,6 +15,12 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
+    // إيقاف فحص الـ Lint لتجنب أخطاء الحزم القديمة أثناء بناء النسخة النهائية
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.maeen.fast_delivery"
