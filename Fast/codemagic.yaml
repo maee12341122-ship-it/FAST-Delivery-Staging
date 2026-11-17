@@ -5,6 +5,10 @@ workflows:
     environment:
       flutter: 3.19.6
     scripts:
+      - name: Clean old android folder and regenerate compatible one
+        script: |
+          rm -rf android
+          flutter create . --platforms=android
       - name: Install dependencies
         script: flutter pub get
       - name: Build APK Release
