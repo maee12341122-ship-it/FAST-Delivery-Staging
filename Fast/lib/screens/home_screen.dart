@@ -20,6 +20,7 @@ import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
 import 'notifications_screen.dart';
 import 'order_tracking_screen.dart';
+import 'customer/custom_delivery_screen.dart'; // شاشة "وصل لي" الجديدة
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -433,6 +434,73 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // بطاقة خدمة "وصل لي" (التوصيل الخاص المرن) المضافة في واجهة الرئيسية
+  Widget _buildCustomDeliveryBanner(BuildContext context, String token) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => CustomDeliveryScreen(token: token),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF332700), Color(0xFF1E1E1E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.amber, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.amber.withOpacity(0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delivery_dining, color: Colors.amber, size: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'وصل لي (توصيل خاص مرن 🚀)',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'من أين، إلى أين، وحجم ونوع الشحنة بكل دقة',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _handleProductTapOrAdd(BuildContext context, AppState appState, ProductModel product) async {
     await appState.fetchProductModifiers(product.id);
 
@@ -737,14 +805,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildInstructionStep(
-                  '1️⃣ تصفح المنتجات أو اطلب خدمة خاصة',
-                  'اختر قسمك المفضل (مطاعم، حلويات ومعجنات، بقالات...) أو اطلب خدمة خاصة من تبويب "طلبات أخرى".',
+                  '1️⃣ تصفح المنتجات أو اطلب خدمة "وصل لي"',
+                  'اختر قسمك المفضل أو استخدم خدمة "وصل لي" لتحديد مكان الاستلام والتوصيل وتفاصيل شحنتك الخاصة.',
                   textColor,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
                   '2️⃣ تحديد الموقع وإرسال الطلب',
-                  'أضف منتجاتك للسلة، حدد عنوانك بدقة أو عبر خريطة الـ GPS، ثم اضغط على "تأكيد وإرسال الطلب".',
+                  'أضف منتجاتك للسلة أو أرسل تفاصيل التوصيل الخاص، حدد عنوانك بدقة، ثم اضغط على "تأكيد وإرسال".',
                   textColor,
                 ),
                 const Divider(color: Colors.white12, height: 16),
@@ -756,7 +824,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
                   '4️⃣ تعيين المندوب والتوصيل الفوري',
-                  'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته عبر الشات حتى يصل باب منزلك ✅',
+                  'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته حتى يصل باب منزلك ✅',
                   textColor,
                 ),
               ],
@@ -958,7 +1026,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController priceController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
-    final FocusNode priceFocus = FocusNode();
 
     showDialog(
       context: context,
@@ -1001,28 +1068,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 14),
                   TextField(
                     controller: priceController,
-                    focusNode: priceFocus,
                     keyboardType: TextInputType.number,
                     autofocus: true,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      if (formKey.currentState!.validate()) {
-                        final double enteredPrice = double.parse(priceController.text.trim());
-                        appState.addToCart(CartItemModel(
-                          id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
-                          name: '${product.name} (بسعر محدد)',
-                          price: enteredPrice,
-                          quantity: 1,
-                          restaurantId: product.restaurantName.isNotEmpty ? product.restaurantName : 'قسم الخضار والفواكه',
-                          imageUrl: product.imageUrl,
-                        ));
-                        Navigator.pop(context);
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تمت إضافة ${product.name} بسعر $enteredPrice ر.ي إلى السلة بنجاح ✅')),
-                        );
-                      }
-                    },
                     style: TextStyle(color: appState.isDarkMode ? Colors.white : Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(
                       labelText: 'السعر الإلزامي (ر.ي)*',
@@ -1084,7 +1131,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     final TextEditingController couponController = TextEditingController();
-    final FocusNode couponFocus = FocusNode();
 
     showDialog(
       context: context,
@@ -1106,9 +1152,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     children: [
                       TextField(
                         controller: _nameController,
-                        focusNode: _nameFocus,
-                        textInputAction: TextInputAction.next,
-                        onSubmitted: (_) => FocusScope.of(context).requestFocus(_phoneFocus),
                         style: TextStyle(color: textColor),
                         decoration: InputDecoration(
                           labelText: 'الاسم الكامل',
@@ -1121,10 +1164,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       const SizedBox(height: 12),
                       TextField(
                         controller: _phoneController,
-                        focusNode: _phoneFocus,
                         keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.next,
-                        onSubmitted: (_) => FocusScope.of(context).requestFocus(_addressFocus),
                         style: TextStyle(color: textColor),
                         decoration: InputDecoration(
                           labelText: 'رقم الهاتف',
@@ -1167,9 +1207,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                       TextField(
                         controller: _addressDescriptionController,
-                        focusNode: _addressFocus,
-                        textInputAction: TextInputAction.next,
-                        onSubmitted: (_) => FocusScope.of(context).requestFocus(couponFocus),
                         style: TextStyle(color: textColor),
                         decoration: InputDecoration(
                           labelText: 'العنوان التفصيلي (تعز)*',
@@ -1186,13 +1223,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           Expanded(
                             child: TextField(
                               controller: couponController,
-                              focusNode: couponFocus,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) async {
-                                String msg = await appState.applyCouponCode(couponController.text, appState.totalAmount);
-                                setDialogState(() {});
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-                              },
                               style: TextStyle(color: textColor),
                               decoration: InputDecoration(
                                 labelText: 'كود الخصم (اختياري)',
@@ -1327,7 +1357,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Navigator.pop(ctx);
                         setState(() => _currentIndex = 2);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
+                          SnackBar(content: Text('تم استلاستلام الطلب. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
                         );
                       } catch (e) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
@@ -1688,8 +1718,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     } else {
                       final passwordController = TextEditingController();
                       final usernameController = TextEditingController();
-                      final FocusNode adminUserFocus = FocusNode();
-                      final FocusNode adminPassFocus = FocusNode();
 
                       showDialog(
                         context: context,
@@ -1704,9 +1732,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               children: [
                                 TextField(
                                   controller: usernameController,
-                                  focusNode: adminUserFocus,
-                                  textInputAction: TextInputAction.next,
-                                  onSubmitted: (_) => FocusScope.of(context).requestFocus(adminPassFocus),
                                   style: TextStyle(color: textColor, fontSize: 14),
                                   decoration: const InputDecoration(
                                     labelText: 'اسم المستخدم',
@@ -1717,36 +1742,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 const SizedBox(height: 12),
                                 TextField(
                                   controller: passwordController,
-                                  focusNode: adminPassFocus,
                                   obscureText: true,
-                                  textInputAction: TextInputAction.done,
-                                  onSubmitted: (_) async {
-                                    String username = usernameController.text.trim();
-                                    String password = passwordController.text.trim();
-                                    bool loginSuccess = await appState.loginAdminFromSupabase(username, password);
-                                    if (!context.mounted) return;
-                                    Navigator.pop(context);
-                                    if (loginSuccess) {
-                                      if (!context.mounted) return;
-                                      Navigator.push(
-                                        context,
-                                        PageRouteBuilder(
-                                          pageBuilder: (context, animation, secondaryAnimation) => const AdminScreen(),
-                                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                            return FadeTransition(opacity: animation, child: child);
-                                          },
-                                        ),
-                                      );
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('مرحباً بك، تم تسجيل دخول المشرف بنجاح! 🚀')),
-                                      );
-                                    } else {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('اسم المستخدم أو كلمة المرور غير صحيحة! ❌')),
-                                      );
-                                    }
-                                  },
                                   style: TextStyle(color: textColor, fontSize: 14),
                                   decoration: const InputDecoration(
                                     labelText: 'كلمة المرور',
@@ -1989,9 +1985,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 20),
                   TextField(
                     controller: _customItemNameController,
-                    focusNode: _customItemNameFocus,
-                    textInputAction: TextInputAction.next,
-                    onSubmitted: (_) => FocusScope.of(context).requestFocus(_customItemPriceFocus),
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
                       labelText: 'اكتب تفاصيل أو اسم الطلب',
@@ -2004,23 +1997,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 14),
                   TextField(
                     controller: _customItemPriceController,
-                    focusNode: _customItemPriceFocus,
                     keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      if (_customItemNameController.text.isNotEmpty && _customItemPriceController.text.isNotEmpty) {
-                        final price = double.tryParse(_customItemPriceController.text) ?? 1000.0;
-                        appState.addCustomOrderToCart(
-                          customName: _customItemNameController.text,
-                          estimatedPrice: price,
-                        );
-                        _customItemNameController.clear();
-                        _customItemPriceController.clear();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تمت إضافة الطلب الخاص إلى السلة بنجاح! 🚀')),
-                        );
-                      }
-                    },
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
                       labelText: 'السعر التقديري (ر.ي)',
@@ -2130,6 +2107,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
           _buildDynamicPromoBanners(),
 
+          // دمج بطاقة "وصل لي" البارزة في الرئيسية
+          _buildCustomDeliveryBanner(context, appState.userProfile?['id'] ?? 'guest'),
+
           _buildAdBannerWidget(cardBg, textColor),
 
           if (_isSearching)
@@ -2140,9 +2120,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 children: [
                   TextField(
                     controller: _searchController,
-                    focusNode: _searchFocus,
                     autofocus: true,
-                    textInputAction: TextInputAction.search,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
                       hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
