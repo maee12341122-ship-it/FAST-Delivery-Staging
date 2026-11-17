@@ -3,9 +3,9 @@ workflows:
     name: FAST Delivery - APK Build 🚀
     max_build_duration: 60
     environment:
-      flutter: 3.19.6
+      flutter: 3.16.5
     scripts:
-      - name: Clean and regenerate clean Android project
+      - name: Regenerate clean Android project
         script: |
           rm -rf android
           flutter create . --platforms=android
