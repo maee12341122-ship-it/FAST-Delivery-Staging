@@ -498,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // شبكة الأقسام البصرية المحدثة بدقة مطابقة تماماً لتصميم التطبيق الفخم في الصور
+  // شبكة الأقسام البصرية المحدثة بدقة مطابقة تماماً لتصميم التطبيق الفخم في الصور وبدون أي مشاكل بناء
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final List> categoriesList = [
       {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
@@ -1678,7 +1678,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ],
               ),
               actions: [
-                // زر المفضلة السريع (القلب)
                 IconButton(
                   icon: const Icon(Icons.favorite, color: Colors.redAccent, size: 24),
                   tooltip: 'المفضلة',
@@ -1695,7 +1694,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     );
                   },
                 ),
-
                 IconButton(
                   icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.amber, size: 24),
                   tooltip: 'البحث السريع',
@@ -1707,7 +1705,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     });
                   },
                 ),
-
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1805,7 +1802,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ],
                 ),
-                // ملاحظة: تم إخفاء أزرار لوحة المندوب والمشرف بالكامل من هنا لضمان الأمان وعدم ظهورها للمستخدمين 🛡️
               ],
             ),
             body: Column(
