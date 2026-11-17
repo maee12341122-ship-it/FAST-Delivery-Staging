@@ -1,7 +1,8 @@
 workflows:
   fast-delivery-android:
-    name: FAST Delivery - Ultimate Production APK Build 🚀
-    max_build_duration: 90
+    name: FAST Delivery - APK Build 🚀
+    max_build_duration: 60
+    working_directory: Fast
     environment:
       flutter: 3.22.2
       vars:
@@ -9,12 +10,12 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Clean and generate fresh Android directory
+      - name: 1. Clean and regenerate fresh Android inside Fast
         script: |
           set -e
-          echo "Cleaning old android folder..."
+          echo "Cleaning old android folder inside Fast..."
           rm -rf android
-          echo "Generating fresh android project for Flutter 3.22.2..."
+          echo "Generating fresh android project..."
           flutter create . --platforms=android --org com.example --project-name fast_delivery
           
       - name: 2. Force exact compatible Gradle Wrapper (Gradle 8.7)
@@ -28,7 +29,6 @@ workflows:
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
-          echo "Gradle wrapper forced to 8.7 successfully."
 
       - name: 3. Ensure V2 Embedding in AndroidManifest
         script: |
@@ -45,16 +45,12 @@ workflows:
           set -e
           FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}"
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if [ -z "$ANDROID_SDK" ]; then
-            echo "Error: ANDROID_SDK_ROOT is missing!"
-            exit 1
-          fi
           printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
 
       - name: 5. Get Flutter Packages
         script: flutter pub get
 
-      - name: 6. Build Release APK (Final)
+      - name: 6. Build Release APK
         script: flutter build apk --release --android-skip-build-dependency-validation
         
     artifacts:
