@@ -434,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // بطاقة خدمة "وصل لي" (التوصيل الخاص المرن) المضافة في واجهة الرئيسية
+  // بطاقة خدمة "وصل لي" (التوصيل الخاص المرن)
   Widget _buildCustomDeliveryBanner(BuildContext context, String token) {
     return GestureDetector(
       onTap: () {
@@ -497,6 +497,103 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  // شبكة الأقسام البصرية الجذابة الحديثة (مطابقة لطلبك والصور)
+  Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
+    final List> categoriesList = [
+      {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
+      {'title': 'المطاعم', 'icon': Icons.restaurant, 'category': 'المطاعم'},
+      {'title': 'حلويات ومعجنات', 'icon': Icons.cake, 'category': 'حلويات ومعجنات'},
+      {'title': 'البقالات', 'icon': Icons.local_grocery_store, 'category': 'البقالات'},
+      {'title': 'الخضار والفواكه', 'icon': Icons.eco, 'category': 'الخضار والفواكه'},
+      {'title': 'الصيدلية الآمنة', 'icon': Icons.local_pharmacy, 'category': 'الصيدلية الآمنة'},
+      {'title': 'هدايا واكسسوارات', 'icon': Icons.card_giftcard, 'category': 'هدايا واكسسوارات'},
+      {'title': 'طلبات أخرى', 'icon': Icons.edit_note, 'category': 'طلبات أخرى'},
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
+            child: Text(
+              'أقسام التطبيق والخدمات 🌟',
+              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: categoriesList.length,
+            itemBuilder: (context, index) {
+              final catItem = categoriesList[index];
+              final catName = catItem['category'] as String;
+              final isSelected = selectedCategory == catName;
+
+              return InkWell(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    selectedCategory = catName;
+                    selectedRestaurantName = null;
+                    _searchController.clear();
+                  });
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.amber.withOpacity(0.2) : cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.25),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        catItem['icon'] as IconData,
+                        color: isSelected ? Colors.amber : Colors.amber.shade700,
+                        size: 26,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        catItem['title'] as String,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isSelected ? Colors.amber : textColor,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1357,7 +1454,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Navigator.pop(ctx);
                         setState(() => _currentIndex = 2);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تم استلاستلام الطلب. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
+                          SnackBar(content: Text('تم إرسال الطلب بنجاح. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}')),
                         );
                       } catch (e) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
@@ -1576,6 +1673,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ],
               ),
               actions: [
+                // زر المفضلة السريع (القلب) المطلوب في الواجهة الرئيسية
+                IconButton(
+                  icon: const Icon(Icons.favorite, color: Colors.redAccent, size: 24),
+                  tooltip: 'المفضلة',
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const FavoritesScreen(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(opacity: animation, child: child);
+                        },
+                      ),
+                    );
+                  },
+                ),
+
                 IconButton(
                   icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.amber, size: 24),
                   tooltip: 'البحث السريع',
@@ -1958,7 +2073,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
-            _buildInteractiveCategoriesBar(appState, textColor, cardBg),
+            _buildCategoriesGrid(appState, textColor, cardBg),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(20),
@@ -2107,7 +2222,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
           _buildDynamicPromoBanners(),
 
-          // دمج بطاقة "وصل لي" البارزة في الرئيسية
+          // بطاقة "وصل لي" البارزة
           _buildCustomDeliveryBanner(context, appState.userProfile?['id'] ?? 'guest'),
 
           _buildAdBannerWidget(cardBg, textColor),
@@ -2167,7 +2282,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
 
-          _buildInteractiveCategoriesBar(appState, textColor, cardBg),
+          // شبكة الأقسام البصرية الحديثة بدلاً من الأزرار التقليدية
+          _buildCategoriesGrid(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
           if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
@@ -2270,7 +2386,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     const Icon(Icons.star, color: Colors.amber, size: 15),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '$rating (تقييم عادل)',
+                                      '$rating (تقييم ممتاز)',
                                       style: const TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
                                     const Text(' | ', style: TextStyle(color: Colors.grey)),
@@ -2531,42 +2647,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
           const SizedBox(height: 70),
         ],
-      ),
-    );
-  }
-
-  Widget _buildInteractiveCategoriesBar(AppState appState, Color textColor, Color cardBg) {
-    final categories = ['الكل', 'المطاعم', 'حلويات ومعجنات', 'البقالات', 'الخضار والفواكه', 'الصيدلية الآمنة', 'هدايا واكسسوارات', 'طلبات أخرى'];
-
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: categories.map((cat) {
-          final isSelected = selectedCategory == cat;
-          return Padding(
-            padding: const EdgeInsets.only(left: 8.0),
-            child: ChoiceChip(
-              label: Text(cat, style: TextStyle(color: isSelected ? Colors.black : textColor, fontWeight: FontWeight.bold, fontSize: 13)),
-              selected: isSelected,
-              selectedColor: Colors.amber,
-              backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.3)),
-              ),
-              onSelected: (val) {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  selectedCategory = cat;
-                  selectedRestaurantName = null;
-                  _searchController.clear();
-                });
-              },
-            ),
-          );
-        }).toList(),
       ),
     );
   }
