@@ -1,17 +1,62 @@
 workflows:
   fast-delivery-android:
-    name: FAST Delivery - APK Build 🚀
-    max_build_duration: 60
+    name: FAST Delivery - Ultimate Production APK Build 🚀
+    max_build_duration: 90
     environment:
-      flutter: 3.16.5
+      flutter: 3.22.2
+      vars:
+        PACKAGE_NAME: "com.example.taiz_express"
+    cache:
+      cache_paths: []
     scripts:
-      - name: Regenerate clean Android project
+      - name: 1. Clean and generate fresh Android directory
         script: |
+          set -e
+          echo "Cleaning old android folder..."
           rm -rf android
-          flutter create . --platforms=android
-      - name: Install dependencies
+          echo "Generating fresh android project for Flutter 3.22.2..."
+          flutter create . --platforms=android --org com.example --project-name fast_delivery
+          
+      - name: 2. Force exact compatible Gradle Wrapper (Gradle 8.7)
+        script: |
+          set -e
+          mkdir -p android/gradle/wrapper
+          cat << 'EOF' > android/gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          echo "Gradle wrapper forced to 8.7 successfully."
+
+      - name: 3. Ensure V2 Embedding in AndroidManifest
+        script: |
+          set -e
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            if ! grep -q "flutterEmbedding" "$MANIFEST_PATH"; then
+              sed -i '/<application/a \        <meta-data\n            android:name="flutterEmbedding"\n            android:value="2" />' "$MANIFEST_PATH"
+            fi
+          fi
+
+      - name: 4. Configure Android SDK local.properties
+        script: |
+          set -e
+          FLUTTER_SDK="${FLUTTER_ROOT:-$(dirname "$(dirname "$(command -v flutter)")")}"
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$ANDROID_SDK" ]; then
+            echo "Error: ANDROID_SDK_ROOT is missing!"
+            exit 1
+          fi
+          printf 'flutter.sdk=%s\nsdk.dir=%s\n' "$FLUTTER_SDK" "$ANDROID_SDK" > android/local.properties
+
+      - name: 5. Get Flutter Packages
         script: flutter pub get
-      - name: Build APK Release
-        script: flutter build apk --release
+
+      - name: 6. Build Release APK (Final)
+        script: flutter build apk --release --android-skip-build-dependency-validation
+        
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
+      - flutter_drive.log
