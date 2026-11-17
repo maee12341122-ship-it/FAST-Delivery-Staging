@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
+// تعريفات مخصصة لتجنب أخطاء الأقواس نهائياً
+typedef JsonMap = Map<String, dynamic>;
+typedef JsonList = List<JsonMap>;
+
 class ApiService {
   // رابط الخادم الأساسي (Node.js Backend)
   static const String baseUrl = 'https://your-node-backend-url.com/api'; 
 
   // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة)
-  static Future> fetchCatalog() async {
+  static Future<JsonMap> fetchCatalog() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/catalog'));
       if (response.statusCode == 200) {
@@ -22,7 +26,7 @@ class ApiService {
   }
 
   // 2. التحقق من الكوبون وتطبيق الخصم (متطابق مع Backend subtotal)
-  static Future> validateCoupon(String code, double subtotal) async {
+  static Future<JsonMap> validateCoupon(String code, double subtotal) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/coupons/validate'),
@@ -46,8 +50,8 @@ class ApiService {
   }
 
   // 3. إنشاء طلب جديد عبر خادم Node.js الآمن
-  static Future> createOrder({
-    required List> items,
+  static Future<JsonMap> createOrder({
+    required JsonList items,
     required String address,
     required String notes,
     required String token,
@@ -123,7 +127,7 @@ class ApiService {
   }
 
   // 6. [لوحة المشرف] تحديد رسوم التوصيل وتعيين المندوب (التسعير)
-  static Future> adminPricingOrder(
+  static Future<JsonMap> adminPricingOrder(
     String token,
     int orderId,
     double deliveryFee,
@@ -155,7 +159,7 @@ class ApiService {
   }
 
   // 7. [لوحة المشرف] تحديث حالة الطلب مباشرة
-  static Future> adminUpdateOrderStatus(
+  static Future<JsonMap> adminUpdateOrderStatus(
     String token,
     int orderId,
     String status,
@@ -203,7 +207,7 @@ class ApiService {
   }
 
   // 9. [لوحة المندوب] تحديث حالة الطلب (قبول، في الطريق، تم التوصيل)
-  static Future> courierUpdateOrderStatus(
+  static Future<JsonMap> courierUpdateOrderStatus(
     String token,
     int orderId,
     String status,
