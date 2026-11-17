@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
+import 'customer/home_screen.dart'; // تمت الإضافَة لتوجيه المستخدم غير المرخص
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -26,6 +28,66 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _ordersTabController = TabController(length: 3, vsync: this);
+    
+    // 🛡️ حراسة أمنية لحظية: التأكد أن المستخدم الحالي هو مشرف فعلي قبل السماح له بالبقاء في الشاشة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _verifyAdminSecurity();
+    });
+  }
+
+  // 🔒 دالة فحص وتأكيد صلاحية المشرف أمنياً من قاعدة البيانات
+  Future<void> _verifyAdminSecurity() async {
+    try {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final currentPhone = appState.userPhone ?? '';
+
+      if (currentPhone.isEmpty) {
+        _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
+        return;
+      }
+
+      // تنظيف رقم الهاتف للمطابقة
+      String cleanPhone = currentPhone.replaceAll(' ', '');
+      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+      if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
+      final formattedPhone = '+967$cleanPhone';
+
+      // فحص هل الرقم موجود في جدول admins
+      final adminRes = await Supabase.instance.client
+          .from('admins')
+          .select()
+          .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
+          .maybeSingle();
+
+      if (adminRes == null) {
+        // فحص احتياطي عبر جدول users الموحد لو وُجد
+        final userRes = await Supabase.instance.client
+            .from('users')
+            .select()
+            .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
+            .eq('role', 'admin')
+            .maybeSingle();
+
+        if (userRes == null) {
+          _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في التحقق الأمني للأدمن: $e');
+    }
+  }
+
+  // 🚨 دالة طرد المستخدم غير المرخص وإعادته لواجهة العملاء
+  void _kickOutUnauthorizedUser(String message) {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   @override
@@ -344,7 +406,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             final courier = couriers[index];
             final courierName = courier['name']?.toString().trim() ?? courier['full_name']?.toString().trim() ?? '';
 
-            // تصفية طلبات المندوب المكتملة والتي لم يتم تصفير حسابها بعد
             final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
               final name = o['courier_name']?.toString().trim() ?? '';
@@ -395,7 +456,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                               child: Text('📞 ${courier['phone'] ?? 'غير متوفر'}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                             ),
                             const SizedBox(width: 8),
-                            // 🗑️ زر تصفير الحساب والعمولات مع رسالة التأكيد
                             IconButton(
                               icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 24),
                               tooltip: 'تصفير الحساب والعمولات',
