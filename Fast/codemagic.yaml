@@ -1,6 +1,6 @@
 workflows:
   fast-delivery-android:
-    name: FAST Delivery - Cloud Build 🚀
+    name: FAST Delivery - Production APK Build 🚀
     max_build_duration: 60
     working_directory: Fast
     environment:
@@ -8,11 +8,10 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Force generate Android folder
-        script: flutter create . --platforms=android --org com.maeen --project-name fast_delivery
-      - name: 2. Get Flutter Packages
+      - name: 1. Get Flutter Packages
         script: flutter pub get
-      - name: 3. Build APK Release
+        
+      - name: 2. Build Release APK
         script: flutter build apk --release --android-skip-build-dependency-validation
         
     artifacts:
