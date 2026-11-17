@@ -8,7 +8,7 @@ import 'package:geolocator/geolocator.dart'; // 👈 استيراد جغرافي
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
-import 'customer/home_screen.dart'; // لتوجيه غير المصرح لهم
+import '../home_screen.dart'; // 👈 التعديل هنا: مسار صحيح للرئيسية
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -33,7 +33,7 @@ class _CourierScreenState extends State<CourierScreen> {
   Future<void> _verifyCourierSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
-      final currentPhone = appState.userPhone ?? '';
+      final currentPhone = appState.userProfile?['phone'] ?? appState.userPhone ?? '';
 
       if (currentPhone.isEmpty && appState.currentCourier == null) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
