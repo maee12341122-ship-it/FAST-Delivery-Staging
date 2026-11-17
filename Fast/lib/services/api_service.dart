@@ -7,7 +7,7 @@ typedef JsonMap = Map<String, dynamic>;
 typedef JsonList = List<JsonMap>;
 
 class ApiService {
-  // رابط الخادم الأساسي (Node.js Backend)
+  // رابط الخادم الأساسي (Node.js Backend) - استبدله برابط خادمك الحقيقي لاحقاً
   static const String baseUrl = 'https://your-node-backend-url.com/api'; 
 
   // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة)
