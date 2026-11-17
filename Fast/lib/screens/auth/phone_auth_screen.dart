@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
+import '../admin/admin_screen.dart';
+import '../courier/courier_screen.dart';
 
 class PhoneAuthScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -36,6 +38,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
   String? _generatedOtp;
+  String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
 
   @override
   void dispose() {
@@ -82,7 +85,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات أولاً
+  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات (الأدمن، المناديب، والعملاء)
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -101,29 +104,56 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       _cleanPhoneInput = clean;
       _formattedPhone = '+967$clean';
 
-      // فحص هل العميل موجود مسبقاً في جدول customers
-      final existingCustomer = await _supabase
-          .from('customers')
+      // 1. فحص هل الرقم يتبع للمشرفين (admins)
+      final adminRes = await _supabase
+          .from('admins')
           .select()
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
           .maybeSingle();
 
-      if (existingCustomer != null) {
-        debugPrint('✅ العميل مسجل مسبقاً في قاعدة البيانات.');
-        if (mounted) {
-          _nameController.text = existingCustomer['name'] ?? '';
-          _addressController.text = existingCustomer['address'] ?? '';
-          
-          setState(() {
-            _currentStep = 2; 
-            _isLoading = false;
-          });
+      if (adminRes != null) {
+        _detectedRole = 'admin';
+        debugPrint('✅ تم التعرف على المستخدم كـ Admin');
+      } else {
+        // 2. فحص هل الرقم يتبع للمناديب (couriers)
+        final courierRes = await _supabase
+            .from('couriers')
+            .select()
+            .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+            .maybeSingle();
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('أهلاً بك مجدداً! تم العثور على حسابك المسجل 🚀')),
-          );
+        if (courierRes != null) {
+          _detectedRole = 'courier';
+          debugPrint('✅ تم التعرف على المستخدم كـ Courier');
+        } else {
+          // 3. فحص هل العميل موجود مسبقاً في جدول customers
+          final existingCustomer = await _supabase
+              .from('customers')
+              .select()
+              .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+              .maybeSingle();
+
+          if (existingCustomer != null) {
+            _detectedRole = 'customer_existing';
+            debugPrint('✅ العميل مسجل مسبقاً في قاعدة البيانات.');
+            if (mounted) {
+              _nameController.text = existingCustomer['name'] ?? '';
+              _addressController.text = existingCustomer['address'] ?? '';
+              
+              setState(() {
+                _currentStep = 2; 
+                _isLoading = false;
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('أهلاً بك مجدداً! تم العثور على حسابك المسجل 🚀')),
+              );
+            }
+            return;
+          } else {
+            _detectedRole = 'customer_new';
+          }
         }
-        return;
       }
 
       final res = await appState.requestOtpForPhone(_formattedPhone);
@@ -158,7 +188,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والانتقال للبروفايل
+  // 2️⃣ التحقق من كود OTP والتوجيه التلقائي حسب الصلاحية
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -180,9 +210,27 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       if (isValid) {
         if (mounted) {
-          setState(() {
-            _currentStep = 2;
-          });
+          if (_detectedRole == 'admin') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminScreen()),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
+            );
+          } else if (_detectedRole == 'courier') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const CourierScreen()),
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
+            );
+          } else {
+            setState(() {
+              _currentStep = 2;
+            });
+          }
         }
       } else {
         if (mounted) {
@@ -280,7 +328,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             title: const Text(
-              'FAST – تسجيل دخول العميل',
+              'FAST – تسجيل الدخول والتحقق',
               style: TextStyle(
                   color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
