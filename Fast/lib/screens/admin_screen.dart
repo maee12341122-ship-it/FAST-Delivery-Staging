@@ -8,7 +8,7 @@ import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'admin_restaurants_screen.dart';
-import 'customer/home_screen.dart'; // تمت الإضافَة لتوجيه المستخدم غير المرخص
+import 'customer/home_screen.dart'; // لتوجيه غير المصرح لهم
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -29,13 +29,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     super.initState();
     _ordersTabController = TabController(length: 3, vsync: this);
     
-    // 🛡️ حراسة أمنية لحظية: التأكد أن المستخدم الحالي هو مشرف فعلي قبل السماح له بالبقاء في الشاشة
+    // 🛡️ فحص أمني فوري للتأكد أن المستخدم الحالي مشرف معتمد
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verifyAdminSecurity();
     });
   }
 
-  // 🔒 دالة فحص وتأكيد صلاحية المشرف أمنياً من قاعدة البيانات
+  // 🔒 دالة التحقق الأمني من قاعدة البيانات
   Future<void> _verifyAdminSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
@@ -46,13 +46,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         return;
       }
 
-      // تنظيف رقم الهاتف للمطابقة
       String cleanPhone = currentPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
       final formattedPhone = '+967$cleanPhone';
 
-      // فحص هل الرقم موجود في جدول admins
       final adminRes = await Supabase.instance.client
           .from('admins')
           .select()
@@ -60,24 +58,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           .maybeSingle();
 
       if (adminRes == null) {
-        // فحص احتياطي عبر جدول users الموحد لو وُجد
-        final userRes = await Supabase.instance.client
-            .from('users')
-            .select()
-            .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
-            .eq('role', 'admin')
-            .maybeSingle();
-
-        if (userRes == null) {
-          _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
-        }
+        _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق الأمني للأدمن: $e');
     }
   }
 
-  // 🚨 دالة طرد المستخدم غير المرخص وإعادته لواجهة العملاء
+  // 🚨 طرد المستخدم غير المصرح به
   void _kickOutUnauthorizedUser(String message) {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
