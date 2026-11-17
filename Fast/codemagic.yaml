@@ -8,12 +8,8 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Generate Android folder automatically on cloud
-        script: |
-          if [ ! -d "android" ]; then
-            echo "Android folder missing, generating a fresh one..."
-            flutter create . --platforms=android --org com.maeen --project-name fast_delivery
-          fi
+      - name: 1. Force generate Android folder
+        script: flutter create . --platforms=android --org com.maeen --project-name fast_delivery
       - name: 2. Get Flutter Packages
         script: flutter pub get
       - name: 3. Build APK Release
