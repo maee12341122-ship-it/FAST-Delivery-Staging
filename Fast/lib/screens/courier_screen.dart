@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart'; // 👈 استيراد جغرافي
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
+import 'customer/home_screen.dart'; // لتوجيه غير المصرح لهم
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -17,21 +18,75 @@ class CourierScreen extends StatefulWidget {
 }
 
 class _CourierScreenState extends State<CourierScreen> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
-  final FocusNode _usernameFocus = FocusNode();
-  final FocusNode _passwordFocus = FocusNode();
-
   StreamSubscription<Position>? _locationSubscription; // 👈 متغير لمتابعة بث الإحداثيات
+
+  @override
+  void initState() {
+    super.initState();
+    // 🛡️ فحص أمني فوري للتأكد أن المستخدم الحالي مندوب معتمد
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _verifyCourierSecurity();
+    });
+  }
+
+  // 🔒 دالة التحقق الأمني من جدول المناديب في قاعدة البيانات
+  Future<void> _verifyCourierSecurity() async {
+    try {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final currentPhone = appState.userPhone ?? '';
+
+      if (currentPhone.isEmpty && appState.currentCourier == null) {
+        _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
+        return;
+      }
+
+      if (appState.currentCourier != null) {
+        final String courierId = (appState.currentCourier!['id'] ?? appState.currentCourier!['name'] ?? '').toString().trim();
+        if (courierId.isNotEmpty) {
+          _startLiveLocationUpdates(courierId);
+        }
+        return;
+      }
+
+      String cleanPhone = currentPhone.replaceAll(' ', '');
+      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+      if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
+      final formattedPhone = '+967$cleanPhone';
+
+      final courierRes = await Supabase.instance.client
+          .from('couriers')
+          .select()
+          .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
+          .maybeSingle();
+
+      if (courierRes == null) {
+        _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مندوب توصيل للوصول إلى هذه اللوحة 🚫');
+      } else {
+        final String courierId = courierRes['id'].toString();
+        appState.currentCourier = courierRes;
+        _startLiveLocationUpdates(courierId);
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في التحقق الأمني للمندوب: $e');
+    }
+  }
+
+  // 🚨 طرد المستخدم غير المصرح له وإعادته للرئيسية
+  void _kickOutUnauthorizedUser(String message) {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
 
   @override
   void dispose() {
     _locationSubscription?.cancel(); // 👈 إيقاف البث عند إغلاق الشاشة لتفريغ الذاكرة
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _usernameFocus.dispose();
-    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -143,13 +198,6 @@ class _CourierScreenState extends State<CourierScreen> {
     final appState = Provider.of<AppState>(context);
     final courier = appState.currentCourier;
 
-    if (courier != null) {
-      final String courierId = (courier['id'] ?? courier['name'] ?? '').toString().trim();
-      if (courierId.isNotEmpty) {
-        _startLiveLocationUpdates(courierId);
-      }
-    }
-
     final pendingOrdersCount = courier != null
         ? appState.orders.where((o) {
       final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
@@ -169,7 +217,7 @@ class _CourierScreenState extends State<CourierScreen> {
             backgroundColor: const Color(0xFF1E1E1E),
             elevation: 2,
             title: Text(
-              courier == null ? 'تسجيل دخول الكابتن' : 'لوحة المندوب: ${courier['name']}',
+              courier == null ? 'لوحة المندوب' : 'لوحة المندوب: ${courier['name']}',
               style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
             ),
             actions: [
@@ -256,6 +304,7 @@ class _CourierScreenState extends State<CourierScreen> {
                   onPressed: () {
                     _locationSubscription?.cancel();
                     appState.logoutCourier();
+                    Navigator.pop(context);
                   },
                 ),
               ],
@@ -266,81 +315,9 @@ class _CourierScreenState extends State<CourierScreen> {
               _buildNetworkStatusBar(appState),
               Expanded(
                 child: courier == null
-                    ? Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 400),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                              ),
-                              child: const Icon(Icons.two_wheeler, size: 60, color: Colors.amber),
-                            ),
-                            const SizedBox(height: 24),
-                            const Text('بوابة تسجيل دخول الكابتن', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            const Text('أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                            const SizedBox(height: 30),
-                            TextField(
-                              controller: _usernameController,
-                              focusNode: _usernameFocus,
-                              textInputAction: TextInputAction.next,
-                              onSubmitted: (_) {
-                                FocusScope.of(context).requestFocus(_passwordFocus);
-                              },
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
-                                labelText: 'اسم المستخدم',
-                                labelStyle: TextStyle(color: Colors.grey),
-                                filled: true,
-                                fillColor: Color(0xFF1E1E1E),
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person_outline, color: Colors.amber),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            TextField(
-                              controller: _passwordController,
-                              focusNode: _passwordFocus,
-                              obscureText: true,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) async {
-                                await _performLogin(appState);
-                              },
-                              style: const TextStyle(color: Colors.white),
-                              decoration: const InputDecoration(
-                                labelText: 'كلمة السر',
-                                labelStyle: TextStyle(color: Colors.grey),
-                                filled: true,
-                                fillColor: Color(0xFF1E1E1E),
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.lock_outline, color: Colors.amber),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.amber,
-                                minimumSize: const Size(double.infinity, 48),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onPressed: () => _performLogin(appState),
-                              child: const Text('دخول لوحة الطلبات 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                )
+                    ? const Center(
+                        child: CircularProgressIndicator(color: Colors.amber),
+                      )
                     : _buildCourierOrdersListWithTabs(appState, courier),
               ),
             ],
@@ -348,34 +325,6 @@ class _CourierScreenState extends State<CourierScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _performLogin(AppState appState) async {
-    bool success = await appState.loginCourier(_usernameController.text.trim(), _passwordController.text.trim());
-    if (success) {
-      try {
-        String? playerId = OneSignal.User.pushSubscription.id;
-        if (playerId != null && playerId.isNotEmpty && appState.currentCourier != null) {
-          String courierId = appState.currentCourier!['id']?.toString() ?? appState.currentCourier!['delivery_man_id']?.toString() ?? '';
-          if (courierId.isNotEmpty) {
-            await Supabase.instance.client
-                .from('couriers')
-                .update({'onesignal_player_id': playerId})
-                .eq('id', courierId);
-
-            _startLiveLocationUpdates(courierId);
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ خطأ: $e');
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('فشل الدخول: بيانات غير صحيحة! ❌')),
-        );
-      }
-    }
   }
 
   Widget _buildCourierOrdersListWithTabs(AppState appState, Map<String, dynamic> courier) {
