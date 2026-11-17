@@ -11,27 +11,7 @@ workflows:
       - name: 1. Get Flutter Packages
         script: flutter pub get
         
-      - name: 2. Apply Official Desugaring Fix for Kotlin DSL
-        script: |
-          python3 -c '
-          path = "android/app/build.gradle.kts"
-          with open(path, "r") as f:
-              content = f.read()
-          
-          # Add isCoreLibraryDesugaringEnabled if missing
-          if "isCoreLibraryDesugaringEnabled" not in content:
-              content = content.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true")
-          
-          # Add coreLibraryDesugaring dependency if missing
-          if "desugar_jdk_libs" not in content:
-              content += "\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n}\n"
-              
-          with open(path, "w") as f:
-              f.write(content)
-          print("Official desugaring configuration applied successfully!")
-          '
-
-      - name: 3. Build Release APK
+      - name: 2. Build Release APK
         script: flutter build apk --release --android-skip-build-dependency-validation
         
     artifacts:
