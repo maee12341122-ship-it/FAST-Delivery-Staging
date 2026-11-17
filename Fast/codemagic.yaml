@@ -10,10 +10,20 @@ workflows:
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Get Flutter Packages
+      - name: 1. Clean and generate stable Android project
+        script: |
+          set -e
+          echo "Cleaning old android folder..."
+          rm -rf android
+          echo "Generating stable android project..."
+          flutter create . --platforms=android --org com.example --project-name fast_delivery
+          
+      - name: 2. Get Flutter Packages
         script: flutter pub get
-      - name: 2. Build Release APK
+
+      - name: 3. Build Release APK
         script: flutter build apk --release --android-skip-build-dependency-validation
+        
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
       - flutter_drive.log
