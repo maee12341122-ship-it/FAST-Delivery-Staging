@@ -7,8 +7,7 @@ import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import 'admin_restaurants_screen.dart';
-import 'customer/home_screen.dart'; // لتوجيه غير المصرح لهم
+import '../home_screen.dart'; // 👈 التعديل هنا: مسار صحيح للرئيسية
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -39,12 +38,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Future<void> _verifyAdminSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
-      final currentPhone = appState.userPhone ?? '';
+      final currentPhone = appState.userProfile?['phone'] ?? appState.userPhone ?? '';
 
-      if (currentPhone.isEmpty) {
+      if (currentPhone.isEmpty && !appState.isAdminLoggedIn) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
         return;
       }
+
+      if (appState.isAdminLoggedIn) return;
 
       String cleanPhone = currentPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
@@ -59,6 +60,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
       if (adminRes == null) {
         _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
+      } else {
+        appState.isAdminLoggedIn = true;
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق الأمني للأدمن: $e');
