@@ -1,33 +1,22 @@
 workflows:
   fast-delivery-android:
-    name: FAST Delivery - Production APK Build 🚀
+    name: FAST Delivery - Cloud Build 🚀
     max_build_duration: 60
     working_directory: Fast
     environment:
       flutter: 3.19.6
-      vars:
-        PACKAGE_NAME: "com.example.taiz_express"
     cache:
       cache_paths: []
     scripts:
-      - name: 1. Clean and generate Android project
+      - name: 1. Generate Android folder automatically on cloud
         script: |
-          set -e
-          echo "Cleaning old android folder..."
-          rm -rf android
-          echo "Generating android project..."
-          flutter create . --platforms=android --org com.example --project-name fast_delivery
-          
-      - name: 2. Fix Kotlin DSL defaultConfig syntax error
-        script: |
-          set -e
-          echo "Fixing getDefaultConfig to defaultConfig in build.gradle.kts..."
-          find android -name "*.kts" -exec sed -i 's/getDefaultConfig/defaultConfig/g' {} +
-          
-      - name: 3. Get Flutter Packages
+          if [ ! -d "android" ]; then
+            echo "Android folder missing, generating a fresh one..."
+            flutter create . --platforms=android --org com.maeen --project-name fast_delivery
+          fi
+      - name: 2. Get Flutter Packages
         script: flutter pub get
-
-      - name: 4. Build Release APK
+      - name: 3. Build APK Release
         script: flutter build apk --release --android-skip-build-dependency-validation
         
     artifacts:
