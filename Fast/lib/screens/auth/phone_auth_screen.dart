@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
-import '../admin/admin_screen.dart';
-import '../courier/courier_screen.dart';
+import '../admin_screen.dart';   // 👈 التعديل هنا: الاستيراد المباشر من مجلد screens
+import '../courier_screen.dart'; // 👈 التعديل هنا: الاستيراد المباشر من مجلد screens
 
 class PhoneAuthScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -191,7 +191,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP (لو أدمن أو مندوب ➡️ ينقلهم لخطوة إدخال الباسورد، لو عميل ➡️ يكمل)
+  // 2️⃣ التحقق من كود OTP
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -214,7 +214,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (isValid) {
         if (mounted) {
           if (_detectedRole == 'admin' || _detectedRole == 'courier') {
-            // توجيههم لخطوة إدخال كلمة المرور الخاصة بهم
             setState(() {
               _currentStep = 3; 
             });
@@ -259,7 +258,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
     try {
       if (_pendingUserRecord != null) {
-        // التحقق من حقل password_hash أو password المخزن في الجدول
         final storedPassword = _pendingUserRecord!['password_hash']?.toString() ?? 
                                _pendingUserRecord!['password']?.toString() ?? '';
 
@@ -275,7 +273,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
             );
           } else if (_detectedRole == 'courier') {
-            // حفظ بيانات المندوب في الـ AppState
             appState.currentCourier = _pendingUserRecord;
             Navigator.pushReplacement(
               context,
@@ -288,7 +285,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('كلمة المرور غير صحيحة ❌', backgroundColor: Colors.red)),
+              const SnackBar(
+                content: Text('كلمة المرور غير صحيحة ❌'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
         }
