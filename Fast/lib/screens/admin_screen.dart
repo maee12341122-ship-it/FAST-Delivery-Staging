@@ -344,20 +344,22 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             final courier = couriers[index];
             final courierName = courier['name']?.toString().trim() ?? courier['full_name']?.toString().trim() ?? '';
 
-            final courierAllOrders = appState.orders.where((o) {
+            // تصفية طلبات المندوب المكتملة والتي لم يتم تصفير حسابها بعد
+            final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
               final name = o['courier_name']?.toString().trim() ?? '';
-              return assigned == courierName || name == courierName;
+              final bool isDelivered = o['status']?.toString().trim() == 'delivered';
+              final bool isSettled = o['is_settled'] == true;
+              return (assigned == courierName || name == courierName) && isDelivered && !isSettled;
             }).toList();
 
-            final courierCompletedOrders = courierAllOrders.where((o) => 
-              o['status']?.toString().trim() == 'delivered'
-            ).toList();
-
             double totalCourierEarnings = 0.0;
-            for (var order in courierCompletedOrders) {
+            for (var order in courierUnsettledOrders) {
               totalCourierEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
             }
+
+            double adminCommission = totalCourierEarnings * 0.20;
+            double netCourierEarnings = totalCourierEarnings - adminCommission;
 
             return Card(
               color: const Color(0xFF1E1E1E),
@@ -381,14 +383,56 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             Text(courierName.isNotEmpty ? courierName : 'مندوب', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
                           ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.green),
-                          ),
-                          child: Text('📞 ${courier['phone'] ?? 'غير متوفر'}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.green),
+                              ),
+                              child: Text('📞 ${courier['phone'] ?? 'غير متوفر'}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
+                            // 🗑️ زر تصفير الحساب والعمولات مع رسالة التأكيد
+                            IconButton(
+                              icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 24),
+                              tooltip: 'تصفير الحساب والعمولات',
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => Directionality(
+                                    textDirection: TextDirection.rtl,
+                                    child: AlertDialog(
+                                      backgroundColor: const Color(0xFF1E1E1E),
+                                      title: const Text('تصفير حساب المندوب ⚠️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                                      content: Text('هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\nسيتم تصفير العداد للبدء من جديد.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('لا', style: TextStyle(color: Colors.grey)),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                          onPressed: () async {
+                                            Navigator.pop(ctx);
+                                            await appState.settleCourierEarnings(courierName);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text('تم تصفير حساب المندوب $courierName بنجاح ✅')),
+                                              );
+                                            }
+                                          },
+                                          child: const Text('نعم، تصفير الحساب'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -396,9 +440,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStatColumn('إجمالي الطلبات', '${courierAllOrders.length} طلب', Colors.white70),
-                        _buildStatColumn('الطلبات المكتملة', '${courierCompletedOrders.length} طلب', Colors.greenAccent),
-                        _buildStatColumn('إجمالي عمولة التوصيل', '${totalCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.amber),
+                        _buildStatColumn('طلبات غير مسوية', '${courierUnsettledOrders.length} طلب', Colors.white70),
+                        _buildStatColumn('إجمالي التوصيل', '${totalCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.amber),
+                        _buildStatColumn('صافي المندوب (80%)', '${netCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.greenAccent),
                       ],
                     ),
                   ],
