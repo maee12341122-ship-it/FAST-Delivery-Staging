@@ -108,7 +108,7 @@ class LocalStorageService {
 }
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة لتقسيم المطاعم والأقسام
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المتكاملة والمحدثة نهائياً
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -124,7 +124,7 @@ class AppState extends ChangeNotifier {
     _loadCourierSession();
     _loadUserSession();
     await fetchStoreSettings();
-    await fetchRestaurantsAndCategories(); // جلب الأقسام والمطاعم المتاحة ديناميكياً
+    await fetchRestaurantsAndCategories(); // جلب المطاعم والأقسام الفرعية ديناميكياً
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
     await fetchRestaurantAverages();
@@ -136,10 +136,10 @@ class AppState extends ChangeNotifier {
     initializeInternetListener();
   }
 
-  // قوائم المطاعم والأقسام الفرعية ديناميكياً
+  // دعم الأقسام والمطاعم ديناميكياً (مثل الشميري وغيرها)
   List restaurantsList = [];
   List categoriesList = [];
-  String? selectedCategory; // لتحديد القسم أو المطعم النشط حالياً
+  String? selectedCategory;
 
   Future<void> fetchRestaurantsAndCategories() async {
     try {
@@ -155,7 +155,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // تصفية المنتجات بناءً على القسم أو اسم المطعم (مثل الشميري وغيرها) بشكل دقيق
   List<ProductModel> getProductsByCategoryOrRestaurant(String? query) {
     if (query == null || query.isEmpty || query == 'الكل') {
       return products.cast<ProductModel>();
