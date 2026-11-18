@@ -38,7 +38,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
-  String? _generatedOtp;
   String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
   Map<String, dynamic>? _pendingUserRecord; 
 
@@ -87,7 +86,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات لتحديد دور المستخدم
+  // 1️⃣ إرسال كود OTP وتوليده وحفظه في جدول otp_codes في Supabase وفحص دور المستخدم
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -142,23 +141,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             if (mounted) {
               _nameController.text = existingCustomer['name'] ?? '';
               _addressController.text = existingCustomer['address'] ?? '';
-              setState(() {
-                _currentStep = 2; 
-                _isLoading = false;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('أهلاً بك مجدداً! تم العثور على حسابك المسجل 🚀')),
-              );
             }
-            return;
           } else {
             _detectedRole = 'customer_new';
           }
         }
       }
 
-      final res = await appState.requestOtpForPhone(_formattedPhone);
-      _generatedOtp = appState.generatedDynamicOtp?.toString() ?? '1234';
+      // استدعاء دالة توليد وإرسال الرمز الحقيقية من الـ AppState
+      await appState.requestOtpForPhone(_formattedPhone);
 
       if (mounted) {
         setState(() {
@@ -166,20 +157,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res['message'] ?? 'تم إرسال رمز التحقق بنجاح 💬'),
-            duration: const Duration(seconds: 5),
+          const SnackBar(
+            content: Text('تم توليد وإرسال رمز التحقق بنجاح 💬'),
+            duration: Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الرمز: $e');
       if (mounted) {
-        setState(() {
-          _currentStep = 1;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم توليد وإرسال رمز التحقق عبر واتساب')),
+          const SnackBar(content: Text('تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً')),
         );
       }
     } finally {
@@ -189,7 +177,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP والانتقال لشاشة تسجيل الدخول المخصصة (أدمن / مندوب) أو إكمال البروفايل للعميل
+  // 2️⃣ التحقق من كود OTP من جدول otp_codes والانتقال للشاشة التالية
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -202,12 +190,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      bool isValid = appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
-      
-      if (!isValid && _generatedOtp != null && otpCode == _generatedOtp) {
-        await appState.checkAndLoginCustomer(_cleanPhoneInput);
-        isValid = true;
-      }
+      // التحقق عبر دالة الـ AppState المرتبطة بقاعدة البيانات
+      bool isValid = await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
 
       if (isValid) {
         if (mounted) {
@@ -216,6 +200,18 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               _currentStep = 3; // الانتقال لشاشة تسجيل الدخول الخاصة (مشرف أو مندوب)
             });
           } else {
+            if (_detectedRole == 'customer_existing') {
+              // إذا كان عميلاً مسجلاً مسبقاً، نسجل دخوله مباشرة ونتخطى صفحة البروفايل
+              if (widget.onLoginSuccess != null) {
+                widget.onLoginSuccess!();
+              } else {
+                Navigator.pop(context);
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('أهلاً بك مجدداً! تم تسجيل الدخول بنجاح 🚀')),
+              );
+              return;
+            }
             setState(() {
               _currentStep = 2; // استكمال بيانات العميل الجديد
             });
@@ -224,12 +220,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('رمز التحقق غير صحيح، يرجى المحاولة مرة أخرى')),
+            const SnackBar(content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته ❌')),
           );
         }
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من OTP: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('حدث خطأ أثناء التحقق من الرمز')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -420,7 +421,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'أدخل رقم هاتفك لتلقي رمز التحقق OTP عبر الواتساب',
+                        'أدخل رقم هاتفك لتلقي رمز التحقق عبر الواتساب',
                         style: TextStyle(color: Colors.grey, fontSize: 13),
                         textAlign: TextAlign.center,
                       ),
@@ -615,7 +616,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _nameController,
                         focusNode: _nameFocus,
-                        keyboardType: TextInputType.name, // 👈 تم الضبط هنا لتظهر لوحة مفاتيح الحروف الطبيعية لإدخال الاسم
+                        keyboardType: TextInputType.name,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'الاسم الكامل',
@@ -637,7 +638,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _addressController,
                         focusNode: _addressFocus,
-                        keyboardType: TextInputType.text, // 👈 تم الضبط هنا للنصوص والعنوان
+                        keyboardType: TextInputType.text,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'العنوان التفصيلي (أو حدده عبر الخريطة)',
