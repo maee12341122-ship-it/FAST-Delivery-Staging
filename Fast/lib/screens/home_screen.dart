@@ -19,6 +19,8 @@ import 'customer/map_location_screen.dart';
 import 'notifications_screen.dart';
 import 'order_tracking_screen.dart';
 import 'customer/custom_delivery_screen.dart'; // شاشة "وصل لي" الجديدة
+import 'admin/admin_screen.dart'; // شاشة لوحة المشرف
+import 'courier/courier_screen.dart'; // شاشة طلبات المندوب
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -358,17 +360,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.amber.withOpacity(0.15), Colors.orangeAccent.withOpacity(0.05)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.amber.withOpacity(0.5), width: 1.5),
+        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.amber.withOpacity(0.1),
-            blurRadius: 8,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
             offset: const Offset(0, 3),
           ),
         ],
@@ -406,9 +404,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'هل لديك مطعم أو متجر؟ أعلن معنا واوصل لآلاف العملاء في تعز يومياً!',
-                  style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.3),
+                  style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 11, height: 1.3),
                 ),
               ],
             ),
@@ -498,18 +496,49 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // استخدام var للاستغناء نهائياً عن الأقواس الزاوية وتجنب مشاكل النسخ
+  // شبكة الأقسام مع صور حية وواقعية Real Network Photos وبدون المشاريع المنزلية نهائياً
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final categoriesList = [
-      {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
-      {'title': 'الخضار واللحوم', 'icon': Icons.eco, 'category': 'الخضار والفواكه'},
-      {'title': 'الحلويات', 'icon': Icons.cake, 'category': 'حلويات ومعجنات'},
-      {'title': 'السوبرماركت', 'icon': Icons.local_grocery_store, 'category': 'البقالات'},
-      {'title': 'المطاعم', 'icon': Icons.restaurant, 'category': 'المطاعم'},
-      {'title': 'وصي لي', 'icon': Icons.delivery_dining, 'category': 'طلبات أخرى'},
-      {'title': 'المشاريع المنزلية', 'icon': Icons.home_work, 'category': 'المشاريع المنزلية'},
-      {'title': 'الصيدلية والجمال', 'icon': Icons.local_pharmacy, 'category': 'الصيدلية الآمنة'},
-      {'title': 'الورود والهدايا', 'icon': Icons.card_giftcard, 'category': 'هدايا واكسسوارات'},
+      {
+        'title': 'الكل',
+        'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591',
+        'category': 'الكل'
+      },
+      {
+        'title': 'المطاعم',
+        'image': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5',
+        'category': 'المطاعم'
+      },
+      {
+        'title': 'البقالات',
+        'image': 'https://images.unsplash.com/photo-1542838132-92c53300491e',
+        'category': 'البقالات'
+      },
+      {
+        'title': 'الحلويات',
+        'image': 'https://images.unsplash.com/photo-1551024709-8f23befc6f87',
+        'category': 'حلويات ومعجنات'
+      },
+      {
+        'title': 'الخضار واللحوم',
+        'image': 'https://images.unsplash.com/photo-1610348725531-843dff563e2c',
+        'category': 'الخضار والفواكه'
+      },
+      {
+        'title': 'الصيدلية',
+        'image': 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae',
+        'category': 'الصيدلية الآمنة'
+      },
+      {
+        'title': 'هدايا وورود',
+        'image': 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38',
+        'category': 'هدايا واكسسوارات'
+      },
+      {
+        'title': 'وصي لي',
+        'image': 'https://images.unsplash.com/photo-1526367460882-16d124185750',
+        'category': 'طلبات أخرى'
+      },
     ];
 
     return Padding(
@@ -517,11 +546,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
             child: Text(
               'أقسام التطبيق والخدمات 🌟',
-              style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+              style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 15),
             ),
           ),
           GridView.builder(
@@ -529,7 +558,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 4,
-              childAspectRatio: 0.82,
+              childAspectRatio: 0.78,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
             ),
@@ -551,33 +580,36 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.amber.withOpacity(0.25) : cardBg,
+                    color: isSelected ? Colors.amber.withOpacity(0.2) : cardBg,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.25),
-                      width: isSelected ? 1.8 : 1,
+                      color: isSelected ? Colors.amber : Colors.grey.shade300,
+                      width: isSelected ? 2 : 1,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          catItem['icon'] as IconData,
-                          color: isSelected ? Colors.amber : Colors.amber.shade700,
-                          size: 24,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          catItem['image'] as String,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (c, e, s) => Container(
+                            width: 44,
+                            height: 44,
+                            color: Colors.amber.withOpacity(0.2),
+                            child: const Icon(Icons.store, color: Colors.amber, size: 24),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -587,8 +619,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: isSelected ? Colors.amber : textColor,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? Colors.amber.shade900 : textColor,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                           fontSize: 11,
                         ),
                       ),
@@ -1627,7 +1659,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _previousUnreadCount = appState.unreadNotificationsCount;
     }
 
-    final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF0F2F5);
+    // تلوين الوضع الفاتح ليكون ناصع البياض وعصري وغير باهت
+    final themeBg = appState.isDarkMode ? const Color(0xFF121212) : const Color(0xFFF7F8FA);
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
 
@@ -3004,8 +3037,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // تبويب الحساب الشخصي مع إظهار أزرار المشرف والمندوب شرطياً وفورياً للمسؤول أو المندوب
   Widget _buildProfileTab(AppState appState, Color cardBg, Color textColor) {
     final profile = appState.userProfile;
+
+    // التحقق من الصلاحيات شرطياً
+    bool isAdmin = appState.isAdminLoggedIn || (profile != null && profile['is_admin'] == true);
+    bool isCourier = appState.currentCourier != null || (profile != null && profile['is_courier'] == true);
 
     return ListView(
       padding: const EdgeInsets.all(16.0),
@@ -3014,6 +3052,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Text('حسابي الشخصي', style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 20),
+
+        // زر لوحة تحكم المشرف (يظهر شرطياً فقط للمشرف)
+        if (isAdmin) ...[
+          _buildProfileItem(Icons.admin_panel_settings, 'لوحة تحكم المشرف الإدارية ⚙️', cardBg, textColor, () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen()));
+          }),
+          const SizedBox(height: 10),
+        ],
+
+        // زر لوحة طلبات المندوب (يظهر شرطياً فقط للمندوب)
+        if (isCourier) ...[
+          _buildProfileItem(Icons.delivery_dining, 'لوحة طلبات المندوب وتوصيل الشحنات 🏍️', cardBg, textColor, () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const CourierScreen()));
+          }),
+          const SizedBox(height: 10),
+        ],
+
         profile == null
             ? Container(
           padding: const EdgeInsets.all(20),
