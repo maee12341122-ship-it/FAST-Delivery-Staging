@@ -642,8 +642,8 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // 👈 ضبط دالة getReceiverPlayerIdForChat لتتوافق مع البارامترات المسماة (orderId, targetChat)
-  Future<String?> getReceiverPlayerIdForChat({dynamic orderId, String? targetChat}) async {
+  // 👈 ضبط دالة getReceiverPlayerIdForChat لتقبل senderRole وكافة البارامترات المسماة المحتملة
+  Future<String?> getReceiverPlayerIdForChat({dynamic orderId, String? targetChat, String? senderRole}) async {
     try {
       return null;
     } catch (e) {
@@ -651,7 +651,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 ضبط دالة sendAutoNotification لتتوافق مع البارامترات المسماة (targetPlayerId/playerId, title, body/message)
+  // 👈 ضبط دالة sendAutoNotification لتقبل البارامترات المسماة المرنة
   Future<void> sendAutoNotification({String? playerId, String? targetPlayerId, required String title, String? message, String? body}) async {
     try {
       // إرسال الإشعار تلقائياً
@@ -859,7 +859,6 @@ class AppState extends ChangeNotifier {
 
   String? get currentUserId => userProfile?['phone'];
 
-  // 👈 ضبط دالة setUser لتقبل البارامتر المسمى ({String? name, ...}) أو خريطة بروفایل
   void setUser({dynamic profile, String? name, String? phone, String? address}) {
     if (profile is Map<String, dynamic>) {
       userProfile = profile;
@@ -1008,8 +1007,11 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  // 👈 ضبط دالة updateUser لتقبل البارامترات المسماة ({String? name, String? address})
-  Future<void> updateUser({String? name, String? address}) async {
+  // 👈 ضبط دالة updateUser لتقبل البارامترات المسماة المرنة (name, address, phone)
+  Future<void> updateUser({String? name, String? address, String? phone}) async {
+    if (phone != null && phone.isNotEmpty && userProfile != null) {
+      userProfile!['phone'] = phone;
+    }
     await saveUserProfileDetails(
       name ?? userProfile?['name'] ?? '',
       address ?? userProfile?['address'] ?? '',
