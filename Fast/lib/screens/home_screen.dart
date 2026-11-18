@@ -162,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
-    bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy ?? false;
+    bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy;
 
     if (!hasAcceptedPrivacy) {
       showDialog(
@@ -498,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // شبكة الأقسام البصرية المحدثة بدقة مطابقة تماماً لتصميم التطبيق الفخم في الصور وبدون أي مشاكل بناء
+  // شبكة الأقسام البصرية المعرفة بنوع صحيح 100% وبدون أي مشاكل في الأقواس
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final List> categoriesList = [
       {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
