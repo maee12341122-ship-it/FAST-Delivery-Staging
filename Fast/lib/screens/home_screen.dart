@@ -496,16 +496,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  /// 🌟 شبكة الأقسام المعدلة لتصبح كبيرة، واضحة، وتفاعلية بالكامل (3 أعمدة مع صور بارزة ومسميات محدثة)
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final categoriesList = [
       {'title': 'الكل', 'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591', 'category': 'الكل'},
       {'title': 'المطاعم', 'image': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5', 'category': 'المطاعم'},
       {'title': 'البقالات', 'image': 'https://images.unsplash.com/photo-1542838132-92c53300491e', 'category': 'البقالات'},
       {'title': 'الحلويات', 'image': 'https://images.unsplash.com/photo-1551024709-8f23befc6f87', 'category': 'حلويات ومعجنات'},
-      {'title': 'الخضار واللحوم', 'image': 'https://images.unsplash.com/photo-1610348725531-843dff563e2c', 'category': 'الخضار والفواكه'},
+      {'title': 'خضروات وفواكه', 'image': 'https://images.unsplash.com/photo-1610348725531-843dff563e2c', 'category': 'الخضار والفواكه'}, // 👈 الاسم المحدث
       {'title': 'الصيدلية', 'image': 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae', 'category': 'الصيدلية الآمنة'},
       {'title': 'هدايا وورود', 'image': 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38', 'category': 'هدايا واكسسوارات'},
-      {'title': 'وصي لي', 'image': 'https://images.unsplash.com/photo-1526367460882-16d124185750', 'category': 'طلبات أخرى'},
+      {'title': 'طلبات أخرى', 'image': 'https://images.unsplash.com/photo-1526367460882-16d124185750', 'category': 'طلبات أخرى'}, // 👈 الاسم المحدث
     ];
 
     return Padding(
@@ -517,17 +518,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
             child: Text(
               'أقسام التطبيق والخدمات 🌟',
-              style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 15),
+              style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 0.78,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+              crossAxisCount: 3, // 👈 3 أعمدة لتكون البطاقات واسعة ومريحة وواضحة جداً
+              childAspectRatio: 0.95,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
             ),
             itemCount: categoriesList.length,
             itemBuilder: (context, index) {
@@ -544,34 +545,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _searchController.clear();
                   });
                 },
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 child: Container(
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.amber.withOpacity(0.2) : cardBg,
-                    borderRadius: BorderRadius.circular(16),
+                    color: isSelected ? Colors.amber.withOpacity(0.25) : cardBg,
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: isSelected ? Colors.amber : Colors.grey.shade300,
                       width: isSelected ? 2 : 1,
                     ),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
+                      BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 3)),
                     ],
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                         child: Image.network(
                           catItem['image'] as String,
-                          width: 44,
-                          height: 44,
+                          width: 52,
+                          height: 52,
                           fit: BoxFit.cover,
                           errorBuilder: (c, e, s) => Container(
-                            width: 44,
-                            height: 44,
+                            width: 52,
+                            height: 52,
                             color: Colors.amber.withOpacity(0.2),
-                            child: const Icon(Icons.store, color: Colors.amber, size: 24),
+                            child: const Icon(Icons.store, color: Colors.amber, size: 26),
                           ),
                         ),
                       ),
@@ -584,7 +586,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         style: TextStyle(
                           color: isSelected ? Colors.amber.shade900 : textColor,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -1479,7 +1481,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final orderId = order['id']?.toString() ?? '';
       final status = order['status']?.toString() ?? '';
 
-      if (status == 'pricingSentToCustomer' && !_shownPricingDialogs.contains(orderId)) {
+      // 👈 التحقق الشامل لتغطية أي صيغة حالة مرسلة من المشرف
+      if ((status == 'pricingSentToCustomer' || status == 'pricing_sent_to_customer') && !_shownPricingDialogs.contains(orderId)) {
         _shownPricingDialogs.add(orderId);
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2669,6 +2672,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       case 'waitingForPricing':
         return '⏳ بانتظار تحديد السعر من الإدارة';
       case 'pricingSentToCustomer':
+      case 'pricing_sent_to_customer':
         return '🔔 تم إرسال التسعيرة - بانتظار موافقتك';
       case 'waitingCourierApproval':
         return '🛵 بانتظار قبول المندوب للطلب';
@@ -2869,7 +2873,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               ),
                               const Divider(color: Colors.grey, height: 20),
 
-                              if (status == 'pricingSentToCustomer') ...[
+                              if (status == 'pricingSentToCustomer' || status == 'pricing_sent_to_customer') ...[
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   margin: const EdgeInsets.only(bottom: 10),
@@ -3012,7 +3016,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         if (isAdmin) ...[
           _buildProfileItem(Icons.admin_panel_settings, 'لوحة تحكم المشرف الإدارية ⚙️', cardBg, textColor, () {
-            // 👈 إزالة const لضمان عدم حدوث خطأ أثناء البناء
             Navigator.push(context, MaterialPageRoute(builder: (context) => AdminScreen()));
           }),
           const SizedBox(height: 10),
@@ -3020,7 +3023,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         if (isCourier) ...[
           _buildProfileItem(Icons.delivery_dining, 'لوحة طلبات المندوب وتوصيل الشحنات 🏍️', cardBg, textColor, () {
-            // 👈 إزالة const لضمان عدم حدوث خطأ أثناء البناء
             Navigator.push(context, MaterialPageRoute(builder: (context) => CourierScreen()));
           }),
           const SizedBox(height: 10),
