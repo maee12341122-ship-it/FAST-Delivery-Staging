@@ -23,7 +23,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   RealtimeChannel? _orderChannel;
   RealtimeChannel? _locationChannel;
 
-  // متغيرات لتخزين التقييمات المجلبة من قاعدة البيانات مباشرة
   Map<String, dynamic>? _restaurantRatingData;
   Map<String, dynamic>? _courierRatingData;
   bool _isLoadingRatings = false;
@@ -39,7 +38,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
   }
 
-  // 👈 دالة لجلب التقييمات من الجداول المنفصلة في Supabase
   Future<void> _fetchOrderRatings(String orderId) async {
     setState(() => _isLoadingRatings = true);
     try {
@@ -215,7 +213,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     rating: rating,
                     reviewText: reviewController.text.trim(),
                   );
-                  await _fetchOrderRatings(orderId); // تحديث البيانات محلياً بعد الإرسال
+                  await _fetchOrderRatings(orderId);
                   if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -294,7 +292,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     rating: rating,
                     reviewText: reviewController.text.trim(),
                   );
-                  await _fetchOrderRatings(orderId); // تحديث البيانات محلياً بعد الإرسال
+                  await _fetchOrderRatings(orderId);
                   if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -368,12 +366,18 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       {'title': 'التسليم', 'icon': Icons.check_circle},
     ];
 
-    final double productsPrice = double.tryParse(
+    // 👈 التحقق مما إذا كان الطلب عبارة عن خدمة "وصل لي" أو طلب خاص
+    final String itemsDescText = (order['items_description'] ?? order['items_desc'] ?? '').toString();
+    final bool isWaselLi = itemsDescText.contains('وصل لي') || itemsDescText.contains('طلب خاص');
+
+    final double rawProductsPrice = double.tryParse(
         order['total_price']?.toString() ??
             order['items_price']?.toString() ??
             order['products_total']?.toString() ??
             order['products_price']?.toString() ?? '0'
     ) ?? 0.0;
+
+    final double finalProductsPrice = isWaselLi ? 0.0 : rawProductsPrice;
 
     final double deliveryFee = double.tryParse(
         order['delivery_fee']?.toString() ?? '0'
@@ -384,20 +388,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             order['total']?.toString() ?? '0'
     ) ?? 0.0;
 
-    final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
-        ? (dbTotalAmount - deliveryFee)
-        : productsPrice;
-
-    final double grandTotal = dbTotalAmount > 0
-        ? dbTotalAmount
-        : (finalProductsPrice + deliveryFee);
+    // 👈 الإجمالي الكلي يصبح مساوياً لرسوم التوصيل فقط إذا كان وصل لي
+    final double grandTotal = isWaselLi 
+        ? deliveryFee 
+        : (dbTotalAmount > 0 ? dbTotalAmount : (finalProductsPrice + deliveryFee));
 
     final String courierName = order['assigned_courier']?.toString() ?? 'مندوب عام';
     
-    // التحقق هل المستخدم الحالي هو مشرف أو مندوب؟
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
 
-    // استخراج قيم التقييمات من الجداول المجلبة بدلاً من جدول الطلبات مباشرة
     final double? restaurantRatingVal = _restaurantRatingData != null ? double.tryParse(_restaurantRatingData!['rating']?.toString() ?? '') : null;
     final String restaurantReviewVal = _restaurantRatingData?['review']?.toString() ?? '';
 
@@ -419,7 +418,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // شريط التقدم الأفقي للحالات
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                 decoration: BoxDecoration(
@@ -594,8 +592,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                          const SizedBox(height: 4),
+                          // 👈 إذا لم يكن طلب "وصل لي"، اعرض سعر المنتجات طبيعياً
+                          if (!isWaselLi) ...[
+                            Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            const SizedBox(height: 4),
+                          ],
                           Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                           const Divider(color: Colors.white12, height: 8),
                           Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
