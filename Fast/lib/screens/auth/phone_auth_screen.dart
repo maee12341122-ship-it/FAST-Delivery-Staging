@@ -41,6 +41,60 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
   Map<String, dynamic>? _pendingUserRecord; 
 
+  // عداد النقرات المخفية للوصول لإدارة النظام سراّ
+  int _secretTapCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingAdminOrCourierSession();
+  }
+
+  // 🛡️ التحقق التلقائي إذا كان المشرف أو المندوب مسجل الدخول مسبقاً لتخطي تسجيل الدخول
+  Future<void> _checkExistingAdminOrCourierSession() async {
+    try {
+      final session = _supabase.auth.currentSession;
+      if (session != null) {
+        final userId = session.user.id;
+        
+        // 1. فحص هل هو مشرف
+        final adminRes = await _supabase
+            .from('admins')
+            .select()
+            .eq('id', userId) // أو التحقق عبر الـ role في الـ metadata
+            .maybeSingle();
+
+        if (adminRes != null) {
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminScreen()),
+          );
+          return;
+        }
+
+        // 2. فحص هل هو مندوب
+        final courierRes = await _supabase
+            .from('couriers')
+            .select()
+            .eq('auth_user_id', userId)
+            .maybeSingle();
+
+        if (courierRes != null) {
+          if (!mounted) return;
+          Provider.of<AppState>(context, listen: false).currentCourier = courierRes;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const CourierScreen()),
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في فحص الجلسة التلقائية: $e');
+    }
+  }
+
   @override
   void dispose() {
     _phoneController.dispose();
@@ -190,7 +244,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // التحقق عبر دالة الـ AppState المرتبطة بقاعدة البيانات
       bool isValid = await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
 
       if (isValid) {
@@ -201,7 +254,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             });
           } else {
             if (_detectedRole == 'customer_existing') {
-              // إذا كان عميلاً مسجلاً مسبقاً، نسجل دخوله مباشرة ونتخطى صفحة البروفايل
               if (widget.onLoginSuccess != null) {
                 widget.onLoginSuccess!();
               } else {
@@ -240,10 +292,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
   // 3️⃣ التحقق من اسم المستخدم وكلمة المرور الخاصة بالأدمن أو المندوب
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
-    final enteredPassword = _loginPasswordController.text.trim();
-    if (enteredPassword.isEmpty) {
+    final username = _loginUsernameController.text.trim();
+    final password = _loginPasswordController.text.trim();
+    
+    if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال كلمة المرور')),
+        const SnackBar(content: Text('الرجاء إدخال اسم المستخدم وكلمة المرور')),
       );
       return;
     }
@@ -251,45 +305,44 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_pendingUserRecord != null) {
-        final storedPassword = _pendingUserRecord!['password_hash']?.toString() ?? 
-                               _pendingUserRecord!['password']?.toString() ?? '';
-
-        if (storedPassword == enteredPassword) {
+      if (_detectedRole == 'admin' || _detectedRole.isEmpty) {
+        bool adminSuccess = await appState.loginAdminFromSupabase(username, password);
+        if (adminSuccess) {
           if (!mounted) return;
-
-          if (_detectedRole == 'admin') {
-            appState.isAdminLoggedIn = true;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminScreen()),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
-            );
-          } else if (_detectedRole == 'courier') {
-            appState.currentCourier = _pendingUserRecord;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const CourierScreen()),
-            );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
-            );
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('كلمة المرور غير صحيحة ❌'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminScreen()),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('مرحباً بك يا مشرف النظام 🛡️')),
+          );
+          return;
         }
       }
+
+      bool courierSuccess = await appState.loginCourier(username, password);
+      if (courierSuccess) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CourierScreen()),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
+        );
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('بيانات الاعتماد غير صحيحة ❌'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
-      debugPrint('❌ خطأ في التحقق: $e');
+      debugPrint('❌ خطأ في تسجيل الدخول: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -395,20 +448,36 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: primaryGold.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _currentStep == 1
-                            ? Icons.mark_chat_read_outlined
-                            : _currentStep == 3
-                                ? (_detectedRole == 'admin' ? Icons.admin_panel_settings : Icons.delivery_dining)
-                                : Icons.person_outline_rounded,
-                        size: 50,
-                        color: primaryGold,
+                    // 🕵️‍♂️ النقرة المخفية السريعة (الضغط 5 مرات متتالية على الأيقونة يفتح شاشة الأدمن سراً)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _secretTapCount++;
+                          if (_secretTapCount >= 5) {
+                            _secretTapCount = 0;
+                            _detectedRole = 'admin';
+                            _currentStep = 3; // الانتقال المباشر لشاشة تسجيل دخول المشرف/المندوب سراً
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('🔐 تم تفعيل وضع الدخول الإداري السري')),
+                            );
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: primaryGold.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _currentStep == 1
+                              ? Icons.mark_chat_read_outlined
+                              : _currentStep == 3
+                                  ? (_detectedRole == 'admin' ? Icons.admin_panel_settings : Icons.delivery_dining)
+                                  : Icons.person_outline_rounded,
+                          size: 50,
+                          color: primaryGold,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -525,7 +594,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                     ]
 
-                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب ----------------
+                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب السرّية ----------------
                     else if (_currentStep == 3) ...[
                       Text(
                         _detectedRole == 'admin' ? 'تسجيل دخول المشرف الآمن 🛡️' : 'بوابة تسجيل دخول الكابتن 🛵',
@@ -597,6 +666,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                 _detectedRole == 'admin' ? 'دخول لوحة التحكم 🚀' : 'دخول لوحة الطلبات 🚀',
                                 style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
                               ),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() => _currentStep = 0),
+                        child: const Text('العودة لتسجيل العملاء', style: TextStyle(color: primaryGold)),
                       ),
                     ]
 
