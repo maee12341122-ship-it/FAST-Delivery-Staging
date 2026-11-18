@@ -11,7 +11,7 @@ class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
   // 🔑 إعدادات بوابة الواتساب الخاصة برقم الشغل (+967776857316)
-  // يمكنك استبدال هذه البيانات برابط الـ API والـ Token الخاص بك من منصة البوابة (مثل Green API)
+  // استبدل YOUR_INSTANCE_ID و YOUR_API_TOKEN بالبيانات الحقيقية من منصة البوابة لاحقاً
   static const String _whatsappApiUrl = 'https://api.green-api.com/waInstanceYOUR_INSTANCE_ID/SendMessage/YOUR_API_TOKEN';
 
   // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة من Supabase)
@@ -25,7 +25,7 @@ class ApiService {
     }
   }
 
-  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants
+  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants (لضمان تقسيم الأقسام مثل الشميري وو)
   static Future<List<dynamic>> fetchRestaurants() async {
     try {
       final response = await _supabase.from('restaurants').select().eq('is_active', true);
@@ -172,7 +172,7 @@ class ApiService {
     }
   }
 
-  // 7. [لوحة المشرف] تحديث حالة الطلب مباشرة
+  // 7. [لوحة المشرف] تحديث حالة الطلب مباشرة (تم تصحيح الخطأ المطبعي هنا)
   static Future<JsonMap> adminUpdateOrderStatus(
     String token,
     int orderId,
@@ -241,7 +241,6 @@ class ApiService {
     required String otpCode,
   }) async {
     try {
-      // تنظيف رقم العميل ليكون بصيغة دولية صحيحة (مثلاً: 96777xxxxxxxx)
       String cleanPhone = phone.replaceAll('+', '').replaceAll(' ', '');
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (!cleanPhone.startsWith('967')) cleanPhone = '967$cleanPhone';
@@ -249,7 +248,6 @@ class ApiService {
       final chatId = '$cleanPhone@c.us';
       final messageText = 'مرحباً بك في FAST Delivery 🚀\nرمز التحقق الخاص بك هو: *$otpCode*\n\nيرجى عدم مشاركة الرمز مع أحد.';
 
-      // تجهيز طلب الـ API للبوابة الخارجية المرتبطة برقم الشغل
       final response = await http.post(
         Uri.parse(_whatsappApiUrl),
         headers: {'Content-Type': 'application/json'},
