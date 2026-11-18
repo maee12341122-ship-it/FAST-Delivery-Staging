@@ -154,6 +154,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 👈 تم تحديث هذه الدالة لتتعامل مع الأقسام الخدمية التي تحتوي على متاجر (مثل الحلويات، الصيدليات، والمطاعم)
   List<ProductModel> getProductsByCategoryOrRestaurant(String? query) {
     if (query == null || query.isEmpty || query == 'الكل') {
       return products.cast<ProductModel>();
@@ -375,7 +376,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 تم تصحيح توقيع الدالة هنا لتصبح صالحة وخالية من أخطاء بناء الجملة (Syntax)
   Future?> fetchRestaurantRatingForOrder(dynamic orderId) async {
     try {
       final response = await supabase
@@ -1132,12 +1132,26 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
+  // 👈 تم تعديل دالة التصفير هنا لتحديث الطلبات غير المسوية وتصفير الحساب تماماً في القاعدة والواجهة
   Future<void> settleCourierEarnings(String courierName) async {
     try {
+      String cleanCourierName = courierName.trim();
+
+      // 1. تسجيل عملية التسوية في الجدول
       await supabase.from('courier_settlements').insert({
-        'courier_name': courierName,
+        'courier_name': cleanCourierName,
         'settled_at': DateTime.now().toIso8601String(),
       });
+
+      // 2. تحديث الطلبات الخاصة بالمندوب لتصبح مسوية (is_settled = true) لكي تختفي من الطلبات غير المسوية
+      await supabase.from('orders')
+          .update({'is_settled': true})
+          .eq('assigned_courier', cleanCourierName)
+          .eq('status', 'delivered');
+
+      // 3. تحديث القائمة المحلية وإعادة جلب الطلبات والتقارير
+      await fetchOrders();
+      await fetchAdminFinancialReports();
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في تسوية أرباح المندوب: $e');
