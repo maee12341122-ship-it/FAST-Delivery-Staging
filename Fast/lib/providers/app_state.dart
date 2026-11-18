@@ -1458,7 +1458,6 @@ class AppState extends ChangeNotifier {
       throw Exception('الدفع النقدي عند الاستلام هو طريقة الدفع الوحيدة في المرحلة الأولى.');
     }
 
-    // السماح بالمبلغ الصفر (0) في خدمات "وصل لي" أو الطلبات الخاصة ريثما يحدد المشرف التكلفة
     if (productsTotal < 0) {
       throw Exception('لا يمكن إنشاء طلب بمبلغ إجمالي سالب.');
     }
@@ -1728,7 +1727,7 @@ class AppState extends ChangeNotifier {
 }
 
 class _UserMock {
-  final Name;
-  final Phone;
+  final String name;
+  final String phone;
   _UserMock(this.name, this.phone);
 }
