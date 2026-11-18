@@ -375,6 +375,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 👈 دالة جديدة لجلب تقييم المطعم المرتبط برقم الطلب لعرضه في شاشة تتبع الطلب
+  Future?> fetchRestaurantRatingForOrder(dynamic orderId) async {
+    try {
+      final response = await supabase
+          .from('restaurant_ratings')
+          .select()
+          .eq('order_id', orderId.toString())
+          .maybeSingle();
+      
+      if (response != null) {
+        return Map<String, dynamic>.from(response);
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب تقييم المطعم للطلب: $e');
+    }
+    return null;
+  }
+
   String? get latestNotificationMessage {
     if (notifications.isNotEmpty) {
       return notifications.first['body']?.toString() ?? notifications.first['title']?.toString();
@@ -546,14 +564,16 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      await supabase.from('courier_ratings').insert({
-        'order_id': orderId,
-        'courier_name': courierName,
+      await supabase.from('courier_ratings').upsert({
+        'order_id': orderId.toString(),
+        'courier_name': courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim(),
         'rating': rating,
         'review': reviewText,
-      });
+      }, onConflict: 'order_id');
+      notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في تقييم المندوب: $e');
+      throw Exception('تعذر حفظ تقييم المندوب: $e');
     }
   }
 
@@ -563,14 +583,16 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      await supabase.from('restaurant_ratings').insert({
-        'order_id': orderId,
+      await supabase.from('restaurant_ratings').upsert({
+        'order_id': orderId.toString(),
         'rating': rating,
         'review': reviewText,
-      });
+      }, onConflict: 'order_id');
       await fetchRestaurantAverages();
+      notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في تقييم المطعم: $e');
+      throw Exception('تعذر حفظ تقييم المطعم: $e');
     }
   }
 
@@ -642,7 +664,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // 👈 ضبط دالة getReceiverPlayerIdForChat لتقبل senderRole وكافة البارامترات المسماة المحتملة
   Future<String?> getReceiverPlayerIdForChat({dynamic orderId, String? targetChat, String? senderRole}) async {
     try {
       return null;
@@ -651,7 +672,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 ضبط دالة sendAutoNotification لتقبل البارامترات المسماة المرنة
   Future<void> sendAutoNotification({String? playerId, String? targetPlayerId, required String title, String? message, String? body}) async {
     try {
       // إرسال الإشعار تلقائياً
@@ -1007,7 +1027,6 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  // 👈 ضبط دالة updateUser لتقبل البارامترات المسماة المرنة (name, address, phone)
   Future<void> updateUser({String? name, String? address, String? phone}) async {
     if (phone != null && phone.isNotEmpty && userProfile != null) {
       userProfile!['phone'] = phone;
