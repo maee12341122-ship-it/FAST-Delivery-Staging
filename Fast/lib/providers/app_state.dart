@@ -250,8 +250,8 @@ class AppState extends ChangeNotifier {
 
     if (previousState && !isConnectedToInternet) {
       addLocalNotification(
-        '⚠️ انقطاع الاتصال بالإنترنت',
-        'تم فقدان الاتصال بالشبكة! يتم استخدام البيانات المخزنة محلياً.',
+        '⚠️ تم انقطاع الإنترنت',
+        '', // تم إزالة النص التفصيلي بناءً على طلبك
         type: 'network_alert',
       );
     } else if (!previousState && isConnectedToInternet) {
