@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 👈 استيراد مكتبة التخزين المؤقت للصور
 import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
@@ -496,17 +497,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// 🌟 شبكة الأقسام المعدلة لتصبح كبيرة، واضحة، وتفاعلية بالكامل (3 أعمدة مع صور بارزة ومسميات محدثة)
+  /// 🌟 شبكة الأقسام المعدلة لتصبح كبيرة، واضحة، وتفاعلية بالكامل مع CachedNetworkImage
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final categoriesList = [
       {'title': 'الكل', 'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591', 'category': 'الكل'},
       {'title': 'المطاعم', 'image': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5', 'category': 'المطاعم'},
       {'title': 'البقالات', 'image': 'https://images.unsplash.com/photo-1542838132-92c53300491e', 'category': 'البقالات'},
       {'title': 'الحلويات', 'image': 'https://images.unsplash.com/photo-1551024709-8f23befc6f87', 'category': 'حلويات ومعجنات'},
-      {'title': 'خضروات وفواكه', 'image': 'https://images.unsplash.com/photo-1610348725531-843dff563e2c', 'category': 'الخضار والفواكه'}, // 👈 الاسم المحدث
+      {'title': 'خضروات وفواكه', 'image': 'https://images.unsplash.com/photo-1610348725531-843dff563e2c', 'category': 'الخضار والفواكه'},
       {'title': 'الصيدلية', 'image': 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae', 'category': 'الصيدلية الآمنة'},
       {'title': 'هدايا وورود', 'image': 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38', 'category': 'هدايا واكسسوارات'},
-      {'title': 'طلبات أخرى', 'image': 'https://images.unsplash.com/photo-1526367460882-16d124185750', 'category': 'طلبات أخرى'}, // 👈 الاسم المحدث
+      {'title': 'طلبات أخرى', 'image': 'https://images.unsplash.com/photo-1526367460882-16d124185750', 'category': 'طلبات أخرى'},
     ];
 
     return Padding(
@@ -525,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3, // 👈 3 أعمدة لتكون البطاقات واسعة ومريحة وواضحة جداً
+              crossAxisCount: 3,
               childAspectRatio: 0.95,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
@@ -564,12 +565,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(14),
-                        child: Image.network(
-                          catItem['image'] as String,
+                        child: CachedNetworkImage(
+                          imageUrl: catItem['image'] as String,
                           width: 52,
                           height: 52,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => Container(
+                          placeholder: (context, url) => Container(
+                            width: 52,
+                            height: 52,
+                            color: Colors.amber.withOpacity(0.1),
+                            child: const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber))),
+                          ),
+                          errorWidget: (context, url, error) => Container(
                             width: 52,
                             height: 52,
                             color: Colors.amber.withOpacity(0.2),
@@ -669,12 +676,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Center(
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              product.imageUrl,
+                            child: CachedNetworkImage(
+                              imageUrl: product.imageUrl,
                               height: 100,
                               width: 100,
                               fit: BoxFit.cover,
-                              errorBuilder: (c, e, s) => const Icon(Icons.fastfood, size: 50, color: Colors.amber),
+                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                              errorWidget: (context, url, error) => const Icon(Icons.fastfood, size: 50, color: Colors.amber),
                             ),
                           ),
                         ),
@@ -1481,7 +1489,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final orderId = order['id']?.toString() ?? '';
       final status = order['status']?.toString() ?? '';
 
-      // 👈 التحقق الشامل لتغطية أي صيغة حالة مرسلة من المشرف
       if ((status == 'pricingSentToCustomer' || status == 'pricing_sent_to_customer') && !_shownPricingDialogs.contains(orderId)) {
         _shownPricingDialogs.add(orderId);
 
@@ -2231,12 +2238,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: logoUrl.isNotEmpty
-                                  ? Image.network(
-                                      logoUrl,
+                                  ? CachedNetworkImage(
+                                      imageUrl: logoUrl,
                                       width: 52,
                                       height: 52,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (c, e, s) => Container(
+                                      placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                                      errorWidget: (context, url, error) => Container(
                                         width: 52,
                                         height: 52,
                                         color: Colors.amber.withOpacity(0.2),
@@ -2368,10 +2376,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(14),
                                 child: product.imageUrl.isNotEmpty
-                                    ? Image.network(
-                                  product.imageUrl,
+                                    ? CachedNetworkImage(
+                                  imageUrl: product.imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)),
+                                  errorWidget: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
                                 )
                                     : const Icon(Icons.fastfood, color: Colors.amber, size: 30),
                               ),
