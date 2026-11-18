@@ -336,17 +336,29 @@ class _CourierScreenState extends State<CourierScreen> {
       return assigned == courierName || assigned == courierId || assigned.contains(courierName);
     }).toList();
 
+    // 🛡️ الطلبات غير المسوية فقط (لحساب الأرباح والعدادات الجديدة وتتصفر عند تصفير المشرف)
+    final unsettledCompletedOrders = myOrders.where((o) {
+      final bool isDelivered = o['status']?.toString().trim() == 'delivered';
+      final bool isSettled = o['is_settled'] == true;
+      return isDelivered && !isSettled;
+    }).toList();
+
     final activeOrders = myOrders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
-    final completedOrders = myOrders.where((o) => o['status'] == 'delivered').toList();
+    
+    // إخفاء الطلبات التي تم تصفيرها من قائمة المكتملة لتتفرغ الشاشة للمندوب ببدء دورة جديدة
+    final completedOrders = myOrders.where((o) {
+      final bool isDelivered = o['status']?.toString().trim() == 'delivered';
+      final bool isSettled = o['is_settled'] == true;
+      return isDelivered && !isSettled;
+    }).toList();
+
     final cancelledOrders = myOrders.where((o) => o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer').toList();
 
     double totalEarnings = 0.0;
     int completedCount = 0;
-    for (var order in myOrders) {
-      if (order['status'] == 'delivered') {
-        completedCount++;
-        totalEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-      }
+    for (var order in unsettledCompletedOrders) {
+      completedCount++;
+      totalEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
     }
 
     double adminCommission = totalEarnings * 0.20;
