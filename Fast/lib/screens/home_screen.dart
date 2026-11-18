@@ -33,7 +33,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   String selectedCategory = 'الكل';
-  String? selectedRestaurantName;
+  String? selectedRestaurantName; // 👈 يُستخدم الآن كمتغير عام لاختيار المتجر/المحل (سواء مطعم، حلويات، صيدلية، إلخ)
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
 
@@ -541,7 +541,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   HapticFeedback.selectionClick();
                   setState(() {
                     selectedCategory = catName;
-                    selectedRestaurantName = null;
+                    selectedRestaurantName = null; // 👈 تصفير المتجر المختار عند تغيير القسم الرئيسي
                     _searchController.clear();
                   });
                 },
@@ -2059,16 +2059,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final searchQuery = _searchController.text.trim().toLowerCase();
     List filteredProducts = [];
 
-    if (selectedCategory == 'المطاعم' && selectedRestaurantName != null) {
+    // 👈 التعديل الجذري: تفعيل عرض المتاجر لجميع الأقسام التي تحتوي على متاجر (مثل المطاعم، الحلويات، والصيدليات)
+    bool isCategoryWithShops = selectedCategory == 'المطاعم' || selectedCategory == 'حلويات ومعجنات' || selectedCategory == 'الصيدلية الآمنة' || selectedCategory == 'البقالات';
+
+    if (isCategoryWithShops && selectedRestaurantName != null) {
       filteredProducts = appState.products.where((p) {
-        final matchesCategory = p.category.trim() == 'المطاعم';
+        final matchesCategory = selectedCategory == 'الكل' || p.category.trim().toLowerCase() == selectedCategory.trim().toLowerCase();
         final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
         final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
-        return matchesCategory && matchesRestaurant && matchesSearch;
+        return matchesRestaurant && matchesSearch;
       }).toList();
-    } else if (selectedCategory != 'المطاعم') {
+    } else if (!isCategoryWithShops || selectedCategory == 'الكل') {
       filteredProducts = appState.products.where((p) {
-        final matchesCategory = selectedCategory == 'الكل' || p.category.trim() == selectedCategory.trim();
+        final matchesCategory = selectedCategory == 'الكل' || p.category.trim().toLowerCase() == selectedCategory.trim().toLowerCase();
         final matchesSearch = searchQuery.isEmpty ||
             p.name.toLowerCase().contains(searchQuery) ||
             p.restaurantName.toLowerCase().contains(searchQuery);
@@ -2125,8 +2128,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     autofocus: true,
                     style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      hintText: selectedCategory == 'المطاعم' && selectedRestaurantName != null
-                          ? 'ابحث داخل وجبات $selectedRestaurantName...'
+                      hintText: isCategoryWithShops && selectedRestaurantName != null
+                          ? 'ابحث داخل متجر $selectedRestaurantName...'
                           : 'ابحث عن طعام، بقالة، خضار، أو دواء...',
                       hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                       prefixIcon: const Icon(Icons.search, color: Colors.amber),
@@ -2172,35 +2175,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _buildCategoriesGrid(appState, textColor, cardBg),
           const SizedBox(height: 10),
 
-          if (selectedCategory == 'المطاعم' && selectedRestaurantName == null) ...[
-            FutureBuilder<List<dynamic>>(
-              future: Supabase.instance.client.from('restaurants').select(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.all(40.0),
-                    child: Center(child: CircularProgressIndicator(color: Colors.amber)),
-                  );
-                }
+          // 👈 عرض المتاجر التابعة للقسم إذا كان القسم يدعم المتاجر ولم يتم اختيار متجر بعد
+          if (isCategoryWithShops && selectedRestaurantName == null) ...[
+            Builder(
+              builder: (context) {
+                // جلب المتاجر التي تنتمي لهذا القسم حصرياً من المنتجات أو جدول المتاجر
+                final Set<String> storesInThisCategory = appState.products
+                    .where((p) => p.category.trim().toLowerCase() == selectedCategory.trim().toLowerCase())
+                    .map<String>((p) => p.restaurantName)
+                    .toSet();
 
-                List<dynamic> restaurantsList = snapshot.data ?? [];
+                List<dynamic> categoryStores = appState.restaurantsList.where((r) {
+                  return storesInThisCategory.contains(r['name']?.toString().trim());
+                }).toList();
 
-                if (restaurantsList.isEmpty) {
-                  final Set<String> productRestaurants = appState.products
-                      .where((p) => p.category.trim() == 'المطاعم' && p.restaurantName.isNotEmpty)
-                      .map<String>((p) => p.restaurantName)
-                      .toSet();
-                  restaurantsList = productRestaurants.map((name) => {
+                if (categoryStores.isEmpty) {
+                  categoryStores = storesInThisCategory.map((name) => {
                     'name': name,
                     'logo_url': '',
-                    'rating': 4.8,
+                    'rating': 4.9,
                   }).toList();
                 }
 
-                if (restaurantsList.isEmpty) {
+                if (categoryStores.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.all(40.0),
-                    child: Center(child: Text('لا توجد مطاعم متاحة حالياً 🍽️', style: TextStyle(color: Colors.grey))),
+                    child: Center(child: Text('لا توجد متاجر متاحة حالياً في هذا القسم 🏬', style: TextStyle(color: Colors.grey))),
                   );
                 }
 
@@ -2209,18 +2209,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-                      child: Text('اختر مطعماً لعرض وجباته وقائمته الخاصة 🍽️', style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: Text('اختر متجراً لعرض منتجاته وقائمته الخاصة 🏬', style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: restaurantsList.length,
+                      itemCount: categoryStores.length,
                       itemBuilder: (context, index) {
-                        final rest = restaurantsList[index];
-                        final restaurantName = rest['name']?.toString() ?? 'مطعم';
-                        final logoUrl = rest['logo_url']?.toString() ?? '';
-                        final double rating = double.tryParse(rest['rating']?.toString() ?? '4.8') ?? 4.8;
-                        final int totalProductsCount = appState.products.where((p) => p.restaurantName.trim() == restaurantName.trim()).length;
+                        final store = categoryStores[index];
+                        final storeName = store['name']?.toString() ?? 'متجر';
+                        final logoUrl = store['logo_url']?.toString() ?? '';
+                        final double rating = double.tryParse(store['rating']?.toString() ?? '4.8') ?? 4.8;
+                        final int totalProductsCount = appState.products.where((p) => p.restaurantName.trim() == storeName.trim()).length;
 
                         return Container(
                           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2247,7 +2247,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         width: 52,
                                         height: 52,
                                         color: Colors.amber.withOpacity(0.2),
-                                        child: const Icon(Icons.restaurant, color: Colors.amber),
+                                        child: const Icon(Icons.store, color: Colors.amber),
                                       ),
                                     )
                                   : Container(
@@ -2257,11 +2257,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         color: Colors.amber.withOpacity(0.2),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      child: const Icon(Icons.restaurant, color: Colors.amber, size: 26),
+                                      child: const Icon(Icons.store, color: Colors.amber, size: 26),
                                     ),
                             ),
                             title: Text(
-                              restaurantName,
+                              storeName,
                               style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15),
                             ),
                             subtitle: Column(
@@ -2278,7 +2278,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     ),
                                     const Text(' | ', style: TextStyle(color: Colors.grey)),
                                     Text(
-                                      'الوجبات: $totalProductsCount',
+                                      'المنتجات: $totalProductsCount',
                                       style: const TextStyle(color: Colors.grey, fontSize: 12),
                                     ),
                                   ],
@@ -2289,7 +2289,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             onTap: () {
                               HapticFeedback.selectionClick();
                               setState(() {
-                                selectedRestaurantName = restaurantName;
+                                selectedRestaurantName = storeName;
                               });
                             },
                           ),
@@ -2301,13 +2301,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               },
             ),
           ] else ...[
-            if (selectedCategory == 'المطاعم' && selectedRestaurantName != null) ...[
+            if (isCategoryWithShops && selectedRestaurantName != null) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('وجبات مطعم: $selectedRestaurantName 🍔', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text('منتجات متجر: $selectedRestaurantName 🛍️', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
                     TextButton.icon(
                       onPressed: () {
                         setState(() {
@@ -2315,7 +2315,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         });
                       },
                       icon: const Icon(Icons.arrow_back, size: 16, color: Colors.amber),
-                      label: const Text('تغيير المطعم', style: TextStyle(color: Colors.amber)),
+                      label: const Text('تغيير المتجر', style: TextStyle(color: Colors.amber)),
                     ),
                   ],
                 ),
@@ -2776,7 +2776,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                     final formattedAddress = formatLocationAddress(order['address']);
 
-                    // 👈 التحقق مما إذا كان الطلب عبارة عن خدمة "وصل لي" أو طلب خاص
                     final bool isWaselLi = itemsDesc.contains('وصل لي') || itemsDesc.contains('طلب خاص');
 
                     final double rawProductsPrice = double.tryParse(
@@ -2786,7 +2785,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             order['products_price']?.toString() ?? '0'
                     ) ?? 0.0;
 
-                    // 👈 إذا كان وصل لي، فسعر المنتجات صفر تماماً
                     final double finalProductsPrice = isWaselLi ? 0.0 : rawProductsPrice;
 
                     final double deliveryFee = double.tryParse(
@@ -2798,7 +2796,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             order['total']?.toString() ?? '0'
                     ) ?? 0.0;
 
-                    // 👈 الإجمالي الكلي يصبح مساوياً لرسوم التوصيل فقط إذا كان وصل لي
                     final double grandTotal = isWaselLi 
                         ? deliveryFee 
                         : (dbTotalAmount > 0 ? dbTotalAmount : (finalProductsPrice + deliveryFee));
@@ -2952,7 +2949,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // 👈 إذا لم يكن طلب وصل لي، اعرض سعر المنتجات
                                     if (!isWaselLi) ...[
                                       Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
                                       const SizedBox(height: 4),
