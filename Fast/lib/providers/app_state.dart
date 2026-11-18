@@ -911,7 +911,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🛠️ تم تعديل نوع الإرجاع إلى Future<void> لتتوافق مع await
   Future<void> _loadUserSession() async {
     final prefs = await SharedPreferences.getInstance();
     final phone = prefs.getString('userPhone');
@@ -1021,29 +1020,79 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // 💬 توليد كود الـ OTP وحفظه في جدول otp_codes وإرساله فعلياً من رقم الشغل عبر ApiService
   Future<dynamic> requestOtpForPhone(String phone) async {
     try {
-      generatedDynamicOtp = (1000 + Random().nextInt(9000)).toString();
+      final cleanPhone = _normalizePhone(phone);
+      final otp = (1000 + Random().nextInt(9000)).toString();
+      generatedDynamicOtp = otp;
 
-      await openFastWhatsApp(
-          message: 'مرحباً، رمز التحقق الخاص بك هو: $generatedDynamicOtp'
+      final expiresAt = DateTime.now().add(const Duration(minutes: 5)).toIso8601String();
+
+      // حذف أي رموز قديمة لنفس الرقم
+      try {
+        await supabase.from('otp_codes').delete().eq('phone_number', cleanPhone);
+      } catch (_) {}
+
+      // إدراج الرمز الجديد في جدول otp_codes
+      await supabase.from('otp_codes').insert({
+        'phone_number': cleanPhone,
+        'otp_code': otp,
+        'expires_at': expiresAt,
+        'is_used': false,
+      });
+
+      // إرسال الكود فعلياً عبر رقم الشغل باستخدام دالة الـ ApiService الجديدة
+      await ApiService.sendRealWhatsAppOtp(
+        phone: cleanPhone,
+        otpCode: otp,
       );
 
-      return {'exists': false, 'message': 'تم إرسال رمز التحقق بنجاح'};
+      return {'exists': false, 'message': 'تم إرسال رمز التحقق بنجاح من رقم الشغل 💬'};
     } catch (e) {
+      debugPrint('❌ خطأ في طلب رمز التحقق: $e');
       throw Exception('تعذر إرسال رمز التحقق.');
     } finally {
       notifyListeners();
     }
   }
 
-  bool verifyOtpAndLogin(String phone, String enteredOtp) {
+  // 🔑 التحقق من الرمز من جدول otp_codes في Supabase وتأكيد الدخول
+  Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     if (enteredOtp.trim().isEmpty) return false;
-    if (generatedDynamicOtp != null && enteredOtp.trim() == generatedDynamicOtp.toString()) {
-      checkAndLoginCustomer(phone);
-      return true;
+
+    try {
+      final cleanPhone = _normalizePhone(phone);
+      final trimmedOtp = enteredOtp.trim();
+
+      // البحث عن الرمز في جدول otp_codes
+      final response = await supabase
+          .from('otp_codes')
+          .select()
+          .eq('phone_number', cleanPhone)
+          .eq('otp_code', trimmedOtp)
+          .eq('is_used', false)
+          .maybeSingle();
+
+      if (response != null) {
+        // تحديث الرمز ليصبح مستخدماً لمرة واحدة فقط
+        await supabase.from('otp_codes').update({'is_used': true}).eq('id', response['id']);
+
+        await checkAndLoginCustomer(phone);
+        return true;
+      }
+
+      // دعم احتياطي للرمز المحلي المؤقت
+      if (generatedDynamicOtp != null && trimmedOtp == generatedDynamicOtp.toString()) {
+        await checkAndLoginCustomer(phone);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('❌ خطأ في التحقق من الرمز: $e');
+      return false;
     }
-    return false;
   }
 
   Future<void> updateUser({String? name, String? address, String? phone}) async {
@@ -1101,7 +1150,6 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
-  // 🛠️ تم تعديل نوع الإرجاع إلى Future<void> لتتوافق مع await
   Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
     if (user == null || user.appMetadata['role']?.toString() != 'courier') return;
@@ -1120,7 +1168,7 @@ class AppState extends ChangeNotifier {
     try {
       final response = await supabase.from('couriers').select();
       couriers = response;
-      await _loadCourierSession(); // 👈 تم إضافة await هنا أيضاً لتتوافق مع المستقبل
+      await _loadCourierSession();
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في جلب المناديب: $e');
@@ -1446,7 +1494,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 🍽️ الدالة الناقصة التي كانت تسبب خطأ البناء في home_screen.dart
   bool isRestaurantOrder(Map<String, dynamic> order) {
     if (order['is_restaurant'] == true) return true;
     final String restName = order['restaurant_name']?.toString().trim() ?? '';
