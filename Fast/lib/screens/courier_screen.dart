@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 لحفظ واسترجاع جلسة المندوب محلياً
+import 'dart:convert';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
@@ -19,30 +21,48 @@ class CourierScreen extends StatefulWidget {
 
 class _CourierScreenState extends State<CourierScreen> {
   StreamSubscription<Position>? _locationSubscription;
+  bool _isLoadingSession = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _verifyCourierSecurity();
+      _verifyAndRestoreCourierSession();
     });
   }
 
-  Future<void> _verifyCourierSecurity() async {
+  // 🛡️ دالة ذكية للتحقق واسترجاع جلسة المندوب المحفوظة محلياً لمنع فقدان تسجيل الدخول
+  Future<void> _verifyAndRestoreCourierSession() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
-      final currentPhone = appState.userProfile?['phone'] ?? '';
 
-      if (currentPhone.isEmpty && appState.currentCourier == null) {
-        _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
-        return;
-      }
-
+      // إذا كانت الجلسة موجودة في الذاكرة
       if (appState.currentCourier != null) {
         final String courierId = (appState.currentCourier!['id'] ?? appState.currentCourier!['name'] ?? '').toString().trim();
         if (courierId.isNotEmpty) {
           _startLiveLocationUpdates(courierId);
         }
+        setState(() => _isLoadingSession = false);
+        return;
+      }
+
+      // محاولة استرجاع الجلسة المحفوظة محلياً عبر SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final String? savedCourierJson = prefs.getString('saved_courier_session');
+
+      if (savedCourierJson != null && savedCourierJson.isNotEmpty) {
+        final Map<String, dynamic> courierData = jsonDecode(savedCourierJson);
+        appState.currentCourier = courierData;
+        final String courierId = courierData['id'].toString();
+        _startLiveLocationUpdates(courierId);
+        setState(() => _isLoadingSession = false);
+        return;
+      }
+
+      // التحقق عبر رقم الهاتف المسجل في الملف الشخصي
+      final currentPhone = appState.userProfile?['phone'] ?? '';
+      if (currentPhone.isEmpty) {
+        _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
         return;
       }
 
@@ -60,12 +80,17 @@ class _CourierScreenState extends State<CourierScreen> {
       if (courierRes == null) {
         _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مندوب توصيل للوصول إلى هذه اللوحة 🚫');
       } else {
-        final String courierId = courierRes['id'].toString();
         appState.currentCourier = courierRes;
+        // حفظ الجلسة محلياً لضمان عدم اختفائها عند إعادة التشغيل
+        await prefs.setString('saved_courier_session', jsonEncode(courierRes));
+        
+        final String courierId = courierRes['id'].toString();
         _startLiveLocationUpdates(courierId);
+        setState(() => _isLoadingSession = false);
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق الأمني للمندوب: $e');
+      setState(() => _isLoadingSession = false);
     }
   }
 
@@ -296,8 +321,11 @@ class _CourierScreenState extends State<CourierScreen> {
                 IconButton(
                   icon: const Icon(Icons.logout, color: Colors.redAccent),
                   tooltip: 'تسجيل الخروج',
-                  onPressed: () {
+                  onPressed: () async {
                     _locationSubscription?.cancel();
+                    // مسح الجلسة المحفوظة عند تسجيل الخروج
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('saved_courier_session');
                     appState.logoutCourier();
                     Navigator.pop(context);
                   },
@@ -309,11 +337,13 @@ class _CourierScreenState extends State<CourierScreen> {
             children: [
               _buildNetworkStatusBar(appState),
               Expanded(
-                child: courier == null
+                child: _isLoadingSession
                     ? const Center(
                         child: CircularProgressIndicator(color: Colors.amber),
                       )
-                    : _buildCourierOrdersListWithTabs(appState, courier),
+                    : (courier == null
+                        ? const Center(child: Text('عذراً، يرجى تسجيل الدخول مجدداً ⚠️', style: TextStyle(color: Colors.grey)))
+                        : _buildCourierOrdersListWithTabs(appState, courier)),
               ),
             ],
           ),
