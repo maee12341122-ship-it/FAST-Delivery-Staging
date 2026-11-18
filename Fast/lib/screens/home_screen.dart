@@ -5,7 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 👈 استيراد مكتبة التخزين المؤقت للصور
+import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
@@ -19,9 +19,9 @@ import 'customer/addresses_screen.dart';
 import 'customer/map_location_screen.dart';
 import 'notifications_screen.dart';
 import 'order_tracking_screen.dart';
-import 'customer/custom_delivery_screen.dart'; // شاشة "وصل لي" الجديدة
-import 'admin_screen.dart'; // 👈 مسار شاشة لوحة المشرف الصحيح داخل مجلد admin
-import 'courier_screen.dart'; // 👈 مسار شاشة طلبات المندوب الصحيح داخل مجلد courier
+import 'customer/custom_delivery_screen.dart';
+import 'admin_screen.dart';
+import 'courier_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -497,7 +497,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// 🌟 شبكة الأقسام المعدلة لتصبح كبيرة، واضحة، وتفاعلية بالكامل مع CachedNetworkImage
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
     final categoriesList = [
       {'title': 'الكل', 'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591', 'category': 'الكل'},
@@ -2777,12 +2776,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                     final formattedAddress = formatLocationAddress(order['address']);
 
-                    final double productsPrice = double.tryParse(
+                    // 👈 التحقق مما إذا كان الطلب عبارة عن خدمة "وصل لي" أو طلب خاص
+                    final bool isWaselLi = itemsDesc.contains('وصل لي') || itemsDesc.contains('طلب خاص');
+
+                    final double rawProductsPrice = double.tryParse(
                         order['total_price']?.toString() ??
                             order['items_price']?.toString() ??
                             order['products_total']?.toString() ??
                             order['products_price']?.toString() ?? '0'
                     ) ?? 0.0;
+
+                    // 👈 إذا كان وصل لي، فسعر المنتجات صفر تماماً
+                    final double finalProductsPrice = isWaselLi ? 0.0 : rawProductsPrice;
 
                     final double deliveryFee = double.tryParse(
                         order['delivery_fee']?.toString() ?? '0'
@@ -2793,13 +2798,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             order['total']?.toString() ?? '0'
                     ) ?? 0.0;
 
-                    final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFee)
-                        ? (dbTotalAmount - deliveryFee)
-                        : productsPrice;
-
-                    final double grandTotal = dbTotalAmount > 0
-                        ? dbTotalAmount
-                        : (finalProductsPrice + deliveryFee);
+                    // 👈 الإجمالي الكلي يصبح مساوياً لرسوم التوصيل فقط إذا كان وصل لي
+                    final double grandTotal = isWaselLi 
+                        ? deliveryFee 
+                        : (dbTotalAmount > 0 ? dbTotalAmount : (finalProductsPrice + deliveryFee));
 
                     return Card(
                       color: cardBg,
@@ -2950,8 +2952,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
-                                    const SizedBox(height: 4),
+                                    // 👈 إذا لم يكن طلب وصل لي، اعرض سعر المنتجات
+                                    if (!isWaselLi) ...[
+                                      Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
+                                      const SizedBox(height: 4),
+                                    ],
                                     Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
                                     const Divider(color: Colors.white12, height: 8),
                                     Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
