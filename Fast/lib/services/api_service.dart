@@ -20,7 +20,7 @@ class ApiService {
     }
   }
 
-  // 2. التحقق من الكوبون وتطبيق الخصم
+  // 2. التحقق من الكوبون وتطبيق الخصم (تم تصحيح اسم العمود إلى discount_value حسب الـ Schema)
   static Future<JsonMap> validateCoupon(String code, double subtotal) async {
     try {
       final response = await _supabase
@@ -33,8 +33,15 @@ class ApiService {
         throw Exception('كود الخصم غير صالح أو منتهي الصلاحية.');
       }
 
-      double discountPercent = double.tryParse(response['discount_percent']?.toString() ?? '0') ?? 0.0;
-      double discountAmount = subtotal * (discountPercent / 100);
+      double discountValue = double.tryParse(response['discount_value']?.toString() ?? '0') ?? 0.0;
+      String discountType = response['discount_type']?.toString() ?? 'percentage';
+      
+      double discountAmount = 0.0;
+      if (discountType == 'percentage') {
+        discountAmount = subtotal * (discountValue / 100);
+      } else {
+        discountAmount = discountValue; // خصم مبلغ ثابت
+      }
 
       return {
         'code': response['code'],
@@ -52,7 +59,7 @@ class ApiService {
     required JsonList items,
     required String address,
     required String notes,
-    required String token, // يُستخدم هنا كرقم هاتف العميل
+    required String token, // رقم هاتف العميل المنقى
   }) async {
     try {
       double productsTotal = 0.0;
@@ -66,8 +73,10 @@ class ApiService {
         'phone': token,
         'address': address.trim(),
         'items_description': notes.trim(),
+        'products_total': productsTotal,
         'total_price': productsTotal,
         'status': 'waitingForPricing', // بانتظار تسعير الإدارة
+        'admin_message': 'بانتظار تحديد رسوم التوصيل من المشرف',
         'created_at': DateTime.now().toIso8601String(),
       }).select().single();
 
@@ -115,15 +124,17 @@ class ApiService {
     String assignedCourier,
   ) async {
     try {
-      final orderRes = await _supabase.from('orders').select('total_price').eq('id', orderId).single();
-      double productsTotal = double.tryParse(orderRes['total_price']?.toString() ?? '0') ?? 0.0;
+      final orderRes = await _supabase.from('orders').select('products_total, total_price').eq('id', orderId).single();
+      double productsTotal = double.tryParse(orderRes['products_total']?.toString() ?? orderRes['total_price']?.toString() ?? '0') ?? 0.0;
       double totalPrice = productsTotal + deliveryFee;
 
       final response = await _supabase.from('orders').update({
         'delivery_fee': deliveryFee,
+        'products_total': productsTotal,
         'total_price': totalPrice,
         'assigned_courier': assignedCourier.trim(),
         'status': 'pricingSentToCustomer',
+        'is_fee_sent': true,
         'admin_message': 'تم تحديد رسوم التوصيل ($deliveryFee ر.ي). بانتظار موافقة العميل ⏳',
       }).eq('id', orderId).select().single();
 
@@ -159,11 +170,11 @@ class ApiService {
       return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات المندوب: $e');
-      rethrow;
+      return [];
     }
   }
 
-  // 9. [لوحة المندوب] تحديث حالة الطلب (قبول، في الطريق، تم التوصيل)
+  // 9. [لوحة المندوب] تحديث حالة الطلب
   static Future<JsonMap> courierUpdateOrderStatus(
     String token,
     int orderId,
@@ -188,7 +199,6 @@ class ApiService {
     double longitude,
   ) async {
     try {
-      // يمكن ربطها بجدول الجلسات أو المناديب في Supabase إذا رغبت
       debugPrint('📍 تحديث الموقع: $latitude, $longitude');
     } catch (e) {
       debugPrint('❌ خطأ في تحديث موقع المندوب: $e');
