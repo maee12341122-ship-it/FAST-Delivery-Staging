@@ -116,7 +116,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (adminRes != null) {
         _detectedRole = 'admin';
         _pendingUserRecord = adminRes;
-        // تعبئة اسم المستخدم تلقائياً إن وجد في قاعدة البيانات
         _loginUsernameController.text = adminRes['username'] ?? adminRes['name'] ?? '';
       } else {
         // 2. فحص هل الرقم يتبع للمناديب (couriers)
@@ -525,7 +524,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                     ]
 
-                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب (حسب الصور) ----------------
+                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب ----------------
                     else if (_currentStep == 3) ...[
                       Text(
                         _detectedRole == 'admin' ? 'تسجيل دخول المشرف الآمن 🛡️' : 'بوابة تسجيل دخول الكابتن 🛵',
@@ -540,9 +539,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       const SizedBox(height: 25),
                       TextField(
                         controller: _loginUsernameController,
+                        keyboardType: TextInputType.emailAddress,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'اسم المستخدم',
+                          labelText: 'اسم المستخدم أو البريد الإلكتروني',
                           labelStyle: const TextStyle(color: Colors.grey),
                           prefixIcon: const Icon(Icons.person_outline, color: primaryGold),
                           filled: true,
@@ -615,6 +615,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _nameController,
                         focusNode: _nameFocus,
+                        keyboardType: TextInputType.name, // 👈 تم الضبط هنا لتظهر لوحة مفاتيح الحروف الطبيعية لإدخال الاسم
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'الاسم الكامل',
@@ -636,6 +637,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _addressController,
                         focusNode: _addressFocus,
+                        keyboardType: TextInputType.text, // 👈 تم الضبط هنا للنصوص والعنوان
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'العنوان التفصيلي (أو حدده عبر الخريطة)',
