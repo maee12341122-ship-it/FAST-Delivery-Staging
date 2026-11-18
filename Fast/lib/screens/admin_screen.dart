@@ -7,7 +7,7 @@ import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import '../home_screen.dart'; // 👈 التعديل هنا: مسار صحيح للرئيسية
+import 'home_screen.dart'; // 👈 مسار صحيح ومباشر داخل مجلد screens
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -28,17 +28,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     super.initState();
     _ordersTabController = TabController(length: 3, vsync: this);
     
-    // 🛡️ فحص أمني فوري للتأكد أن المستخدم الحالي مشرف معتمد
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verifyAdminSecurity();
     });
   }
 
-  // 🔒 دالة التحقق الأمني من قاعدة البيانات
   Future<void> _verifyAdminSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
-      final currentPhone = appState.userProfile?['phone'] ?? appState.userPhone ?? '';
+      final currentPhone = appState.userProfile?['phone'] ?? '';
 
       if (currentPhone.isEmpty && !appState.isAdminLoggedIn) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
@@ -68,12 +66,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     }
   }
 
-  // 🚨 طرد المستخدم غير المصرح به
   void _kickOutUnauthorizedUser(String message) {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      MaterialPageRoute(builder: (context) => HomeScreen()), // بدون const
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
