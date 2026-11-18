@@ -26,6 +26,9 @@ dependencies:
   flutter_local_notifications: 17.2.4
   google_maps_flutter: ^2.10.0
   
+  # 🖼️ إضافة مكتبة التخزين المؤقت للصور لتسريع التحعرض
+  cached_network_image: ^3.4.1
+  
   # 💾 حزم التخزين المحلي وقاعدة البيانات (للعمل بدون إنترنت)
   sqflite: ^2.3.0
   path: ^1.8.3
