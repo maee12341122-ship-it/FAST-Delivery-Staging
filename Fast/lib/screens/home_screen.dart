@@ -2769,13 +2769,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     final status = order['status'] ?? '';
                     final arabicStatus = _getArabicStatus(status);
                     final String assignedCourierName = order['assigned_courier'] ?? 'المندوب';
-                    final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
 
-                    bool isRestaurantOrder = itemsDesc.contains('وجبة') || itemsDesc.contains('مطعم') || order['is_restaurant'] == true;
+                    // 💡 التعديل هنا: استخدام دالة التحقق الذكية لطلبات المطاعم الحقيقية واستبعاد البقالات وخدمة وصل لي
+                    bool isRestaurantOrder = appState.isRestaurantOrder(order);
                     String detectedRestaurantName = order['restaurant_name'] ?? 'المطعم';
 
                     final formattedAddress = formatLocationAddress(order['address']);
 
+                    final String itemsDesc = (order['items_description'] ?? order['items_desc'] ?? '').toString();
                     final bool isWaselLi = itemsDesc.contains('وصل لي') || itemsDesc.contains('طلب خاص');
 
                     final double rawProductsPrice = double.tryParse(
