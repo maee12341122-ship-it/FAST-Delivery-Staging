@@ -498,9 +498,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // شبكة الأقسام البصرية المعرفة بنوع صحيح 100% وبدون أي مشاكل في الأقواس
+  // استخدام var للاستغناء نهائياً عن الأقواس الزاوية وتجنب مشاكل النسخ
   Widget _buildCategoriesGrid(AppState appState, Color textColor, Color cardBg) {
-    final List> categoriesList = [
+    final categoriesList = [
       {'title': 'الكل', 'icon': Icons.apps, 'category': 'الكل'},
       {'title': 'الخضار واللحوم', 'icon': Icons.eco, 'category': 'الخضار والفواكه'},
       {'title': 'الحلويات', 'icon': Icons.cake, 'category': 'حلويات ومعجنات'},
