@@ -642,8 +642,8 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // 👈 تعديل دالة getReceiverPlayerIdForChat لتكون مرنة مع أي عدد من المعاملات
-  Future<String?> getReceiverPlayerIdForChat([dynamic orderId, String? targetChat]) async {
+  // 👈 ضبط دالة getReceiverPlayerIdForChat لتتوافق مع البارامترات المسماة (orderId, targetChat)
+  Future<String?> getReceiverPlayerIdForChat({dynamic orderId, String? targetChat}) async {
     try {
       return null;
     } catch (e) {
@@ -651,8 +651,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 تعديل دالة sendAutoNotification لتقبل البارامترات المطلوبة والمرسلة بالأسماء
-  Future<void> sendAutoNotification({required String playerId, required String title, required String message, String? targetPlayerId}) async {
+  // 👈 ضبط دالة sendAutoNotification لتتوافق مع البارامترات المسماة (targetPlayerId/playerId, title, body/message)
+  Future<void> sendAutoNotification({String? playerId, String? targetPlayerId, required String title, String? message, String? body}) async {
     try {
       // إرسال الإشعار تلقائياً
     } catch (e) {
@@ -859,10 +859,17 @@ class AppState extends ChangeNotifier {
 
   String? get currentUserId => userProfile?['phone'];
 
-  // 👈 تعديل دالة setUser لتقبل معامل اختياري حتى لا تسبب خطأ Too few arguments
-  void setUser([Map<String, dynamic>? profile]) {
-    if (profile != null) {
+  // 👈 ضبط دالة setUser لتقبل البارامتر المسمى ({String? name, ...}) أو خريطة بروفایل
+  void setUser({dynamic profile, String? name, String? phone, String? address}) {
+    if (profile is Map<String, dynamic>) {
       userProfile = profile;
+    } else if (name != null || phone != null) {
+      userProfile = {
+        'name': name ?? userProfile?['name'] ?? '',
+        'phone': phone ?? userProfile?['phone'] ?? '',
+        'address': address ?? userProfile?['address'] ?? '',
+        'city': currentCity,
+      };
     }
     notifyListeners();
   }
@@ -1001,13 +1008,12 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  // 👈 تعديل دالة updateUser لتكون مرنة وتدعم معاملات اختيارية
-  Future<void> updateUser([String? name, String? address]) async {
-    if (name != null || address != null) {
-      await saveUserProfileDetails(name ?? userProfile?['name'] ?? '', address ?? userProfile?['address'] ?? '');
-    } else {
-      notifyListeners();
-    }
+  // 👈 ضبط دالة updateUser لتقبل البارامترات المسماة ({String? name, String? address})
+  Future<void> updateUser({String? name, String? address}) async {
+    await saveUserProfileDetails(
+      name ?? userProfile?['name'] ?? '',
+      address ?? userProfile?['address'] ?? '',
+    );
   }
 
   Future<void> saveUserProfileDetails(String name, String address) async {
