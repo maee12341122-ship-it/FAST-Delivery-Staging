@@ -182,13 +182,13 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
           '🎯 مكان التوصيل: $dropoff\n'
           '🏷️ الغرض: $itemDesc' + (notes.isNotEmpty ? '\n💬 ملاحظات: $notes' : '');
 
-      // القيمة الافتراضية 1000 ر.ي كقيمة مبدئية ليقوم المشرف بتحديد السعر ورسوم التوصيل الحقيقية لاحقاً
+      // 💡 التعديل هنا: جعل سعر المنتجات 0.0 تماماً لأنها خدمة توصيل أغراض وليست شراء منتجات، بانتظار تسعير الإدارة لرسوم التوصيل
       await appState.createOrder(
         customerName: customerName,
         phone: phone,
         address: fullAddress,
         itemsDesc: itemsDesc,
-        productsTotal: 1000.0, 
+        productsTotal: 0.0, 
         paymentMethod: 'cash',
         paymentAccount: 'cash_on_delivery',
       );
