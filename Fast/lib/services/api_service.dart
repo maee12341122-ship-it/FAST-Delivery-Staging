@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http; // 👈 مهم جداً لطلبات الـ HTTP لإرسال الـ OTP عبر البوابة
 
 // تعريفات مخصصة لتجنب أخطاء الأقواس نهائياً
 typedef JsonMap = Map<String, dynamic>;
@@ -8,6 +9,10 @@ typedef JsonList = List<JsonMap>;
 
 class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
+
+  // 🔑 إعدادات بوابة الواتساب الخاصة برقم الشغل (+967776857316)
+  // يمكنك استبدال هذه البيانات برابط الـ API والـ Token الخاص بك من منصة البوابة (مثل Green API)
+  static const String _whatsappApiUrl = 'https://api.green-api.com/waInstanceYOUR_INSTANCE_ID/SendMessage/YOUR_API_TOKEN';
 
   // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة من Supabase)
   static Future<JsonMap> fetchCatalog() async {
@@ -20,7 +25,7 @@ class ApiService {
     }
   }
 
-  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants (لضمان تقسيم الأقسام مثل الشميري وو)
+  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants
   static Future<List<dynamic>> fetchRestaurants() async {
     try {
       final response = await _supabase.from('restaurants').select().eq('is_active', true);
@@ -173,7 +178,6 @@ class ApiService {
     int orderId,
     String status,
   ) async {
-    title:
     try {
       final response = await _supabase.from('orders').update({
         'status': status,
@@ -226,6 +230,45 @@ class ApiService {
     } catch (e) {
       debugPrint('❌ خطأ في تحديث موقع المندوب: $e');
       rethrow;
+    }
+  }
+
+  // ===========================================================================
+  // 💬 11. إرسال كود التحقق (OTP) فعلياً من رقم الشغل (+967776857316) عبر الواتساب
+  // ===========================================================================
+  static Future<bool> sendRealWhatsAppOtp({
+    required String phone,
+    required String otpCode,
+  }) async {
+    try {
+      // تنظيف رقم العميل ليكون بصيغة دولية صحيحة (مثلاً: 96777xxxxxxxx)
+      String cleanPhone = phone.replaceAll('+', '').replaceAll(' ', '');
+      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+      if (!cleanPhone.startsWith('967')) cleanPhone = '967$cleanPhone';
+
+      final chatId = '$cleanPhone@c.us';
+      final messageText = 'مرحباً بك في FAST Delivery 🚀\nرمز التحقق الخاص بك هو: *$otpCode*\n\nيرجى عدم مشاركة الرمز مع أحد.';
+
+      // تجهيز طلب الـ API للبوابة الخارجية المرتبطة برقم الشغل
+      final response = await http.post(
+        Uri.parse(_whatsappApiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'chatId': chatId,
+          'message': messageText,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('✅ تم إرسال رسالة الواتساب بنجاح من رقم الشغل للرقم: $cleanPhone');
+        return true;
+      } else {
+        debugPrint('❌ فشل إرسال رسالة الواتساب عبر البوابة: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ شبكة أثناء إرسال الواتساب: $e');
+      return false;
     }
   }
 }
