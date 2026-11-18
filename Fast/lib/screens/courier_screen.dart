@@ -1,14 +1,14 @@
-import 'dart:async'; // 👈 استيراد لتنظيم الـ Stream
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:geolocator/geolocator.dart'; // 👈 استيراد جغرافية الموقع
+import 'package:geolocator/geolocator.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
-import '../home_screen.dart'; // 👈 التعديل هنا: مسار صحيح للرئيسية
+import 'home_screen.dart'; // 👈 مسار صحيح ومباشر داخل مجلد screens
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -18,22 +18,20 @@ class CourierScreen extends StatefulWidget {
 }
 
 class _CourierScreenState extends State<CourierScreen> {
-  StreamSubscription<Position>? _locationSubscription; // 👈 متغير لمتابعة بث الإحداثيات
+  StreamSubscription<Position>? _locationSubscription;
 
   @override
   void initState() {
     super.initState();
-    // 🛡️ فحص أمني فوري للتأكد أن المستخدم الحالي مندوب معتمد
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verifyCourierSecurity();
     });
   }
 
-  // 🔒 دالة التحقق الأمني من جدول المناديب في قاعدة البيانات
   Future<void> _verifyCourierSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
-      final currentPhone = appState.userProfile?['phone'] ?? appState.userPhone ?? '';
+      final currentPhone = appState.userProfile?['phone'] ?? '';
 
       if (currentPhone.isEmpty && appState.currentCourier == null) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
@@ -71,12 +69,11 @@ class _CourierScreenState extends State<CourierScreen> {
     }
   }
 
-  // 🚨 طرد المستخدم غير المصرح له وإعادته للرئيسية
   void _kickOutUnauthorizedUser(String message) {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      MaterialPageRoute(builder: (context) => HomeScreen()), // بدون const
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -86,11 +83,10 @@ class _CourierScreenState extends State<CourierScreen> {
 
   @override
   void dispose() {
-    _locationSubscription?.cancel(); // 👈 إيقاف البث عند إغلاق الشاشة لتفريغ الذاكرة
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
-  // 🛰️ دالة بدء البث الحي لموقع المندوب ورفعه إلى سوبابيس تلقائياً
   void _startLiveLocationUpdates(String courierId) async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
@@ -102,12 +98,11 @@ class _CourierScreenState extends State<CourierScreen> {
     }
     if (permission == LocationPermission.deniedForever) return;
 
-    // إلغاء أي بث سابق إن وجد
     _locationSubscription?.cancel();
 
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 5, // تحديث الموقع كلما تحرك المندوب 5 أمتار
+      distanceFilter: 5,
     );
 
     _locationSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
@@ -336,7 +331,7 @@ class _CourierScreenState extends State<CourierScreen> {
       return assigned == courierName || assigned == courierId || assigned.contains(courierName);
     }).toList();
 
-    // 🛡️ الطلبات غير المسوية فقط (لحساب الأرباح والعدادات الجديدة وتتصفر عند تصفير المشرف)
+    // 🛡️ الطلبات غير المسوية فقط لتتصفر الأرباح فور تصفير المشرف لها
     final unsettledCompletedOrders = myOrders.where((o) {
       final bool isDelivered = o['status']?.toString().trim() == 'delivered';
       final bool isSettled = o['is_settled'] == true;
@@ -345,7 +340,7 @@ class _CourierScreenState extends State<CourierScreen> {
 
     final activeOrders = myOrders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
     
-    // إخفاء الطلبات التي تم تصفيرها من قائمة المكتملة لتتفرغ الشاشة للمندوب ببدء دورة جديدة
+    // إخفاء الطلبات المصفرة من قائمة المكتملة لتبدأ دورة جديدة بصفحة نظيفة للمندوب
     final completedOrders = myOrders.where((o) {
       final bool isDelivered = o['status']?.toString().trim() == 'delivered';
       final bool isSettled = o['is_settled'] == true;
@@ -645,7 +640,6 @@ class _CourierScreenState extends State<CourierScreen> {
 
                   const SizedBox(height: 12),
 
-                  // 🛵 أزرار تحكم المندوب حسب حالة الطلب
                   if (orderStatus == 'pricingSentToCustomer') ...[
                     Container(
                       padding: const EdgeInsets.all(8),
