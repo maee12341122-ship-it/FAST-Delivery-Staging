@@ -408,7 +408,6 @@ class AppState extends ChangeNotifier {
   final List<AddressModel> _userAddresses = [];
   List<AddressModel> get userAddresses => _userAddresses;
 
-  // 👈 إضافة دالة addOrUpdateAddress المفقودة
   void addOrUpdateAddress(String formattedAddress) {
     if (userProfile != null) {
       userProfile!['address'] = formattedAddress;
@@ -540,7 +539,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 إضافة دوال تقييم المندوب والمطعم المفقودة
   Future<void> submitCourierRating({
     required String orderId,
     required String courierName,
@@ -644,8 +642,8 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // 👈 إضافة دالة getReceiverPlayerIdForChat المفقودة
-  Future<String?> getReceiverPlayerIdForChat(String orderId, String targetChat) async {
+  // 👈 تعديل دالة getReceiverPlayerIdForChat لتكون مرنة مع أي عدد من المعاملات
+  Future<String?> getReceiverPlayerIdForChat([dynamic orderId, String? targetChat]) async {
     try {
       return null;
     } catch (e) {
@@ -653,8 +651,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 إضافة دالة sendAutoNotification المفقودة
-  Future<void> sendAutoNotification({required String playerId, required String title, required String message}) async {
+  // 👈 تعديل دالة sendAutoNotification لتقبل البارامترات المطلوبة والمرسلة بالأسماء
+  Future<void> sendAutoNotification({required String playerId, required String title, required String message, String? targetPlayerId}) async {
     try {
       // إرسال الإشعار تلقائياً
     } catch (e) {
@@ -787,7 +785,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 إضافة دالة updateStoreHours المفقودة
   Future<void> updateStoreHours(int start, int end) async {
     startHour = start;
     endHour = end;
@@ -862,9 +859,11 @@ class AppState extends ChangeNotifier {
 
   String? get currentUserId => userProfile?['phone'];
 
-  // 👈 إضافة دالة setUser المفقودة
-  void setUser(Map<String, dynamic>? profile) {
-    userProfile = profile;
+  // 👈 تعديل دالة setUser لتقبل معامل اختياري حتى لا تسبب خطأ Too few arguments
+  void setUser([Map<String, dynamic>? profile]) {
+    if (profile != null) {
+      userProfile = profile;
+    }
     notifyListeners();
   }
 
@@ -1002,9 +1001,13 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  // 👈 إضافة دالة updateUser المفقودة
-  Future<void> updateUser(String name, String address) async {
-    await saveUserProfileDetails(name, address);
+  // 👈 تعديل دالة updateUser لتكون مرنة وتدعم معاملات اختيارية
+  Future<void> updateUser([String? name, String? address]) async {
+    if (name != null || address != null) {
+      await saveUserProfileDetails(name ?? userProfile?['name'] ?? '', address ?? userProfile?['address'] ?? '');
+    } else {
+      notifyListeners();
+    }
   }
 
   Future<void> saveUserProfileDetails(String name, String address) async {
@@ -1039,7 +1042,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 إضافة دالة logoutUser المفقودة
   Future<void> logoutUser() async {
     userProfile = null;
     final prefs = await SharedPreferences.getInstance();
@@ -1103,7 +1105,6 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
-  // 👈 إضافة دالة settleCourierEarnings المفقودة
   Future<void> settleCourierEarnings(String courierName) async {
     try {
       await supabase.from('courier_settlements').insert({
@@ -1187,7 +1188,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 👈 إضافة دالة addCustomOrderToCart المفقودة
   void addCustomOrderToCart({required String customName, required double estimatedPrice}) {
     _cartItems.add(CartItemModel(
       id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
@@ -1541,7 +1541,6 @@ class AppState extends ChangeNotifier {
     addNotification('تأكيد الطلب 👍', 'تم تأكيد السعر وإرسال الطلب للمندوب');
   }
 
-  // 👈 إضافة دالة customerConfirmOrder المفقودة (كمترادف لتأكيد الطلب)
   Future<void> customerConfirmOrder(dynamic orderId) async {
     await customerApprovePricing(orderId);
   }
