@@ -23,6 +23,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   RealtimeChannel? _orderChannel;
   RealtimeChannel? _locationChannel;
 
+  // متغيرات لتخزين التقييمات المجلبة من قاعدة البيانات مباشرة
+  Map<String, dynamic>? _restaurantRatingData;
+  Map<String, dynamic>? _courierRatingData;
+  bool _isLoadingRatings = false;
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +35,36 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     if (targetId.isNotEmpty) {
       _extractCustomerCoordinates(widget.orderMap);
       _subscribeToOrderUpdates(targetId);
+      _fetchOrderRatings(targetId);
+    }
+  }
+
+  // 👈 دالة لجلب التقييمات من الجداول المنفصلة في Supabase
+  Future<void> _fetchOrderRatings(String orderId) async {
+    setState(() => _isLoadingRatings = true);
+    try {
+      final restRes = await Supabase.instance.client
+          .from('restaurant_ratings')
+          .select()
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+      final courierRes = await Supabase.instance.client
+          .from('courier_ratings')
+          .select()
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _restaurantRatingData = restRes;
+          _courierRatingData = courierRes;
+          _isLoadingRatings = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب التقييمات: $e');
+      if (mounted) setState(() => _isLoadingRatings = false);
     }
   }
 
@@ -180,6 +215,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     rating: rating,
                     reviewText: reviewController.text.trim(),
                   );
+                  await _fetchOrderRatings(orderId); // تحديث البيانات محلياً بعد الإرسال
                   if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -254,10 +290,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 onPressed: () async {
                   await appState.submitCourierRating(
                     orderId: orderId,
-                    courierName: courierName,
+                    courierName: courierName.isEmpty ? 'مندوب عام' : courierName,
                     rating: rating,
                     reviewText: reviewController.text.trim(),
                   );
+                  await _fetchOrderRatings(orderId); // تحديث البيانات محلياً بعد الإرسال
                   if (context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -355,16 +392,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         ? dbTotalAmount
         : (finalProductsPrice + deliveryFee);
 
-    final String courierId = order['assigned_courier']?.toString() ?? 'general_courier';
+    final String courierName = order['assigned_courier']?.toString() ?? 'مندوب عام';
     
     // التحقق هل المستخدم الحالي هو مشرف أو مندوب؟
     final bool isManagerOrCourier = appState.isAdminLoggedIn || appState.currentCourier != null;
 
-    final double? courierRating = double.tryParse(order['courier_rating']?.toString() ?? '');
-    final String courierReview = order['courier_review']?.toString() ?? '';
+    // استخراج قيم التقييمات من الجداول المجلبة بدلاً من جدول الطلبات مباشرة
+    final double? restaurantRatingVal = _restaurantRatingData != null ? double.tryParse(_restaurantRatingData!['rating']?.toString() ?? '') : null;
+    final String restaurantReviewVal = _restaurantRatingData?['review']?.toString() ?? '';
 
-    final double? restaurantRating = double.tryParse(order['restaurant_rating']?.toString() ?? '');
-    final String restaurantReview = order['restaurant_review']?.toString() ?? '';
+    final double? courierRatingVal = _courierRatingData != null ? double.tryParse(_courierRatingData!['rating']?.toString() ?? '') : null;
+    final String courierReviewVal = _courierRatingData?['review']?.toString() ?? '';
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -429,7 +467,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🗺️ الشرط الذكي: إذا كان المشرف أو المندوب تظهر الخريطة التتبعية، وإذا كان عميل يظهر تصميم الدراجة الأنيق
               if (isManagerOrCourier) ...[
                 Container(
                   height: 240,
@@ -479,7 +516,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
               ] else ...[
-                // تصميم الدراجة التجميلي الخاص بالعميل
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -523,7 +559,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        rawStatus == 'delivered' ? 'بالهناء والشفاء، نتمنى تقييمك ⭐' : 'جاري العمل على توصيل طلبك بأسرع وقت 🚀',
+                        rawStatus == 'delivered' ? 'بالهناء والشفاء، شكراً لتعاملكم معنا ⭐' : 'جاري العمل على توصيل طلبك بأسرع وقت 🚀',
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],
@@ -579,28 +615,28 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       Expanded(
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
-                            foregroundColor: Colors.black,
+                            backgroundColor: _restaurantRatingData != null ? Colors.grey[800] : Colors.amber,
+                            foregroundColor: _restaurantRatingData != null ? Colors.white : Colors.black,
                             minimumSize: const Size(double.infinity, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: const Icon(Icons.store, size: 18),
-                          label: const Text('تقييم المطعم 🍽️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          onPressed: () => _showRestaurantRatingDialog(context, appState, targetId),
+                          icon: Icon(_restaurantRatingData != null ? Icons.check : Icons.store, size: 18),
+                          label: Text(_restaurantRatingData != null ? 'تم تقييم المطعم ⭐' : 'تقييم المطعم 🍽️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          onPressed: _restaurantRatingData != null ? null : () => _showRestaurantRatingDialog(context, appState, targetId),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
-                            foregroundColor: Colors.black,
+                            backgroundColor: _courierRatingData != null ? Colors.grey[800] : Colors.amber,
+                            foregroundColor: _courierRatingData != null ? Colors.white : Colors.black,
                             minimumSize: const Size(double.infinity, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: const Icon(Icons.two_wheeler, size: 18),
-                          label: const Text('تقييم المندوب 🛵', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          onPressed: () => _showCourierRatingDialog(context, appState, targetId, courierId),
+                          icon: Icon(_courierRatingData != null ? Icons.check : Icons.two_wheeler, size: 18),
+                          label: Text(_courierRatingData != null ? 'تم تقييم المندوب ⭐' : 'تقييم المندوب 🛵', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          onPressed: _courierRatingData != null ? null : () => _showCourierRatingDialog(context, appState, targetId, courierName),
                         ),
                       ),
                     ],
@@ -619,11 +655,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       children: [
                         const Text('⭐ تقييمات العميل لهذا الطلب:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 10),
-                        Text('🍽️ تقييم المطعم: ${restaurantRating != null ? "$restaurantRating / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                        if (restaurantReview.isNotEmpty) Text('ملاحظة المطعم: "$restaurantReview"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('🍽️ تقييم المطعم: ${restaurantRatingVal != null ? "$restaurantRatingVal / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        if (restaurantReviewVal.isNotEmpty) Text('ملاحظة المطعم: "$restaurantReviewVal"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                         const Divider(color: Colors.white12),
-                        Text('🛵 تقييم المندوب: ${courierRating != null ? "$courierRating / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                        if (courierReview.isNotEmpty) Text('ملاحظة المندوب: "$courierReview"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('🛵 تقييم المندوب: ${courierRatingVal != null ? "$courierRatingVal / 5" : "لم يُقيم بعد"}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        if (courierReviewVal.isNotEmpty) Text('ملاحظة المندوب: "$courierReviewVal"', style: const TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
                   ),
