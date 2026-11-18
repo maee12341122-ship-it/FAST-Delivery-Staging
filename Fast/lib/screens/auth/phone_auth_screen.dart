@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
-import '../admin_screen.dart';   // 👈 التعديل هنا: الاستيراد المباشر من مجلد screens
-import '../courier_screen.dart'; // 👈 التعديل هنا: الاستيراد المباشر من مجلد screens
+import '../admin_screen.dart';   
+import '../courier_screen.dart'; 
 
 class PhoneAuthScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -21,16 +21,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController(); // 👈 حقل كلمة المرور للأدمن والمندوب
+  
+  // حقول شاشة تسجيل الدخول الخاصة بالأدمن والمندوب
+  final TextEditingController _loginUsernameController = TextEditingController();
+  final TextEditingController _loginPasswordController = TextEditingController();
 
-  // FocusNodes لكل الحقول
   final FocusNode _phoneFocus = FocusNode();
   final FocusNode _otpFocus = FocusNode();
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _addressFocus = FocusNode();
-  final FocusNode _passwordFocus = FocusNode();
 
-  // مراحل العملية: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال بروفايل العميل، 3 = إدخال كلمة السر للأدمن/المندوب
+  // المراحل: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال بروفايل العميل، 3 = شاشة تسجيل الدخول الخاصة (أدمن أو مندوب)
   int _currentStep = 0;
   bool _isLoading = false;
 
@@ -39,7 +40,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _cleanPhoneInput = '';
   String? _generatedOtp;
   String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
-  Map<String, dynamic>? _pendingUserRecord; // تخزين بيانات المستخدم المؤقتة للتحقق من الباسورد
+  Map<String, dynamic>? _pendingUserRecord; 
 
   @override
   void dispose() {
@@ -47,12 +48,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     _otpController.dispose();
     _nameController.dispose();
     _addressController.dispose();
-    _passwordController.dispose();
+    _loginUsernameController.dispose();
+    _loginPasswordController.dispose();
     _phoneFocus.dispose();
     _otpFocus.dispose();
     _nameFocus.dispose();
     _addressFocus.dispose();
-    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -86,7 +87,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات لتحديد نوع المستخدم
+  // 1️⃣ إرسال كود OTP وفحص قاعدة البيانات لتحديد دور المستخدم
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -115,7 +116,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (adminRes != null) {
         _detectedRole = 'admin';
         _pendingUserRecord = adminRes;
-        debugPrint('✅ تم التعرف على المستخدم كـ Admin');
+        // تعبئة اسم المستخدم تلقائياً إن وجد في قاعدة البيانات
+        _loginUsernameController.text = adminRes['username'] ?? adminRes['name'] ?? '';
       } else {
         // 2. فحص هل الرقم يتبع للمناديب (couriers)
         final courierRes = await _supabase
@@ -127,9 +129,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         if (courierRes != null) {
           _detectedRole = 'courier';
           _pendingUserRecord = courierRes;
-          debugPrint('✅ تم التعرف على المستخدم كـ Courier');
+          _loginUsernameController.text = courierRes['username'] ?? courierRes['name'] ?? '';
         } else {
-          // 3. فحص هل العميل موجود مسبقاً في جدول customers
+          // 3. فحص هل العميل موجود مسبقاً
           final existingCustomer = await _supabase
               .from('customers')
               .select()
@@ -138,16 +140,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
           if (existingCustomer != null) {
             _detectedRole = 'customer_existing';
-            debugPrint('✅ العميل مسجل مسبقاً في قاعدة البيانات.');
             if (mounted) {
               _nameController.text = existingCustomer['name'] ?? '';
               _addressController.text = existingCustomer['address'] ?? '';
-              
               setState(() {
                 _currentStep = 2; 
                 _isLoading = false;
               });
-
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('أهلاً بك مجدداً! تم العثور على حسابك المسجل 🚀')),
               );
@@ -191,7 +190,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP
+  // 2️⃣ التحقق من كود OTP والانتقال لشاشة تسجيل الدخول المخصصة (أدمن / مندوب) أو إكمال البروفايل للعميل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -215,11 +214,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         if (mounted) {
           if (_detectedRole == 'admin' || _detectedRole == 'courier') {
             setState(() {
-              _currentStep = 3; 
+              _currentStep = 3; // الانتقال لشاشة تسجيل الدخول الخاصة (مشرف أو مندوب)
             });
           } else {
             setState(() {
-              _currentStep = 2;
+              _currentStep = 2; // استكمال بيانات العميل الجديد
             });
           }
         }
@@ -232,11 +231,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من OTP: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('حدث خطأ أثناء التحقق: $e')),
-        );
-      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -244,9 +238,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 3️⃣ التحقق من كلمة المرور الخاصة بالأدمن أو المندوب
-  Future<void> _verifyAdminOrCourierPassword(AppState appState) async {
-    final enteredPassword = _passwordController.text.trim();
+  // 3️⃣ التحقق من اسم المستخدم وكلمة المرور الخاصة بالأدمن أو المندوب
+  Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
+    final enteredPassword = _loginPasswordController.text.trim();
     if (enteredPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال كلمة المرور')),
@@ -265,6 +259,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           if (!mounted) return;
 
           if (_detectedRole == 'admin') {
+            appState.isAdminLoggedIn = true;
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => const AdminScreen()),
@@ -294,7 +289,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ خطأ في التحقق من كلمة المرور: $e');
+      debugPrint('❌ خطأ في التحقق: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -345,8 +340,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
+        const SnackBar(content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -378,8 +372,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             ),
             title: const Text(
               'FAST – تسجيل الدخول والتحقق',
-              style: TextStyle(
-                  color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
           body: Center(
@@ -412,7 +405,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         _currentStep == 1
                             ? Icons.mark_chat_read_outlined
                             : _currentStep == 3
-                                ? Icons.lock_outline
+                                ? (_detectedRole == 'admin' ? Icons.admin_panel_settings : Icons.delivery_dining)
                                 : Icons.person_outline_rounded,
                         size: 50,
                         color: primaryGold,
@@ -420,14 +413,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ---------------- المرحلة الأولى: إدخال رقم الهاتف ----------------
+                    // ---------------- المرحلة 0: إدخال رقم الهاتف ----------------
                     if (_currentStep == 0) ...[
                       const Text(
                         'تسجيل الدخول برقم الهاتف',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
@@ -440,8 +430,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         controller: _phoneController,
                         focusNode: _phoneFocus,
                         keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _sendSupabaseOTP(appState),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'رقم الهاتف',
@@ -464,8 +452,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: _isLoading ? null : () => _sendSupabaseOTP(appState),
                         child: _isLoading
@@ -475,21 +462,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                 child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                               )
                             : const Text('إرسال رمز التحقق عبر واتساب 💬',
-                                style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15)),
+                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                     ]
 
-                    // ---------------- المرحلة الثانية: إدخال رمز الـ OTP ----------------
+                    // ---------------- المرحلة 1: إدخال رمز OTP ----------------
                     else if (_currentStep == 1) ...[
                       const Text(
                         'أدخل رمز التحقق (OTP)',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -503,17 +484,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         focusNode: _otpFocus,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _verifyOTPAndProceed(appState),
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 20, letterSpacing: 8),
+                        style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
                         maxLength: 4,
                         decoration: InputDecoration(
                           labelText: 'رمز التحقق (4 أرقام)',
-                          labelStyle:
-                              const TextStyle(color: Colors.grey, letterSpacing: 0),
-                          prefixIcon:
-                              const Icon(Icons.lock_clock_outlined, color: primaryGold),
+                          labelStyle: const TextStyle(color: Colors.grey, letterSpacing: 0),
+                          prefixIcon: const Icon(Icons.lock_clock_outlined, color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -531,12 +507,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading
-                            ? null
-                            : () => _verifyOTPAndProceed(appState),
+                        onPressed: _isLoading ? null : () => _verifyOTPAndProceed(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
@@ -544,45 +517,55 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                 child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                               )
                             : const Text('تأكيد الرمز والمتابعة 🔑',
-                                style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15)),
+                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                       TextButton(
                         onPressed: () => setState(() => _currentStep = 0),
-                        child: const Text('تغيير رقم الهاتف',
-                            style: TextStyle(color: primaryGold)),
+                        child: const Text('تغيير رقم الهاتف', style: TextStyle(color: primaryGold)),
                       ),
                     ]
 
-                    // ---------------- المرحلة الثالثة: إدخال كلمة السر الخاصة بالأدمن أو المندوب ----------------
+                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب (حسب الصور) ----------------
                     else if (_currentStep == 3) ...[
                       Text(
-                        _detectedRole == 'admin' ? 'تسجيل دخول المشرف 🛡️' : 'تسجيل دخول المندوب 🛵',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
+                        _detectedRole == 'admin' ? 'تسجيل دخول المشرف الآمن 🛡️' : 'بوابة تسجيل دخول الكابتن 🛵',
+                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'أدخل كلمة المرور الخاصة بحسابك للمتابعة',
+                        'أدخل بيانات الاعتماد الخاصة بك للوصول للطلبات',
                         style: TextStyle(color: Colors.grey, fontSize: 13),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 25),
                       TextField(
-                        controller: _passwordController,
-                        focusNode: _passwordFocus,
-                        obscureText: true,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _verifyAdminOrCourierPassword(appState),
+                        controller: _loginUsernameController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'كلمة المرور',
+                          labelText: 'اسم المستخدم',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.lock, color: primaryGold),
+                          prefixIcon: const Icon(Icons.person_outline, color: primaryGold),
+                          filled: true,
+                          fillColor: backgroundColor,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade800),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _loginPasswordController,
+                        obscureText: true,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'كلمة السر',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon: const Icon(Icons.lock_outline, color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -600,32 +583,27 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading ? null : () => _verifyAdminOrCourierPassword(appState),
+                        onPressed: _isLoading ? null : () => _verifyAdminOrCourierCredentials(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                               )
-                            : const Text('تسجيل الدخول للوحة التحكم 🚀',
-                                style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15)),
+                            : Text(
+                                _detectedRole == 'admin' ? 'دخول لوحة التحكم 🚀' : 'دخول لوحة الطلبات 🚀',
+                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
                       ),
                     ]
 
-                    // ---------------- المرحلة الرابعة: إكمال وتأكيد البيانات الشخصية للعميل ----------------
+                    // ---------------- المرحلة 2: إكمال بروفايل العميل الجديد ----------------
                     else ...[
                       const Text(
                         'استكمال وتأكيد البيانات الشخصية',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
@@ -637,10 +615,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _nameController,
                         focusNode: _nameFocus,
-                        textInputAction: TextInputAction.next,
-                        onSubmitted: (_) {
-                          FocusScope.of(context).requestFocus(_addressFocus);
-                        },
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'الاسم الكامل',
@@ -662,14 +636,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       TextField(
                         controller: _addressController,
                         focusNode: _addressFocus,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _saveCustomerProfile(appState),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'العنوان التفصيلي (أو حدده عبر الخريطة)',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon:
-                              const Icon(Icons.location_on, color: primaryGold),
+                          prefixIcon: const Icon(Icons.location_on, color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -687,14 +658,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: primaryGold),
                           minimumSize: const Size(double.infinity, 45),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         icon: const Icon(Icons.map, color: primaryGold),
                         label: const Text(
                           'تحديد موقعك عبر الخريطة التفاعلية 🗺️',
-                          style: TextStyle(
-                              color: primaryGold, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: primaryGold, fontWeight: FontWeight.bold),
                         ),
                         onPressed: _openInteractiveMap,
                       ),
@@ -703,15 +672,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: () => _saveCustomerProfile(appState),
                         child: const Text('حفظ والدخول للتطبيق 🚀',
-                            style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15)),
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                     ],
                   ],
