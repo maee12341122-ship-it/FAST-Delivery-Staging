@@ -108,7 +108,7 @@ class LocalStorageService {
 }
 
 /// ===========================================================================
-/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة والمصححة نهائياً
+/// 🚀 مدير حالة التطبيق الشامل (AppState) - النسخة المحدثة لتقسيم المطاعم والأقسام
 /// ===========================================================================
 class AppState extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -124,6 +124,7 @@ class AppState extends ChangeNotifier {
     _loadCourierSession();
     _loadUserSession();
     await fetchStoreSettings();
+    await fetchRestaurantsAndCategories(); // جلب الأقسام والمطاعم المتاحة ديناميكياً
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
     await fetchRestaurantAverages();
@@ -133,6 +134,41 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener();
+  }
+
+  // قوائم المطاعم والأقسام الفرعية ديناميكياً
+  List restaurantsList = [];
+  List categoriesList = [];
+  String? selectedCategory; // لتحديد القسم أو المطعم النشط حالياً
+
+  Future<void> fetchRestaurantsAndCategories() async {
+    try {
+      final restRes = await supabase.from('restaurants').select();
+      restaurantsList = restRes;
+
+      final catRes = await supabase.from('categories').select();
+      categoriesList = catRes;
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في جلب المطاعم والأقسام: $e');
+    }
+  }
+
+  // تصفية المنتجات بناءً على القسم أو اسم المطعم (مثل الشميري وغيرها) بشكل دقيق
+  List<ProductModel> getProductsByCategoryOrRestaurant(String? query) {
+    if (query == null || query.isEmpty || query == 'الكل') {
+      return products.cast<ProductModel>();
+    }
+    return products.where((p) {
+      return p.category.trim().toLowerCase() == query.trim().toLowerCase() ||
+             p.restaurantName.trim().toLowerCase() == query.trim().toLowerCase();
+    }).toList().cast<ProductModel>();
+  }
+
+  void setSelectedCategory(String? categoryName) {
+    selectedCategory = categoryName;
+    notifyListeners();
   }
 
   Future<void> fetchOrders() async {
@@ -348,14 +384,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<void> sendAutoNotification({
-    required String targetPlayerId,
-    required String title,
-    required String body,
-  }) async {
-    if (targetPlayerId.isEmpty) return;
-  }
-
   final List<String> _favoriteProductIds = [];
   List<String> get favoriteProductIds => _favoriteProductIds;
 
@@ -506,7 +534,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🌐 دالة ترجمة حالات الطلبات إلى اللغة العربية الفصحى
   String getArabicStatus(String? status) {
     switch (status?.trim()) {
       case 'waitingForPricing':
@@ -575,53 +602,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<String?> getReceiverPlayerIdForChat({
-    required dynamic orderId,
-    required String senderRole,
-    required String targetChat,
-  }) async {
-    try {
-      final orderRes = await supabase
-          .from('orders')
-          .select('*')
-          .eq('id', orderId)
-          .maybeSingle();
-
-      if (orderRes == null) return null;
-
-      if (targetChat == 'admin_customer') {
-        if (senderRole == 'admin') {
-          String customerPhone = orderRes['phone']?.toString() ?? '';
-          if (customerPhone.isNotEmpty) {
-            final custRes = await supabase
-                .from('customers')
-                .select('onesignal_player_id')
-                .eq('phone', customerPhone)
-                .maybeSingle();
-            return custRes?['onesignal_player_id']?.toString();
-          }
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      } else if (targetChat == 'admin_courier') {
-        if (senderRole == 'admin') {
-          String courierName = orderRes['assigned_courier']?.toString() ?? '';
-          return await getCourierPlayerIdByName(courierName);
-        } else {
-          List<String> admins = await getAllAdminPlayerIds();
-          return admins.isNotEmpty ? admins.first : null;
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في تحديد المستقبل للشات: $e');
-    }
-    return null;
-  }
-
-  // ==========================================
-  // --- ⚙️ إعدادات المتجر وأوقات الدوام ---
-  // ==========================================
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
@@ -652,7 +632,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 🛑 دالة الشات بدون أقواس متداخلة مسببة للمشاكل
   Stream<dynamic> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
@@ -763,10 +742,6 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ خطأ في حفظ الأوقات: $e');
     }
-  }
-
-  Future<void> updateStoreHours(int newStart, int newEnd) async {
-    await updateStoreSettings(newStart, newEnd);
   }
 
   bool get isStoreOpen {
@@ -989,69 +964,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> updateUser({required String name, required String phone}) async {
-    if (userProfile != null) {
-      userProfile!['name'] = name;
-      userProfile!['phone'] = _normalizePhone(phone);
-      final prefs = await SharedPreferences.getInstance();
-      prefs.setString('userName', name);
-      prefs.setString('userPhone', userProfile!['phone']!);
-      notifyListeners();
-    }
-  }
-
-  Future<void> addOrUpdateAddress(dynamic addressModel) async {
-    String addressDetails = addressModel is String ? addressModel : (addressModel.details ?? '');
-    if (userProfile != null) {
-      userProfile!['address'] = addressDetails;
-      final prefs = await SharedPreferences.getInstance();
-      prefs.setString('userAddress', addressDetails);
-      notifyListeners();
-    }
-  }
-
-  Future<void> setDefaultAddress(String addressId) async {
-    notifyListeners();
-  }
-
-  void clearUser() => logoutUser();
-
-  void setUser({required String name, required String phone, required dynamic address}) {
-    String cleanPhone = _normalizePhone(phone);
-    String addressDetails = address is String ? address : (address.details ?? '');
-
-    userProfile = {
-      'phone': cleanPhone,
-      'name': name,
-      'city': currentCity,
-      'address': addressDetails,
-    };
-
-    fetchUserAddressesFromSupabase();
-
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setString('userPhone', cleanPhone);
-      prefs.setString('userName', name);
-      prefs.setString('userAddress', addressDetails);
-      prefs.setString('userCity', currentCity);
-    });
-
-    saveUserProfileDetails(name, addressDetails);
-    notifyListeners();
-  }
-
-  void logoutUser() async {
-    userProfile = null;
-    _userAddresses.clear();
-    final prefs = await SharedPreferences.getInstance();
-    prefs.remove('userPhone');
-    prefs.remove('userName');
-    prefs.remove('userAddress');
-    prefs.remove('userCity');
-    prefs.remove('user_saved_addresses_json');
-    notifyListeners();
-  }
-
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
@@ -1205,24 +1117,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateCourier(DeliveryModel courier) async {
-    await supabase.from('couriers').update({
-      'name': courier.name, 'phone': courier.phone,
-      'status': courier.isEnabled ? (courier.isAvailable ? 'available' : 'busy') : 'disabled',
-    }).eq('id', courier.id);
-    await fetchCouriersFromSupabase();
-  }
-
-  Future<void> setCourierAvailability(String id, bool available) async {
-    await supabase.from('couriers').update({'status': available ? 'available' : 'busy'}).eq('id', id);
-    await fetchCouriersFromSupabase();
-  }
-
-  Future<void> removeCourier(String id) async {
-    await supabase.from('couriers').update({'status': 'disabled'}).eq('id', id);
-    await fetchCouriersFromSupabase();
-  }
-
   Future<void> updateOrderStatus(String id, String status) async {
     await supabase.from('orders').update({'status': status, 'admin_message': 'تم تحديث حالة الطلب من المشرف'}).eq('id', id);
     listenToOrdersRealtime();
@@ -1278,7 +1172,7 @@ class AppState extends ChangeNotifier {
       await _localStorage.cacheProducts(response);
       notifyListeners();
     } catch (e) {
-      debugPrint('⚠️ انقطاع الإنترنت أو خطأ في الاتصال، جاري جلب المنتجات من التخزين المحلي...: $e');
+      debugPrint('⚠️ خطأ في جلب المنتجات: $e');
       final localProducts = await _localStorage.getCachedProducts();
       if (localProducts.isNotEmpty) {
         products = localProducts;
@@ -1459,7 +1353,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 🛠️ [تم التصحيح والتدقيق نهائياً] دالة تحديد رسوم التوصيل وتسعير الطلب للمشرف بدون أي قيود تمنع التحديث
   Future<void> setOrderDeliveryFee(dynamic orderId, double fee, String courierName) async {
     try {
       final orderIndex = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
@@ -1480,7 +1373,6 @@ class AppState extends ChangeNotifier {
         cleanCourierName = 'مندوب عام';
       }
 
-      // التحديث المباشر والآمن في جدول orders بـ Supabase
       await supabase.from('orders').update({
         'delivery_fee': fee,
         'products_total': productsTotal,
@@ -1492,7 +1384,6 @@ class AppState extends ChangeNotifier {
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', orderId);
 
-      // التحديث المحلي الفوري لكي تظهر البيانات بدقة في شاشة المشرف والعميل
       if (orderIndex != -1) {
         orders[orderIndex]['delivery_fee'] = fee;
         orders[orderIndex]['products_total'] = productsTotal;
@@ -1507,7 +1398,6 @@ class AppState extends ChangeNotifier {
 
       await fetchAdminFinancialReports();
 
-      // إرسال الإشعار والتنبيه للعميل
       addLocalNotification(
         'تم تحديد سعر الطلب #$orderId 💰',
         'رسوم التوصيل: $fee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
@@ -1515,7 +1405,6 @@ class AppState extends ChangeNotifier {
       );
 
       notifyListeners();
-      debugPrint('✅ تم تحديد رسوم التوصيل وإرسال السعر بنجاح للطلب #$orderId');
     } catch (e) {
       debugPrint('❌ خطأ في تحديد رسوم التوصيل: $e');
       throw Exception('تعذر تحديد رسوم التوصيل: $e');
