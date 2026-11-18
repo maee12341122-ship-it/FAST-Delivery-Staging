@@ -911,7 +911,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _loadUserSession() async {
+  // 🛠️ تم تعديل نوع الإرجاع إلى Future<void> لتتوافق مع await
+  Future<void> _loadUserSession() async {
     final prefs = await SharedPreferences.getInstance();
     final phone = prefs.getString('userPhone');
     final name = prefs.getString('userName');
@@ -1100,7 +1101,8 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? currentCourier;
   List couriers = [];
 
-  void _loadCourierSession() async {
+  // 🛠️ تم تعديل نوع الإرجاع إلى Future<void> لتتوافق مع await
+  Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
     if (user == null || user.appMetadata['role']?.toString() != 'courier') return;
     try {
@@ -1118,7 +1120,7 @@ class AppState extends ChangeNotifier {
     try {
       final response = await supabase.from('couriers').select();
       couriers = response;
-      _loadCourierSession();
+      await _loadCourierSession(); // 👈 تم إضافة await هنا أيضاً لتتوافق مع المستقبل
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في جلب المناديب: $e');
@@ -1442,6 +1444,14 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ خطأ في Realtime الطلبات: $e');
     }
+  }
+
+  // 🍽️ الدالة الناقصة التي كانت تسبب خطأ البناء في home_screen.dart
+  bool isRestaurantOrder(Map<String, dynamic> order) {
+    if (order['is_restaurant'] == true) return true;
+    final String restName = order['restaurant_name']?.toString().trim() ?? '';
+    final String restId = order['restaurant_id']?.toString().trim() ?? '';
+    return restId.isNotEmpty || (restName.isNotEmpty && restName != 'متجر عام' && restName != 'خدمة الطلبات الخاصة');
   }
 
   Future<void> createOrder({
