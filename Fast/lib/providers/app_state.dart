@@ -376,6 +376,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ✅ تم التصحيح هنا بنجاح
   Future?> fetchRestaurantRatingForOrder(dynamic orderId) async {
     try {
       final response = await supabase
