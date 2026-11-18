@@ -62,8 +62,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _showPopupBadge = false;
   String _latestNotificationText = 'إشعار جديد!';
 
-  final List<String> _quickTags = ['برجر', 'حليب', 'دجاج', 'بطاطس', 'أرز', 'عصير'];
-
   String formatLocationAddress(String? rawAddress) {
     if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة 📍';
     if (rawAddress.contains('(') && rawAddress.contains(',')) {
@@ -288,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final banners = snapshot.data!;
 
         return SizedBox(
-          height: 95, // منكمش وصغير بالعرض لتوفير مساحة الشاشة
+          height: 95,
           child: PageView.builder(
             controller: PageController(viewportFraction: 0.9),
             itemCount: banners.length,
@@ -412,7 +410,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // 💡 الأقسام معروضة بالعرض تماماً (Horizontal Scrolling) لتوفير مساحة الشاشة
   Widget _buildCategoriesHorizontalList(AppState appState, Color textColor, Color cardBg) {
     final categoriesList = [
       {'title': 'الكل', 'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591', 'category': 'الكل'},
@@ -1452,7 +1449,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Icon(Icons.wifi_off, color: Colors.white, size: 16),
           SizedBox(width: 8),
           Text(
-            'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
+            '⚠️ تم انقطاع الإنترنت',
             style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
           ),
         ],
@@ -1534,11 +1531,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          if (_currentIndex != 0) {
+
+          // 1. إذا كان المستخدم داخل متجر/مطعم محدد ⬅️ ارجع لقائمة المتاجر
+          if (_currentIndex == 0 && selectedRestaurantName != null) {
+            setState(() {
+              selectedRestaurantName = null;
+            });
+          }
+          // 2. إذا كان المستخدم في قسم فرعي غير "الكل" أو "طلبات أخرى" ⬅️ ارجع لقسم "الكل"
+          else if (_currentIndex == 0 && selectedCategory != 'الكل') {
+            setState(() {
+              selectedCategory = 'الكل';
+              selectedRestaurantName = null;
+            });
+          }
+          // 3. إذا كان المستخدم في أي تبويب آخر غير الرئيسية (السلة، طلباتي، حسابي) ⬅️ ارجع للرئيسية
+          else if (_currentIndex != 0) {
             setState(() {
               _currentIndex = 0;
             });
-          } else {
+          }
+          // 4. إذا كان في الشاشة الرئيسية بالكامل ⬅️ اظهر نافذة تأكيد الخروج
+          else {
             showExitConfirmationDialog(context, cardBg, textColor);
           }
         },
@@ -1935,10 +1949,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
 
-          // 💡 الأقسام بالعرض (أفقي) لتوفير المساحة
           _buildCategoriesHorizontalList(appState, textColor, cardBg),
 
-          // 💡 عرض المتاجر بالعرض (أفقي) إذا لم يتم اختيار متجر بعد
           if (isCategoryWithShops && selectedRestaurantName == null) ...[
             Builder(
               builder: (context) {
@@ -2042,9 +2054,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     padding: EdgeInsets.all(20.0),
                     child: Center(child: Text('لا توجد منتجات مطابقة 🔍', style: TextStyle(color: Colors.grey, fontSize: 12))),
                   )
-                : 
-                // 💡 المنتجات معروضة بشكل أفقي (Horizontal Scrolling) لتكون منكمشة وصغيرة
-                SizedBox(
+                : SizedBox(
                     height: 185,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
