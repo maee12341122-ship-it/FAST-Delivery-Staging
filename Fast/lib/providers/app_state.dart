@@ -1458,8 +1458,9 @@ class AppState extends ChangeNotifier {
       throw Exception('الدفع النقدي عند الاستلام هو طريقة الدفع الوحيدة في المرحلة الأولى.');
     }
 
-    if (productsTotal <= 0) {
-      throw Exception('لا يمكن إنشاء طلب بمبلغ اجمالي صفر أو سالب.');
+    // السماح بالمبلغ الصفر (0) في خدمات "وصل لي" أو الطلبات الخاصة ريثما يحدد المشرف التكلفة
+    if (productsTotal < 0) {
+      throw Exception('لا يمكن إنشاء طلب بمبلغ إجمالي سالب.');
     }
 
     final normalizedPhone = _normalizePhone(phone);
@@ -1727,7 +1728,7 @@ class AppState extends ChangeNotifier {
 }
 
 class _UserMock {
-  final String name;
-  final String phone;
+  final Name;
+  final Phone;
   _UserMock(this.name, this.phone);
 }
