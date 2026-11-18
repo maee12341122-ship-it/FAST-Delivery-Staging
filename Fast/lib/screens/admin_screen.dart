@@ -924,6 +924,61 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
                       Row(
                         children: [
+                          // 🗑️ زر حذف الطلب للمشرف فقط مع رسالة تأكيد (هل تريد الحذف حقاً؟)
+                          IconButton(
+                            style: IconButton.styleFrom(backgroundColor: Colors.red.withOpacity(0.2)),
+                            icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 20),
+                            tooltip: 'حذف الطلب',
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => Directionality(
+                                  textDirection: TextDirection.rtl,
+                                  child: AlertDialog(
+                                    backgroundColor: const Color(0xFF1E1E1E),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                        SizedBox(width: 8),
+                                        Text('تأكيد الحذف 🗑️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                                      ],
+                                    ),
+                                    content: Text('هل تريد الحذف حقاً للطلب #$orderId؟\n(لن يمكنك التراجع عن هذا الإجراء بعد الحذف).', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                        onPressed: () async {
+                                          Navigator.pop(ctx);
+                                          try {
+                                            await Supabase.instance.client.from('orders').delete().eq('id', orderId);
+                                            await appState.fetchProductsFromSupabase(); // إعادة تحديث البيانات
+                                            setState(() {});
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text('تم حذف الطلب #$orderId بنجاح ✅'), backgroundColor: Colors.green),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text('فشل حذف الطلب: $e'), backgroundColor: Colors.red),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        child: const Text('نعم، احذف الطلب'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
                           IconButton(
                             style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
                             icon: const Icon(Icons.map, color: Colors.amber, size: 20),
