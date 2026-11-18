@@ -20,7 +20,29 @@ class ApiService {
     }
   }
 
-  // 2. التحقق من الكوبون وتطبيق الخصم (تم تصحيح اسم العمود إلى discount_value حسب الـ Schema)
+  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants (لضمان تقسيم الأقسام مثل الشميري وو)
+  static Future<List<dynamic>> fetchRestaurants() async {
+    try {
+      final response = await _supabase.from('restaurants').select().eq('is_active', true);
+      return response;
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب المطاعم: $e');
+      return [];
+    }
+  }
+
+  // 1. ب) جلب الأقسام العامة من جدول categories
+  static Future<List<dynamic>> fetchCategories() async {
+    try {
+      final response = await _supabase.from('categories').select().eq('is_active', true);
+      return response;
+    } catch (e) {
+      debugPrint('❌ خطأ في جلب الأقسام: $e');
+      return [];
+    }
+  }
+
+  // 2. التحقق من الكوبون وتطبيق الخصم
   static Future<JsonMap> validateCoupon(String code, double subtotal) async {
     try {
       final response = await _supabase
@@ -151,6 +173,7 @@ class ApiService {
     int orderId,
     String status,
   ) async {
+    title:
     try {
       final response = await _supabase.from('orders').update({
         'status': status,
@@ -185,7 +208,7 @@ class ApiService {
         'status': status,
       }).eq('id', orderId).select().single();
 
-      return {'order': response, 'message': 'تم تحديث حالة الطلب بنجاح'};
+      return {'order': response, 'message': 'تم تحديث الحالة بنجاح'};
     } catch (e) {
       debugPrint('❌ خطأ في تحديث حالة الطلب للمندوب: $e');
       rethrow;
