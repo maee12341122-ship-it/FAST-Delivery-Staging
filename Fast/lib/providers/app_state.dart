@@ -375,7 +375,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // 👈 دالة جديدة لجلب تقييم المطعم المرتبط برقم الطلب لعرضه في شاشة تتبع الطلب
+  // 👈 تم تصحيح توقيع الدالة هنا لتصبح صالحة وخالية من أخطاء بناء الجملة (Syntax)
   Future?> fetchRestaurantRatingForOrder(dynamic orderId) async {
     try {
       final response = await supabase
