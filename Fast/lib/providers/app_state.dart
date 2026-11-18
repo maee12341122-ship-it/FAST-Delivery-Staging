@@ -116,13 +116,27 @@ class AppState extends ChangeNotifier {
 
   AppState() {
     _initializeApplicationState();
+    _initAuthListener();
+  }
+
+  void _initAuthListener() {
+    supabase.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      isAdminLoggedIn = session != null;
+      
+      if (session != null) {
+        await _loadCourierSession();
+      } else {
+        currentCourier = null;
+      }
+      notifyListeners();
+    });
   }
 
   Future<void> _initializeApplicationState() async {
     await checkPrivacyPolicyStatus();
-    _loadAdminSession();
-    _loadCourierSession();
-    _loadUserSession();
+    await _loadUserSession();
+    await _checkInitialSessions();
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
     await fetchProductsFromSupabase();
@@ -134,6 +148,14 @@ class AppState extends ChangeNotifier {
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener();
+  }
+
+  Future<void> _checkInitialSessions() async {
+    final session = supabase.auth.currentSession;
+    if (session != null) {
+      isAdminLoggedIn = true;
+      await _loadCourierSession();
+    }
   }
 
   List restaurantsList = [];
@@ -351,14 +373,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchRestaurantAverages() async {
     try {
-      final response = await supabase.from('restaurant_ratings').select('restaurant_name, rating');
+      final response = await supabase.from('orders').select('restaurant_name, restaurant_rating');
       restaurantRatingsCache.clear();
 
       Map<String, List<double>> tempRatings = {};
       for (var row in response) {
         String name = row['restaurant_name']?.toString().trim() ?? '';
-        double rating = double.tryParse(row['rating']?.toString() ?? '5.0') ?? 5.0;
-        if (name.isNotEmpty) {
+        double rating = double.tryParse(row['restaurant_rating']?.toString() ?? '0.0') ?? 0.0;
+        if (name.isNotEmpty && rating > 0) {
           tempRatings.putIfAbsent(name, () => []).add(rating);
         }
       }
@@ -378,12 +400,12 @@ class AppState extends ChangeNotifier {
   Future<dynamic> fetchRestaurantRatingForOrder(dynamic orderId) async {
     try {
       final response = await supabase
-          .from('restaurant_ratings')
-          .select()
-          .eq('order_id', orderId.toString())
+          .from('orders')
+          .select('restaurant_rating, restaurant_review')
+          .eq('id', orderId.toString())
           .maybeSingle();
       
-      if (response != null) {
+      if (response != null && response['restaurant_rating'] != null) {
         return Map<String, dynamic>.from(response);
       }
     } catch (e) {
@@ -563,12 +585,10 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      await supabase.from('courier_ratings').upsert({
-        'order_id': orderId.toString(),
-        'courier_name': courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim(),
-        'rating': rating,
-        'review': reviewText,
-      }, onConflict: 'order_id');
+      await supabase.from('orders').update({
+        'courier_rating': rating,
+        'courier_review': reviewText,
+      }).eq('id', orderId);
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ في تقييم المندوب: $e');
@@ -582,11 +602,10 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      await supabase.from('restaurant_ratings').upsert({
-        'order_id': orderId.toString(),
-        'rating': rating,
-        'review': reviewText,
-      }, onConflict: 'order_id');
+      await supabase.from('orders').update({
+        'restaurant_rating': rating,
+        'restaurant_review': reviewText,
+      }).eq('id', orderId);
       await fetchRestaurantAverages();
       notifyListeners();
     } catch (e) {
