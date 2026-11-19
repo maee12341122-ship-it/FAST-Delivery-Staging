@@ -195,6 +195,104 @@ class AppState extends ChangeNotifier {
     return user?.appMetadata['role']?.toString() == 'courier';
   }
 
+  Future<void> _syncStaffPhoneToUserProfile({
+    required String phone,
+    String? name,
+    String? address,
+  }) async {
+    final cleanPhone = _normalizePhone(phone);
+    if (cleanPhone.isEmpty) return;
+
+    try {
+      final existingCustomer = await fetchCustomerRecordByPhone(cleanPhone);
+      if (existingCustomer != null) {
+        final mergedName = (name != null && name.trim().isNotEmpty)
+            ? name.trim()
+            : (existingCustomer['name']?.toString() ?? '');
+        final mergedAddress = (address != null && address.trim().isNotEmpty)
+            ? address.trim()
+            : (existingCustomer['address']?.toString() ?? '');
+        userProfile = {
+          ...existingCustomer,
+          'phone': cleanPhone,
+          'name': mergedName,
+          'address': mergedAddress,
+          'city': currentCity,
+        };
+        await _persistUserSessionToPrefs(userProfile!);
+        await fetchUserAddressesFromSupabase();
+        notifyListeners();
+        return;
+      }
+    } catch (e) {
+      debugPrint('تعذر جلب سجل العميل للموظف: $e');
+    }
+
+    final fallbackName = (name != null && name.trim().isNotEmpty)
+        ? name.trim()
+        : (userProfile?['name']?.toString() ?? '');
+    final fallbackAddress = (address != null && address.trim().isNotEmpty)
+        ? address.trim()
+        : (userProfile?['address']?.toString() ?? '');
+
+    userProfile = {
+      'phone': cleanPhone,
+      'name': fallbackName,
+      'address': fallbackAddress,
+      'city': currentCity,
+    };
+    await _persistUserSessionToPrefs(userProfile!);
+
+    try {
+      await supabase.from('customers').upsert({
+        'phone': cleanPhone,
+        'name': fallbackName,
+        'address': fallbackAddress,
+      }, onConflict: 'phone');
+    } catch (e) {
+      debugPrint('تعذر حفظ سجل العميل للموظف: $e');
+    }
+
+    await fetchUserAddressesFromSupabase();
+    notifyListeners();
+  }
+
+  Future<void> _syncAdminProfileFromAuth(User? user) async {
+    if (user == null) return;
+    var adminPhone = '';
+    var adminName = user.userMetadata?['name']?.toString() ?? 'المشرف';
+
+    try {
+      final adminRow = await supabase
+          .from('admins')
+          .select()
+          .or('auth_user_id.eq.${user.id},email.eq.${user.email ?? ''}')
+          .maybeSingle();
+      if (adminRow != null) {
+        adminPhone = _normalizePhone(adminRow['phone']?.toString() ?? '');
+        if ((adminRow['name']?.toString() ?? '').trim().isNotEmpty) {
+          adminName = adminRow['name'].toString().trim();
+        }
+      }
+    } catch (_) {}
+
+    if (adminPhone.isEmpty) {
+      adminPhone = _normalizePhone(
+        user.phone ??
+            user.userMetadata?['phone']?.toString() ??
+            userProfile?['phone']?.toString() ??
+            '',
+      );
+    }
+
+    if (adminPhone.isNotEmpty) {
+      await _syncStaffPhoneToUserProfile(
+        phone: adminPhone,
+        name: adminName,
+      );
+    }
+  }
+
   void _initAuthListener() {
     _authSub = supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
@@ -205,6 +303,7 @@ class AppState extends ChangeNotifier {
         } else {
           isAdminLoggedIn = true;
           currentCourier = null;
+          await _syncAdminProfileFromAuth(session.user);
         }
       } else {
         isAdminLoggedIn = false;
@@ -240,6 +339,7 @@ class AppState extends ChangeNotifier {
       } else {
         isAdminLoggedIn = true;
         currentCourier = null;
+        await _syncAdminProfileFromAuth(session.user);
       }
     } else {
       isAdminLoggedIn = false;
@@ -1188,6 +1288,7 @@ class AppState extends ChangeNotifier {
       }
       isAdminLoggedIn = true;
       currentCourier = null;
+      await _syncAdminProfileFromAuth(response.user);
       await fetchCouriersFromSupabase();
       listenToOrdersRealtime();
       notifyListeners();
@@ -1547,6 +1648,14 @@ class AppState extends ChangeNotifier {
           .maybeSingle();
       if (row != null) {
         currentCourier = Map<String, dynamic>.from(row);
+        final courierPhone = row['phone']?.toString() ?? '';
+        final courierName = row['name']?.toString() ?? '';
+        if (courierPhone.trim().isNotEmpty) {
+          await _syncStaffPhoneToUserProfile(
+            phone: courierPhone,
+            name: courierName,
+          );
+        }
         notifyListeners();
       }
     } catch (e) {
@@ -1744,6 +1853,15 @@ class AppState extends ChangeNotifier {
       isAdminLoggedIn = false;
       currentCourier = Map<String, dynamic>.from(row);
       _currentCourierData!['is_logged_in'] = true;
+
+      final courierPhone = row['phone']?.toString() ?? '';
+      final courierName = row['name']?.toString() ?? '';
+      if (courierPhone.trim().isNotEmpty) {
+        await _syncStaffPhoneToUserProfile(
+          phone: courierPhone,
+          name: courierName,
+        );
+      }
 
       listenToOrdersRealtime();
       final prefs = await SharedPreferences.getInstance();
