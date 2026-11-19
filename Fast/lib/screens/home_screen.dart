@@ -47,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _addressDescriptionController = TextEditingController();
   final _paymentAccountController = TextEditingController();
   String _selectedPaymentMethod = 'cash';
+  bool _isSubmittingCheckout = false;
 
   final FocusNode _searchFocus = FocusNode();
   final FocusNode _customItemNameFocus = FocusNode();
@@ -1374,6 +1375,7 @@ class _HomeScreenState extends State<HomeScreen>
                             orderId: orderId,
                             rating: rating,
                             reviewText: commentController.text.trim(),
+                            restaurantName: restaurantName,
                           );
                           if (mounted) setState(() {});
                           if (dialogContext.mounted) {
@@ -1557,6 +1559,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _showCheckoutDialog(
       BuildContext context, AppState appState, Color cardBg, Color textColor) {
+    if (_isSubmittingCheckout) return;
+
     if (appState.userProfile != null) {
       _nameController.text = appState.userProfile?['name'] ?? '';
       _phoneController.text = appState.userProfile?['phone'] ?? '';
@@ -1570,279 +1574,303 @@ class _HomeScreenState extends State<HomeScreen>
 
     showDialog(
       context: context,
-      barrierDismissible: !isSubmittingOrder,
+      barrierDismissible: false,
       builder: (ctx) => GestureDetector(
         onTap: () => FocusScope.of(ctx).unfocus(),
         child: StatefulBuilder(
-          builder: (context, setDialogState) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              backgroundColor: cardBg,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: Text('بيانات التوصيل وطريقة الدفع',
-                  style: TextStyle(color: accent, fontWeight: FontWeight.bold)),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextFormField(
-                        controller: _nameController,
-                        style: TextStyle(color: textColor),
-                        validator: (val) =>
-                            (val == null || val.trim().isEmpty)
-                                ? 'الرجاء إدخال الاسم الكامل'
-                                : null,
-                        decoration: InputDecoration(
-                          labelText: 'الاسم الكامل*',
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: appState.isDarkMode
-                              ? const Color(0xFF121212)
-                              : Colors.grey[100],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        style: TextStyle(color: textColor),
-                        validator: (val) =>
-                            (val == null || val.trim().isEmpty)
-                                ? 'الرجاء إدخال رقم الهاتف'
-                                : null,
-                        decoration: InputDecoration(
-                          labelText: 'رقم الهاتف*',
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: appState.isDarkMode
-                              ? const Color(0xFF121212)
-                              : Colors.grey[100],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: accent,
-                            side: BorderSide(color: accent),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
+          builder: (context, setDialogState) => PopScope(
+            canPop: !isSubmittingOrder,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                backgroundColor: cardBg,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                title: Text('بيانات التوصيل وطريقة الدفع',
+                    style:
+                        TextStyle(color: accent, fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextFormField(
+                          controller: _nameController,
+                          enabled: !isSubmittingOrder,
+                          style: TextStyle(color: textColor),
+                          validator: (val) =>
+                              (val == null || val.trim().isEmpty)
+                                  ? 'الرجاء إدخال الاسم الكامل'
+                                  : null,
+                          decoration: InputDecoration(
+                            labelText: 'الاسم الكامل*',
+                            labelStyle: const TextStyle(color: Colors.grey),
+                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: appState.isDarkMode
+                                ? const Color(0xFF121212)
+                                : Colors.grey[100],
                           ),
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              PageRouteBuilder(
-                                pageBuilder: (context, animation,
-                                        secondaryAnimation) =>
-                                    const MapLocationScreen(),
-                                transitionsBuilder: (context, animation,
-                                    secondaryAnimation, child) {
-                                  return FadeTransition(
-                                      opacity: animation, child: child);
-                                },
-                              ),
-                            );
-                            if (result != null && result is Map) {
-                              setDialogState(() {
-                                _addressDescriptionController.text =
-                                    result['address'] ?? '';
-                              });
-                            }
-                          },
-                          icon: Icon(Icons.map, color: accent),
-                          label: const Text(
-                              'تحديد الموقع عبر الخريطة والـ GPS',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _addressDescriptionController,
-                        style: TextStyle(color: textColor),
-                        validator: (val) =>
-                            (val == null || val.trim().isEmpty)
-                                ? 'الرجاء إدخال العنوان التفصيلي'
-                                : null,
-                        decoration: InputDecoration(
-                          labelText: 'العنوان التفصيلي (تعز)*',
-                          labelStyle: const TextStyle(color: Colors.grey),
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: appState.isDarkMode
-                              ? const Color(0xFF121212)
-                              : Colors.grey[100],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: couponController,
-                              style: TextStyle(color: textColor),
-                              decoration: InputDecoration(
-                                labelText: 'كود الخصم (اختياري)',
-                                labelStyle: const TextStyle(color: Colors.grey),
-                                border: const OutlineInputBorder(),
-                                filled: true,
-                                fillColor: appState.isDarkMode
-                                    ? const Color(0xFF121212)
-                                    : Colors.grey[100],
-                              ),
-                            ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _phoneController,
+                          enabled: !isSubmittingOrder,
+                          keyboardType: TextInputType.phone,
+                          style: TextStyle(color: textColor),
+                          validator: (val) =>
+                              (val == null || val.trim().isEmpty)
+                                  ? 'الرجاء إدخال رقم الهاتف'
+                                  : null,
+                          decoration: InputDecoration(
+                            labelText: 'رقم الهاتف*',
+                            labelStyle: const TextStyle(color: Colors.grey),
+                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: appState.isDarkMode
+                                ? const Color(0xFF121212)
+                                : Colors.grey[100],
                           ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: accent,
-                              foregroundColor: appState.isDarkMode
-                                  ? Colors.black
-                                  : Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 16),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: accent,
+                              side: BorderSide(color: accent),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: () async {
-                              String msg = await appState.applyCouponCode(
-                                  couponController.text, appState.totalAmount);
-                              setDialogState(() {});
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(SnackBar(content: Text(msg)));
-                              }
-                            },
-                            child: const Text('تطبيق',
+                            onPressed: isSubmittingOrder
+                                ? null
+                                : () async {
+                                    final result = await Navigator.push(
+                                      context,
+                                      PageRouteBuilder(
+                                        pageBuilder: (context, animation,
+                                                secondaryAnimation) =>
+                                            const MapLocationScreen(),
+                                        transitionsBuilder: (context, animation,
+                                            secondaryAnimation, child) {
+                                          return FadeTransition(
+                                              opacity: animation, child: child);
+                                        },
+                                      ),
+                                    );
+                                    if (result != null && result is Map) {
+                                      setDialogState(() {
+                                        _addressDescriptionController.text =
+                                            result['address'] ?? '';
+                                      });
+                                    }
+                                  },
+                            icon: Icon(Icons.map, color: accent),
+                            label: const Text(
+                                'تحديد الموقع عبر الخريطة والـ GPS',
                                 style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
-                        ],
-                      ),
-                      if (appState.activeCouponCode != null) ...[
-                        const SizedBox(height: 6),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _addressDescriptionController,
+                          enabled: !isSubmittingOrder,
+                          style: TextStyle(color: textColor),
+                          validator: (val) =>
+                              (val == null || val.trim().isEmpty)
+                                  ? 'الرجاء إدخال العنوان التفصيلي'
+                                  : null,
+                          decoration: InputDecoration(
+                            labelText: 'العنوان التفصيلي (تعز)*',
+                            labelStyle: const TextStyle(color: Colors.grey),
+                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: appState.isDarkMode
+                                ? const Color(0xFF121212)
+                                : Colors.grey[100],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                                'تم تطبيق الكوبون: ${appState.activeCouponCode} (خصم: ${_formatPrice(appState.couponDiscountAmount)} ر.ي)',
-                                style: const TextStyle(
-                                    color: Colors.greenAccent,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold)),
-                            TextButton(
-                              onPressed: () {
-                                appState.removeCoupon();
-                                setDialogState(() {});
-                              },
-                              child: const Text('إزالة',
-                                  style: TextStyle(
-                                      color: Colors.redAccent, fontSize: 12)),
+                            Expanded(
+                              child: TextField(
+                                controller: couponController,
+                                enabled: !isSubmittingOrder,
+                                style: TextStyle(color: textColor),
+                                decoration: InputDecoration(
+                                  labelText: 'كود الخصم (اختياري)',
+                                  labelStyle:
+                                      const TextStyle(color: Colors.grey),
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: appState.isDarkMode
+                                      ? const Color(0xFF121212)
+                                      : Colors.grey[100],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accent,
+                                foregroundColor: appState.isDarkMode
+                                    ? Colors.black
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: isSubmittingOrder
+                                  ? null
+                                  : () async {
+                                      String msg = await appState.applyCouponCode(
+                                          couponController.text,
+                                          appState.totalAmount);
+                                      setDialogState(() {});
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                                SnackBar(content: Text(msg)));
+                                      }
+                                    },
+                              child: const Text('تطبيق',
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ],
+                        ),
+                        if (appState.activeCouponCode != null) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                  'تم تطبيق الكوبون: ${appState.activeCouponCode} (خصم: ${_formatPrice(appState.couponDiscountAmount)} ر.ي)',
+                                  style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold)),
+                              TextButton(
+                                onPressed: isSubmittingOrder
+                                    ? null
+                                    : () {
+                                        appState.removeCoupon();
+                                        setDialogState(() {});
+                                      },
+                                child: const Text('إزالة',
+                                    style: TextStyle(
+                                        color: Colors.redAccent, fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: accent.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: accent.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('حساب الكريمي (حاسب):',
+                                      style: TextStyle(
+                                          color: accent,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold)),
+                                  Text('2655872',
+                                      style: TextStyle(
+                                          color: textColor,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.copy, color: accent, size: 20),
+                                tooltip: 'نسخ رقم الحساب',
+                                onPressed: () {
+                                  Clipboard.setData(
+                                      const ClipboardData(text: '2655872'));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'تم نسخ رقم حاسب الكريمي (2655872) بنجاح')),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text('اختر طريقة الدفع:',
+                            style: TextStyle(
+                                color: accent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _selectedPaymentMethod,
+                          dropdownColor: cardBg,
+                          style: TextStyle(color: textColor),
+                          decoration: InputDecoration(
+                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: appState.isDarkMode
+                                ? const Color(0xFF121212)
+                                : Colors.grey[100],
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'cash',
+                                child: Text('الدفع نقداً عند الاستلام فقط')),
+                          ],
+                          onChanged: isSubmittingOrder
+                              ? null
+                              : (val) {
+                                  setDialogState(() {
+                                    _selectedPaymentMethod = val!;
+                                  });
+                                },
                         ),
                       ],
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: accent.withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('حساب الكريمي (حاسب):',
-                                    style: TextStyle(
-                                        color: accent,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold)),
-                                Text('2655872',
-                                    style: TextStyle(
-                                        color: textColor,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.copy, color: accent, size: 20),
-                              tooltip: 'نسخ رقم الحساب',
-                              onPressed: () {
-                                Clipboard.setData(
-                                    const ClipboardData(text: '2655872'));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'تم نسخ رقم حاسب الكريمي (2655872) بنجاح')),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text('اختر طريقة الدفع:',
-                          style: TextStyle(
-                              color: accent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14)),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        value: _selectedPaymentMethod,
-                        dropdownColor: cardBg,
-                        style: TextStyle(color: textColor),
-                        decoration: InputDecoration(
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: appState.isDarkMode
-                              ? const Color(0xFF121212)
-                              : Colors.grey[100],
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'cash',
-                              child: Text('الدفع نقداً عند الاستلام فقط')),
-                        ],
-                        onChanged: (val) {
-                          setDialogState(() {
-                            _selectedPaymentMethod = val!;
-                          });
-                        },
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed:
-                      isSubmittingOrder ? null : () => Navigator.pop(ctx),
-                  child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor:
-                        appState.isDarkMode ? Colors.black : Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                actions: [
+                  TextButton(
+                    onPressed:
+                        isSubmittingOrder ? null : () => Navigator.pop(ctx),
+                    child:
+                        const Text('إغلاق', style: TextStyle(color: Colors.grey)),
                   ),
-                  onPressed: isSubmittingOrder
-                      ? null
-                      : () async {
-                          if (_formKey.currentState!.validate()) {
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor:
+                          appState.isDarkMode ? Colors.black : Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: (isSubmittingOrder || _isSubmittingCheckout)
+                        ? null
+                        : () async {
+                            if (!(_formKey.currentState?.validate() ?? false)) {
+                              return;
+                            }
+                            _isSubmittingCheckout = true;
                             setDialogState(() => isSubmittingOrder = true);
+
                             final itemsDescription = appState.cartItems
-                                .map((item) => '${item.name} (x${item.quantity})')
+                                .map((item) =>
+                                    '${item.name} (x${item.quantity})')
                                 .join(', ');
 
                             final double finalAmountToPay =
@@ -1858,13 +1886,16 @@ class _HomeScreenState extends State<HomeScreen>
                                 itemsDesc: itemsDescription.isNotEmpty
                                     ? itemsDescription
                                     : 'طلب عام من السلة',
-                                productsTotal:
-                                    finalAmountToPay > 0 ? finalAmountToPay : 0.0,
+                                productsTotal: finalAmountToPay > 0
+                                    ? finalAmountToPay
+                                    : 0.0,
                                 paymentMethod: _selectedPaymentMethod,
                                 paymentAccount: 'نقدي',
                               );
                               if (!context.mounted) return;
-                              Navigator.pop(ctx);
+                              if (Navigator.canPop(ctx)) {
+                                Navigator.pop(ctx);
+                              }
                               setState(() => _currentIndex = 2);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -1873,21 +1904,28 @@ class _HomeScreenState extends State<HomeScreen>
                               );
                             } catch (e) {
                               if (context.mounted) {
-                                setDialogState(() => isSubmittingOrder = false);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                         content: Text(
                                             'تعذر إرسال الطلب: ${e.toString().replaceAll('Exception: ', '')}')));
                               }
+                            } finally {
+                              _isSubmittingCheckout = false;
+                              if (context.mounted) {
+                                try {
+                                  setDialogState(
+                                      () => isSubmittingOrder = false);
+                                } catch (_) {}
+                              }
                             }
-                          }
-                        },
-                  child: Text(
-                    isSubmittingOrder ? 'جاري الإرسال...' : 'تأكيد وإرسال',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                          },
+                    child: Text(
+                      isSubmittingOrder ? 'جاري الإرسال...' : 'تأكيد وإرسال',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1975,7 +2013,8 @@ class _HomeScreenState extends State<HomeScreen>
                             color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                   TextButton(
-                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    style:
+                        TextButton.styleFrom(foregroundColor: Colors.redAccent),
                     onPressed: () async {
                       await appState.customerCancelOrder(order['id']);
                       if (!context.mounted) return;
@@ -3172,9 +3211,11 @@ class _HomeScreenState extends State<HomeScreen>
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () {
-              _showCheckoutDialog(context, appState, cardBg, textColor);
-            },
+            onPressed: _isSubmittingCheckout
+                ? null
+                : () {
+                    _showCheckoutDialog(context, appState, cardBg, textColor);
+                  },
             child: Text(
                 'الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي)',
                 style: TextStyle(
