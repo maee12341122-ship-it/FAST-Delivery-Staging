@@ -70,8 +70,15 @@ class ApiService {
   }
 
   static dynamic _decodeBody(http.Response response) {
-    if (response.body.isEmpty) return <String, dynamic>{};
-    return jsonDecode(response.body);
+    if (response.body.trim().isEmpty) return <String, dynamic>{};
+    try {
+      return jsonDecode(response.body);
+    } on FormatException {
+      throw ApiException(
+        'استجابة غير صالحة من الخادم (رمز الحالة ${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    }
   }
 
   static Future<dynamic> _sendJsonRequest({
@@ -88,21 +95,28 @@ class ApiService {
       http.Response response;
       switch (method.toUpperCase()) {
         case 'GET':
-          response = await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
+          response =
+              await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
           break;
         case 'POST':
           response = await _httpClient
-              .post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .post(uri,
+                  headers: headers,
+                  body: jsonEncode(body ?? <String, dynamic>{}))
               .timeout(_requestTimeout);
           break;
         case 'PATCH':
           response = await _httpClient
-              .patch(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .patch(uri,
+                  headers: headers,
+                  body: jsonEncode(body ?? <String, dynamic>{}))
               .timeout(_requestTimeout);
           break;
         case 'PUT':
           response = await _httpClient
-              .put(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .put(uri,
+                  headers: headers,
+                  body: jsonEncode(body ?? <String, dynamic>{}))
               .timeout(_requestTimeout);
           break;
         default:
@@ -116,13 +130,16 @@ class ApiService {
       }
 
       final serverMessage = decoded is Map<String, dynamic>
-          ? (decoded['error'] ?? decoded['message'] ?? 'حدث خطأ في الخادم').toString()
+          ? (decoded['error'] ?? decoded['message'] ?? 'حدث خطأ في الخادم')
+              .toString()
           : 'حدث خطأ في الخادم';
       throw ApiException(serverMessage, statusCode: response.statusCode);
     } on TimeoutException {
-      throw ApiException('انتهت مهلة الاتصال بالخادم، يرجى المحاولة مرة أخرى.');
+      throw ApiException(
+          'انتهت مهلة الاتصال بالخادم، يرجى المحاولة مرة أخرى.');
     } on http.ClientException {
-      throw ApiException('تعذر الاتصال بالخادم، تحقق من الاتصال بالإنترنت.');
+      throw ApiException(
+          'تعذر الاتصال بالخادم، تحقق من الاتصال بالإنترنت.');
     } on ApiException {
       rethrow;
     } catch (e) {
@@ -225,8 +242,7 @@ class ApiService {
         'notes': notes.trim(),
         if (customerName != null && customerName.trim().isNotEmpty)
           'customer_name': customerName.trim(),
-        if (phone != null && phone.trim().isNotEmpty)
-          'phone': phone.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
         if (couponCode != null && couponCode.trim().isNotEmpty)
           'coupon_code': couponCode.trim(),
         if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
@@ -253,7 +269,8 @@ class ApiService {
   }
 
   // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
-  static Future<List<dynamic>> fetchMyOrders(String phone, {String? token}) async {
+  static Future<List<dynamic>> fetchMyOrders(String phone,
+      {String? token}) async {
     try {
       final data = await _sendJsonRequest(
         method: 'GET',
