@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/notification_service.dart'; // 👈 استدعاء خدمة الإشعارات الخاصة بك
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'delivery_dashboard.dart';
@@ -18,9 +18,10 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس عبر الكيبورد
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -32,45 +33,75 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   }
 
   Future<void> _login() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
-    
-    final appState = context.read<AppState>();
-    bool success = await appState.loginCourier(
-      _usernameController.text.trim(), 
-      _passwordController.text.trim()
-    );
 
-    if (!success || appState.currentCourier == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب ❌')),
+    setState(() => _isLoading = true);
+
+    try {
+      final appState = context.read<AppState>();
+      final bool success = await appState.loginCourier(
+        _usernameController.text.trim(),
+        _passwordController.text.trim(),
       );
-      return;
-    }
 
-    final courier = appState.currentCourier!;
-    final courierId = courier['id']?.toString() ?? courier['delivery_man_id']?.toString() ?? 'D-001';
-    final courierName = courier['name']?.toString() ?? 'مندوب';
+      if (!success || appState.currentCourier == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب ❌'),
+          ),
+        );
+        return;
+      }
 
-    // 🚀 حفظ معرف OneSignal Player ID الخاص بجهاز المندوب في جدول couriers في Supabase
-    await NotificationService.saveUserPlayerId(courierId, 'couriers');
+      final courier = Map<String, dynamic>.from(appState.currentCourier!);
+      final rawId = courier['id']?.toString().trim();
+      final authId =
+          courier['auth_user_id']?.toString().trim() ??
+          appState.supabase.auth.currentUser?.id.trim();
+      final courierId =
+          (rawId != null && rawId.isNotEmpty) ? rawId : (authId ?? '');
+      final courierName = courier['name']?.toString().trim().isNotEmpty == true
+          ? courier['name'].toString().trim()
+          : 'مندوب';
 
-    if (!mounted) return;
+      if (courierId.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تحديد معرف حساب المندوب ❌'),
+          ),
+        );
+        return;
+      }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => DeliveryDashboard(
-          courierId: courierId,
-          courierName: courierName,
+      await NotificationService.saveUserPlayerId(
+        rawId != null && rawId.isNotEmpty ? rawId : courierId,
+        'couriers',
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => DeliveryDashboard(
+            courierId: courierId,
+            courierName: courierName,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج حقول النص
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -78,7 +109,14 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
           appBar: AppBar(
             backgroundColor: const Color(0xFF1E1E1E),
             elevation: 2,
-            title: const Text('دخول حساب المندوب 🛵', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+            title: const Text(
+              'دخول حساب المندوب 🛵',
+              style: TextStyle(
+                color: AppConstants.gold,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
           ),
           body: Padding(
             padding: const EdgeInsets.all(20),
@@ -94,17 +132,32 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                         decoration: BoxDecoration(
                           color: AppConstants.gold.withOpacity(0.1),
                           shape: BoxShape.circle,
-                          border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
+                          border: Border.all(
+                            color: AppConstants.gold.withOpacity(0.3),
+                          ),
                         ),
-                        child: const Icon(Icons.delivery_dining, size: 60, color: AppConstants.gold),
+                        child: const Icon(
+                          Icons.delivery_dining,
+                          size: 60,
+                          color: AppConstants.gold,
+                        ),
                       ),
                       const SizedBox(height: 24),
-                      const Text('تسجيل دخول المندوب', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'تسجيل دخول المندوب',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 8),
-                      const Text('أدخل بيانات الاعتماد الخاصة بحسابك المسجل من الإدارة', style: TextStyle(color: Colors.grey, fontSize: 13), textAlign: TextAlign.center),
+                      const Text(
+                        'أدخل بيانات الاعتماد الخاصة بحسابك المسجل من الإدارة',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 30),
-                      
-                      // حقل اسم المستخدم للمندوب مع الانتقال السلس
                       TextFormField(
                         controller: _usernameController,
                         focusNode: _usernameFocus,
@@ -119,13 +172,12 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                           border: OutlineInputBorder(),
                           filled: true,
                           fillColor: Color(0xFF1E1E1E),
-                          prefixIcon: Icon(Icons.person, color: AppConstants.gold),
+                          prefixIcon:
+                              Icon(Icons.person, color: AppConstants.gold),
                         ),
                         validator: Validators.requiredText,
                       ),
                       const SizedBox(height: 16),
-
-                      // حقل كلمة المرور للمندوب مع تنفيذ تسجيل الدخول عند الضغط على "تم"
                       TextFormField(
                         controller: _passwordController,
                         focusNode: _passwordFocus,
@@ -144,7 +196,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                         validator: Validators.requiredText,
                       ),
                       const SizedBox(height: 24),
-
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -152,11 +203,28 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                             backgroundColor: AppConstants.gold,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          onPressed: _login,
-                          icon: const Icon(Icons.login, color: Colors.black),
-                          label: const Text('دخول لوحة المندوب 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          onPressed: _isLoading ? null : _login,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.login, color: Colors.black),
+                          label: const Text(
+                            'دخول لوحة المندوب 🚀',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -165,11 +233,17 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                         decoration: BoxDecoration(
                           color: Colors.blue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                          border: Border.all(
+                            color: Colors.blue.withOpacity(0.3),
+                          ),
                         ),
                         child: const Text(
                           'تنبيه: يمكنك إضافة حسابات المناديب وتعديل كلمات مرورهم مباشرة من لوحة تحكم المشرف.',
-                          style: TextStyle(color: Colors.lightBlueAccent, fontSize: 11, height: 1.5),
+                          style: TextStyle(
+                            color: Colors.lightBlueAccent,
+                            fontSize: 11,
+                            height: 1.5,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ),
