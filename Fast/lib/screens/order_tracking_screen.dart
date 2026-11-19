@@ -10,8 +10,7 @@ class OrderTrackingScreen extends StatefulWidget {
   final Map<String, dynamic>? orderMap;
   final String? orderIdParam;
 
-  const OrderTrackingScreen({Key? key, this.orderMap, this.orderIdParam})
-      : super(key: key);
+  const OrderTrackingScreen({super.key, this.orderMap, this.orderIdParam});
 
   @override
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
@@ -35,16 +34,39 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final String targetId =
         widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
     if (targetId.isNotEmpty) {
-      _extractCustomerCoordinates(widget.orderMap);
+      Map<String, dynamic>? sourceOrder = widget.orderMap;
+      if (sourceOrder == null) {
+        final appState = context.read<AppState>();
+        final found = appState.orders.where(
+          (o) => o['id']?.toString() == targetId,
+        );
+        if (found.isNotEmpty && found.first is Map) {
+          sourceOrder = Map<String, dynamic>.from(found.first as Map);
+        }
+      }
+
+      _extractCustomerCoordinates(sourceOrder);
       _subscribeToOrderUpdates(targetId);
       _fetchOrderRatings(targetId);
 
       final initialCourier =
-          widget.orderMap?['assigned_courier']?.toString().trim() ?? '';
+          sourceOrder?['assigned_courier']?.toString().trim() ?? '';
       if (initialCourier.isNotEmpty) {
         _fetchAndListenCourierLocation(initialCourier);
       }
     }
+  }
+
+  void _safeMoveMapTo(LatLng point, double zoom) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        _mapController.move(point, zoom);
+      } catch (e) {
+        debugPrint('⚠️ تعذر تحريك الخريطة حالياً: $e');
+      }
+    });
   }
 
   Future<void> _fetchOrderRatings(String orderId) async {
@@ -58,7 +80,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     try {
       final rows = await Supabase.instance.client
           .from('ratings_and_reviews')
-          .select('id, order_id, target_type, target_id, rating, comment, created_at')
+          .select(
+              'id, order_id, target_type, target_id, rating, comment, created_at')
           .eq('order_id', intOrderId);
 
       Map<String, dynamic>? restRes;
@@ -186,10 +209,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   mounted) {
                 final lat = (newData['latitude'] as num).toDouble();
                 final lng = (newData['longitude'] as num).toDouble();
+                final nextPos = LatLng(lat, lng);
                 setState(() {
-                  _courierPosition = LatLng(lat, lng);
+                  _courierPosition = nextPos;
                 });
-                _mapController.move(_courierPosition!, 17.0);
+                _safeMoveMapTo(nextPos, 17.0);
               }
             },
           )
