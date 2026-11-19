@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_state.dart';
+import 'order_time_helper.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
 import 'home_screen.dart';
@@ -269,8 +270,8 @@ class _CourierScreenState extends State<CourierScreen> {
                 (courier['name'] ?? '').toString().trim().toLowerCase();
             final courierId = (courier['id'] ?? '').toString().trim();
             final String orderStatus = o['status']?.toString().trim() ?? '';
-            final bool isMyOrder =
-                assigned == courierName || (courierId.isNotEmpty && assigned == courierId);
+            final bool isMyOrder = assigned == courierName ||
+                (courierId.isNotEmpty && assigned == courierId);
             return isMyOrder &&
                 (orderStatus == 'waitingCourierApproval' ||
                     orderStatus == 'approvedByCustomer');
@@ -803,6 +804,10 @@ class _CourierScreenState extends State<CourierScreen> {
                                   color: Colors.white70, fontSize: 13))),
                     ],
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                      '🕒 وقت الطلب: ${OrderTimeHelper.formatDateTime(order['created_at'])}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -878,7 +883,9 @@ class _CourierScreenState extends State<CourierScreen> {
                                     strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.check_circle),
                         label: Text(
-                          isUpdating ? 'جاري التحديث...' : 'قبول الطلب والبدء 🚀',
+                          isUpdating
+                              ? 'جاري التحديث...'
+                              : 'قبول الطلب والبدء 🚀',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
