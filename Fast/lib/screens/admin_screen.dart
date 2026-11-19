@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
+import 'order_time_helper.dart';
 import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
@@ -23,6 +24,9 @@ class _AdminScreenState extends State<AdminScreen>
   final Map<String, String> _selectedCouriersForOrder = {};
   final Set<String> _pricingOrderIds = {};
   final Set<String> _settlingCourierKeys = {};
+  String _ordersPeriodFilter = 'all'; // all, today, custom
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
 
   @override
   void initState() {
@@ -498,7 +502,6 @@ class _AdminScreenState extends State<AdminScreen>
         .toList();
 
     try {
-      // محاولة التسوية عبر AppState أولاً، وإذا فشل بسبب عمود orders_count ننفذ الإدراج والتحديث مباشرة
       try {
         await appState.settleCourierEarnings(courierName);
       } catch (e) {
@@ -596,7 +599,6 @@ class _AdminScreenState extends State<AdminScreen>
                       0.0;
             }
 
-            // عمولة التطبيق (20%) وصافي المندوب (80%)
             double adminCommission = totalCourierEarnings * 0.20;
             double netCourierEarnings = totalCourierEarnings - adminCommission;
 
@@ -885,6 +887,33 @@ class _AdminScreenState extends State<AdminScreen>
                   child: const Text('حفظ وتحديث أوقات العمل 💾',
                       style: TextStyle(
                           color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      OrderTimeHelper.isWithinStoreHours(
+                              appState.startHour, appState.endHour)
+                          ? Icons.check_circle
+                          : Icons.schedule,
+                      size: 16,
+                      color: OrderTimeHelper.isWithinStoreHours(
+                              appState.startHour, appState.endHour)
+                          ? Colors.greenAccent
+                          : Colors.orangeAccent,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        OrderTimeHelper.isWithinStoreHours(
+                                appState.startHour, appState.endHour)
+                            ? 'الحالة الآن: التطبيق مفتوح لاستقبال الطلبات'
+                            : 'الحالة الآن: التطبيق خارج أوقات العمل',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1198,22 +1227,147 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
+  List _filterOrdersByPeriod(List sourceOrders) {
+    if (_ordersPeriodFilter == 'today') {
+      return sourceOrders
+          .where((o) => OrderTimeHelper.isToday(o['created_at']))
+          .toList();
+    }
+    if (_ordersPeriodFilter == 'custom' &&
+        (_customStartDate != null || _customEndDate != null)) {
+      final start = _customStartDate != null
+          ? DateTime(_customStartDate!.year, _customStartDate!.month,
+              _customStartDate!.day, 0, 0, 0)
+          : null;
+      final end = _customEndDate != null
+          ? DateTime(_customEndDate!.year, _customEndDate!.month,
+              _customEndDate!.day, 23, 59, 59)
+          : null;
+      return sourceOrders
+          .where((o) => OrderTimeHelper.isWithinRange(o['created_at'],
+              start: start, end: end))
+          .toList();
+    }
+    return sourceOrders;
+  }
+
+  Future<void> _pickOrdersDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 1),
+      initialDateRange: DateTimeRange(
+        start: _customStartDate ?? now,
+        end: _customEndDate ?? now,
+      ),
+      builder: (context, child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Theme(
+            data: ThemeData.dark().copyWith(
+              colorScheme: const ColorScheme.dark(
+                primary: Colors.amber,
+                onPrimary: Colors.black,
+                surface: Color(0xFF1E1E1E),
+                onSurface: Colors.white,
+              ),
+            ),
+            child: child!,
+          ),
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _ordersPeriodFilter = 'custom';
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
+      });
+    }
+  }
+
   Widget _buildOrdersManagementWithTabs(AppState appState) {
-    final activeOrders = appState.orders
+    final periodFilteredOrders = _filterOrdersByPeriod(appState.orders);
+
+    final activeOrders = periodFilteredOrders
         .where((o) =>
             o['status'] != 'delivered' &&
             o['status'] != 'cancelled' &&
             o['status'] != 'cancelledByCustomer')
         .toList();
     final completedOrders =
-        appState.orders.where((o) => o['status'] == 'delivered').toList();
-    final cancelledOrders = appState.orders
+        periodFilteredOrders.where((o) => o['status'] == 'delivered').toList();
+    final cancelledOrders = periodFilteredOrders
         .where((o) =>
             o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer')
         .toList();
 
     return Column(
       children: [
+        Container(
+          color: const Color(0xFF1E1E1E),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: const Text('الكل', style: TextStyle(fontSize: 12)),
+                selected: _ordersPeriodFilter == 'all',
+                selectedColor: Colors.amber,
+                backgroundColor: const Color(0xFF121212),
+                labelStyle: TextStyle(
+                  color: _ordersPeriodFilter == 'all'
+                      ? Colors.black
+                      : Colors.white70,
+                  fontWeight: FontWeight.bold,
+                ),
+                onSelected: (_) => setState(() => _ordersPeriodFilter = 'all'),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('اليوم', style: TextStyle(fontSize: 12)),
+                selected: _ordersPeriodFilter == 'today',
+                selectedColor: Colors.amber,
+                backgroundColor: const Color(0xFF121212),
+                labelStyle: TextStyle(
+                  color: _ordersPeriodFilter == 'today'
+                      ? Colors.black
+                      : Colors.white70,
+                  fontWeight: FontWeight.bold,
+                ),
+                onSelected: (_) => setState(() => _ordersPeriodFilter = 'today'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                        color: _ordersPeriodFilter == 'custom'
+                            ? Colors.amber
+                            : Colors.white24),
+                    foregroundColor: _ordersPeriodFilter == 'custom'
+                        ? Colors.amber
+                        : Colors.white70,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                  onPressed: _pickOrdersDateRange,
+                  icon: const Icon(Icons.date_range, size: 16),
+                  label: Text(
+                    _ordersPeriodFilter == 'custom' &&
+                            _customStartDate != null &&
+                            _customEndDate != null
+                        ? '${_customStartDate!.month}/${_customStartDate!.day} - ${_customEndDate!.month}/${_customEndDate!.day}'
+                        : 'تحديد فترة',
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         Container(
           color: const Color(0xFF1E1E1E),
           child: TabBar(
@@ -1477,6 +1631,10 @@ class _AdminScreenState extends State<AdminScreen>
                       '🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}',
                       style: const TextStyle(
                           color: Colors.amberAccent, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Text(
+                      '🕒 وقت الطلب: ${OrderTimeHelper.formatDateTime(order['created_at'])}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   const Divider(color: Colors.white12, height: 16),
                   Container(
                     padding: const EdgeInsets.all(10),
