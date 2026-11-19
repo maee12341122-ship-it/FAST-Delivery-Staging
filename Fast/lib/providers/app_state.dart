@@ -170,7 +170,7 @@ class AppState extends ChangeNotifier {
           headers: headers,
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 20));
+        .timeout(const Duration(seconds: 3));
 
     final decoded =
         response.body.isNotEmpty ? jsonDecode(response.body) : {};
@@ -210,9 +210,9 @@ class AppState extends ChangeNotifier {
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
     await fetchRestaurantAverages();
-    await recordVisitorVisit();
+    unawaited(recordVisitorVisit());
     await fetchTotalVisitorsCount();
-    await fetchAdminFinancialReports();
+    unawaited(fetchAdminFinancialReports());
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener();
@@ -271,7 +271,7 @@ class AppState extends ChangeNotifier {
         orders = List.from(initialData);
       }
       _sortOrders();
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب الطلبات: $e');
@@ -1654,7 +1654,7 @@ class AppState extends ChangeNotifier {
       );
 
       await fetchOrders();
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في تسوية أرباح المندوب: $e');
@@ -1805,7 +1805,7 @@ class AppState extends ChangeNotifier {
         orders.add(updated);
       }
       _sortOrders();
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
       notifyListeners();
     } else {
       await fetchOrders();
@@ -1951,6 +1951,23 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _upsertOrderInList(Map rawOrder) {
+    final orderMap = Map<String, dynamic>.from(rawOrder);
+    final idStr = orderMap['id']?.toString() ?? '';
+    final trackStr = orderMap['tracking_code']?.toString() ?? '';
+
+    orders.removeWhere((o) {
+      final oId = o['id']?.toString() ?? '';
+      final oTrack = o['tracking_code']?.toString() ?? '';
+      final sameId = idStr.isNotEmpty && oId == idStr;
+      final sameTrack = trackStr.isNotEmpty && oTrack == trackStr;
+      return sameId || sameTrack;
+    });
+
+    orders.add(orderMap);
+    _sortOrders();
+  }
+
   void _sortOrders() {
     orders.sort((a, b) {
       final timeA = DateTime.tryParse(a['created_at']?.toString() ?? '') ??
@@ -1971,7 +1988,7 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List.from(initialData);
       _sortOrders();
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
       notifyListeners();
 
       if (_ordersChannel != null) {
@@ -1986,8 +2003,10 @@ class AppState extends ChangeNotifier {
             table: 'orders',
             callback: (payload) {
               if (payload.eventType == PostgresChangeEvent.insert) {
-                orders.add(payload.newRecord);
-                if (isAdminLoggedIn) {
+                final alreadyExists = orders.any((o) =>
+                    o['id'].toString() == payload.newRecord['id'].toString());
+                _upsertOrderInList(payload.newRecord);
+                if (!alreadyExists && isAdminLoggedIn) {
                   addLocalNotification(
                     'طلب جديد',
                     'تم إضافة طلب جديد إلى النظام من قبل العميل',
@@ -1995,13 +2014,7 @@ class AppState extends ChangeNotifier {
                   );
                 }
               } else if (payload.eventType == PostgresChangeEvent.update) {
-                final index = orders.indexWhere((o) =>
-                    o['id'].toString() == payload.newRecord['id'].toString());
-                if (index != -1) {
-                  orders[index] = payload.newRecord;
-                } else {
-                  orders.add(payload.newRecord);
-                }
+                _upsertOrderInList(payload.newRecord);
 
                 String newStatus =
                     getArabicStatus(payload.newRecord['status']?.toString());
@@ -2028,8 +2041,7 @@ class AppState extends ChangeNotifier {
                     o['id'].toString() == payload.oldRecord['id'].toString());
               }
 
-              _sortOrders();
-              fetchAdminFinancialReports();
+              unawaited(fetchAdminFinancialReports());
               notifyListeners();
             },
           )
@@ -2082,12 +2094,13 @@ class AppState extends ChangeNotifier {
         couponCode: activeCouponCode,
         paymentMethod: paymentMethod,
         paymentAccount: paymentAccount,
+        productsTotal: productsTotal,
         token: _accessToken,
       );
 
       final order = responseData['order'] is Map
           ? Map.from(responseData['order'])
-          : {};
+          : <String, dynamic>{};
       final orderId = order['id'];
       final trackingCode = order['tracking_code']?.toString() ??
           Random().nextDouble().toString().substring(2, 10);
@@ -2104,16 +2117,14 @@ class AppState extends ChangeNotifier {
       if (orderId != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fast_last_order_id', orderId.toString());
-        orders.removeWhere((o) => o['id'].toString() == orderId.toString());
       }
       if (order.isNotEmpty) {
-        orders.add(order);
-        _sortOrders();
+        _upsertOrderInList(order);
       }
 
       _cartItems.clear();
       removeCoupon();
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
 
       addNotification(
         'تم استلام الطلب',
@@ -2148,20 +2159,12 @@ class AppState extends ChangeNotifier {
       );
 
       if (responseData['order'] is Map) {
-        final updated = Map.from(responseData['order']);
-        final orderIndex =
-            orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-        if (orderIndex != -1) {
-          orders[orderIndex] = updated;
-        } else {
-          orders.add(updated);
-        }
-        _sortOrders();
+        _upsertOrderInList(responseData['order']);
       } else {
         await fetchOrders();
       }
 
-      await fetchAdminFinancialReports();
+      unawaited(fetchAdminFinancialReports());
 
       addLocalNotification(
         'تم تحديد سعر الطلب #$orderId',
@@ -2190,28 +2193,32 @@ class AppState extends ChangeNotifier {
     final newStatus =
         action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
 
-    final responseData =
-        await _postBackend('/api/orders/$intOrderId/customer-action', {
-      'action': action,
-      'status': newStatus,
-      'phone': _normalizePhone(phone.toString()),
-    });
+    try {
+      final responseData =
+          await _postBackend('/api/orders/$intOrderId/customer-action', {
+        'action': action,
+        'status': newStatus,
+        'phone': _normalizePhone(phone.toString()),
+      });
 
-    if (responseData['order'] is Map) {
-      final updated = Map.from(responseData['order']);
-      final index =
-          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      if (index >= 0) {
-        orders[index] = updated;
+      if (responseData['order'] is Map) {
+        _upsertOrderInList(responseData['order']);
       } else {
-        orders.add(updated);
+        await fetchOrders();
       }
-      _sortOrders();
-    } else {
-      await fetchOrders();
+    } catch (_) {
+      final updatedRow = await supabase
+          .from('orders')
+          .update({'status': newStatus})
+          .eq('id', intOrderId)
+          .select()
+          .maybeSingle();
+      if (updatedRow != null) {
+        _upsertOrderInList(updatedRow);
+      }
     }
 
-    await fetchAdminFinancialReports();
+    unawaited(fetchAdminFinancialReports());
     notifyListeners();
   }
 
@@ -2258,20 +2265,12 @@ class AppState extends ChangeNotifier {
     );
 
     if (responseData['order'] is Map) {
-      final updated = Map.from(responseData['order']);
-      final index =
-          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      if (index >= 0) {
-        orders[index] = updated;
-      } else {
-        orders.add(updated);
-      }
-      _sortOrders();
+      _upsertOrderInList(responseData['order']);
     } else {
       await fetchOrders();
     }
 
-    await fetchAdminFinancialReports();
+    unawaited(fetchAdminFinancialReports());
     notifyListeners();
   }
 
