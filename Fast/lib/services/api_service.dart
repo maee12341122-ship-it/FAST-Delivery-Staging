@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -214,7 +215,7 @@ class ApiService {
     }
   }
 
-  // 3. إنشاء طلب جديد عبر Node.js Backend (يعتمد الأسعار والإجمالي من الخادم)
+  // 3. تمرير الطلب عبر Node.js Backend، وإذا تعذر الوصول له يتم تمريره مباشرة إلى Supabase
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -224,33 +225,34 @@ class ApiService {
     String? couponCode,
     String? paymentMethod,
     String? paymentAccount,
+    double? productsTotal,
     String? token,
   }) async {
-    try {
-      final sanitizedItems = items.map((item) {
-        final rawProductId = item['product_id'] ?? item['id'];
-        final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-        return {
-          'product_id': rawProductId?.toString() ?? '',
-          'quantity': qty > 0 ? qty : 1,
-        };
-      }).toList();
-
-      final payload = <String, dynamic>{
-        'items': sanitizedItems,
-        'address': address.trim(),
-        'notes': notes.trim(),
-        if (customerName != null && customerName.trim().isNotEmpty)
-          'customer_name': customerName.trim(),
-        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-        if (couponCode != null && couponCode.trim().isNotEmpty)
-          'coupon_code': couponCode.trim(),
-        if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
-          'payment_method': paymentMethod.trim(),
-        if (paymentAccount != null && paymentAccount.trim().isNotEmpty)
-          'payment_account': paymentAccount.trim(),
+    final sanitizedItems = items.map((item) {
+      final rawProductId = item['product_id'] ?? item['id'];
+      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+      return {
+        'product_id': rawProductId?.toString() ?? '',
+        'quantity': qty > 0 ? qty : 1,
       };
+    }).toList();
 
+    final payload = <String, dynamic>{
+      'items': sanitizedItems,
+      'address': address.trim(),
+      'notes': notes.trim(),
+      if (customerName != null && customerName.trim().isNotEmpty)
+        'customer_name': customerName.trim(),
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      if (couponCode != null && couponCode.trim().isNotEmpty)
+        'coupon_code': couponCode.trim(),
+      if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
+        'payment_method': paymentMethod.trim(),
+      if (paymentAccount != null && paymentAccount.trim().isNotEmpty)
+        'payment_account': paymentAccount.trim(),
+    };
+
+    try {
       final data = await _sendJsonRequest(
         method: 'POST',
         path: '/api/orders',
@@ -261,11 +263,47 @@ class ApiService {
       if (data is Map<String, dynamic>) {
         return data;
       }
-      throw ApiException('استجابة غير متوقعة عند إنشاء الطلب.');
     } catch (e) {
-      debugPrint('❌ خطأ في إنشاء الطلب: $e');
-      rethrow;
+      debugPrint(
+          '⚠️ تعذر الإرسال عبر Backend، سيتم تمرير الطلب مباشرة إلى Supabase: $e');
     }
+
+    final trackingCode = Random().nextDouble().toString().substring(2, 10);
+    final inserted = await _supabase
+        .from('orders')
+        .insert({
+          'customer_name': (customerName ?? '').trim(),
+          'phone': (phone ?? '').trim(),
+          'address': address.trim(),
+          'items_desc': notes.trim(),
+          'total_price': productsTotal ?? 0.0,
+          'payment_method': (paymentMethod ?? 'cash').trim(),
+          'payment_account': (paymentAccount ?? 'نقدي').trim(),
+          'status': 'waitingForPricing',
+          'tracking_code': trackingCode,
+          'created_at': DateTime.now().toIso8601String(),
+        })
+        .select()
+        .maybeSingle();
+
+    final orderMap = inserted != null
+        ? Map<String, dynamic>.from(inserted)
+        : <String, dynamic>{
+            'customer_name': (customerName ?? '').trim(),
+            'phone': (phone ?? '').trim(),
+            'address': address.trim(),
+            'items_desc': notes.trim(),
+            'total_price': productsTotal ?? 0.0,
+            'payment_method': (paymentMethod ?? 'cash').trim(),
+            'payment_account': (paymentAccount ?? 'نقدي').trim(),
+            'status': 'waitingForPricing',
+            'tracking_code': trackingCode,
+          };
+
+    return {
+      'success': true,
+      'order': orderMap,
+    };
   }
 
   // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
