@@ -28,6 +28,7 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final appState = Provider.of<AppState>(context, listen: false);
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
@@ -92,12 +93,16 @@ class _CartScreenState extends State<CartScreen> {
       }
     } finally {
       if (mounted) {
-        setDialogState(() => _isSubmitting = false);
+        _isSubmitting = false;
+        try {
+          setDialogState(() {});
+        } catch (_) {}
       }
     }
   }
 
   void _showCheckoutDialog(BuildContext context, AppState appState) {
+    _isSubmitting = false;
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
