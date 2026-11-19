@@ -1686,13 +1686,10 @@ class AppState extends ChangeNotifier {
         throw Exception('تعذر تحديد معرفات الطلبات المستحقة للتسوية.');
       }
 
-      final commissionAmount = totalSettledAmount * 0.20;
-
       await supabase.from('courier_settlements').insert({
         'courier_name': cleanCourierName,
         'orders_count': orderIds.length,
         'total_amount': totalSettledAmount,
-        'commission_amount': commissionAmount,
         'settled_at': DateTime.now().toIso8601String(),
       });
 
@@ -2188,12 +2185,30 @@ class AppState extends ChangeNotifier {
                 : trackingCode;
       }
 
-      order['total_price'] =
-          double.tryParse(order['total_price']?.toString() ?? '') ??
-              cleanProductsTotal;
-      order['products_total'] =
-          double.tryParse(order['products_total']?.toString() ?? '') ??
-              cleanProductsTotal;
+      final parsedTotal =
+          double.tryParse(order['total_price']?.toString() ?? '');
+      final parsedProductsTotal =
+          double.tryParse(order['products_total']?.toString() ?? '');
+      final resolvedTotal =
+          (parsedTotal != null && parsedTotal > 0) ? parsedTotal : cleanProductsTotal;
+      final resolvedProductsTotal =
+          (parsedProductsTotal != null && parsedProductsTotal > 0)
+              ? parsedProductsTotal
+              : cleanProductsTotal;
+      order['total_price'] = resolvedTotal;
+      order['products_total'] = resolvedProductsTotal;
+
+      if (order['id'] != null && resolvedTotal > 0) {
+        try {
+          await supabase
+              .from('orders')
+              .update({
+                'total_price': resolvedTotal,
+                'products_total': resolvedProductsTotal,
+              })
+              .eq('id', order['id']);
+        } catch (_) {}
+      }
 
       final orderId = order['id'];
       lastOrderTrackingCode = trackingCode;
