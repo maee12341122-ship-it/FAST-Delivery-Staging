@@ -27,6 +27,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Map<String, dynamic>? _restaurantRatingData;
   Map<String, dynamic>? _courierRatingData;
   bool _isLoadingRatings = false;
+  bool _isSubmittingOrderAction = false;
 
   @override
   void initState() {
@@ -156,6 +157,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           ),
           callback: (payload) {
             if (payload.newRecord.isNotEmpty && mounted) {
+              unawaited(context.read<AppState>().fetchOrders());
               setState(() {});
               _extractCustomerCoordinates(payload.newRecord);
               final courierName =
@@ -171,27 +173,57 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         .subscribe();
   }
 
-  Future<void> _fetchAndListenCourierLocation(String courierId) async {
-    try {
-      final res = await Supabase.instance.client
-          .from('courier_locations')
-          .select('courier_id, latitude, longitude, updated_at')
-          .eq('courier_id', courierId)
-          .maybeSingle();
+  String _resolveCourierLocationKey(String courierNameOrId) {
+    final trimmed = courierNameOrId.trim();
+    if (!mounted) return trimmed;
+    final appState = context.read<AppState>();
+    for (final c in appState.couriers) {
+      if (c is Map) {
+        final name = c['name']?.toString().trim() ?? '';
+        final id = c['id']?.toString().trim() ?? '';
+        if (name.toLowerCase() == trimmed.toLowerCase() || id == trimmed) {
+          return id.isNotEmpty ? id : name;
+        }
+      }
+    }
+    return trimmed;
+  }
 
-      if (res != null &&
-          res['latitude'] != null &&
-          res['longitude'] != null &&
-          mounted) {
-        final lat = (res['latitude'] as num).toDouble();
-        final lng = (res['longitude'] as num).toDouble();
+  Future<void> _fetchAndListenCourierLocation(String courierNameOrId) async {
+    try {
+      final resolvedKey = _resolveCourierLocationKey(courierNameOrId);
+      final keysToCheck = {courierNameOrId.trim(), resolvedKey}
+          .where((k) => k.isNotEmpty)
+          .toList();
+
+      Map<String, dynamic>? foundRow;
+      String activeChannelKey = resolvedKey.isNotEmpty
+          ? resolvedKey
+          : courierNameOrId.trim();
+
+      for (final key in keysToCheck) {
+        final res = await Supabase.instance.client
+            .from('courier_locations')
+            .select('courier_id, latitude, longitude, updated_at')
+            .eq('courier_id', key)
+            .maybeSingle();
+        if (res != null && res['latitude'] != null && res['longitude'] != null) {
+          foundRow = Map<String, dynamic>.from(res);
+          activeChannelKey = key;
+          break;
+        }
+      }
+
+      if (foundRow != null && mounted) {
+        final lat = (foundRow['latitude'] as num).toDouble();
+        final lng = (foundRow['longitude'] as num).toDouble();
         setState(() {
           _courierPosition = LatLng(lat, lng);
         });
       }
 
       _locationChannel = Supabase.instance.client
-          .channel('public:courier_locations:courier_id=eq.$courierId')
+          .channel('public:courier_locations:courier_id=eq.$activeChannelKey')
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',
@@ -199,7 +231,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             filter: PostgresChangeFilter(
               type: PostgresChangeFilterType.eq,
               column: 'courier_id',
-              value: courierId,
+              value: activeChannelKey,
             ),
             callback: (payload) {
               final newData = payload.newRecord;
@@ -220,6 +252,46 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           .subscribe();
     } catch (e) {
       debugPrint('⚠️ خطأ في متابعة موقع المندوب: $e');
+    }
+  }
+
+  Future<void> _handleCustomerPricingDecision(
+    BuildContext context,
+    AppState appState,
+    String orderId, {
+    required bool approve,
+  }) async {
+    if (_isSubmittingOrderAction) return;
+    setState(() => _isSubmittingOrderAction = true);
+    try {
+      if (approve) {
+        await appState.customerApprovePricing(orderId);
+      } else {
+        await appState.customerCancelOrder(orderId);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(approve
+                ? 'تم تأكيد السعر وإرسال الطلب للمندوب ✅'
+                : 'تم إلغاء الطلب بنجاح'),
+            backgroundColor: approve ? Colors.green[700] : Colors.red[700],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingOrderAction = false);
+      }
     }
   }
 
@@ -438,13 +510,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       );
     }
 
-    final String rawStatus = order['status']?.toString() ?? 'waitingForPricing';
+    final String rawStatus =
+        order['status']?.toString().trim() ?? 'waitingForPricing';
 
     int currentStep = 0;
     if (rawStatus == 'waitingForPricing') {
       currentStep = 0;
     } else if (rawStatus == 'pricingSentToCustomer' ||
-        rawStatus == 'waitingCourierApproval') {
+        rawStatus == 'waitingCourierApproval' ||
+        rawStatus == 'approvedByCustomer') {
       currentStep = 1;
     } else if (rawStatus == 'acceptedByCourier' || rawStatus == 'onTheWay') {
       currentStep = 2;
@@ -768,6 +842,69 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         ],
                       ),
                     ),
+                    if (!isManagerOrCourier &&
+                        rawStatus == 'pricingSentToCustomer') ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: _isSubmittingOrderAction
+                                  ? null
+                                  : () => _handleCustomerPricingDecision(
+                                      context, appState, targetId,
+                                      approve: true),
+                              icon: _isSubmittingOrderAction
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.check_circle, size: 18),
+                              label: Text(
+                                _isSubmittingOrderAction
+                                    ? 'جاري التأكيد...'
+                                    : 'تأكيد السعر والموافقة ✅',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.redAccent),
+                                foregroundColor: Colors.redAccent,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: _isSubmittingOrderAction
+                                  ? null
+                                  : () => _handleCustomerPricingDecision(
+                                      context, appState, targetId,
+                                      approve: false),
+                              icon: const Icon(Icons.cancel, size: 18),
+                              label: const Text(
+                                'إلغاء الطلب ❌',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
