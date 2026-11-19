@@ -1126,6 +1126,11 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
+  double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    return double.tryParse(value.toString().trim()) ?? 0.0;
+  }
+
   Widget _buildOrdersList(
       AppState appState, List ordersList, String emptyMessage) {
     if (ordersList.isEmpty) {
@@ -1147,29 +1152,28 @@ class _AdminScreenState extends State<AdminScreen>
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
         final bool isPricingThisOrder = _pricingOrderIds.contains(orderId);
 
-        final double productsPrice = double.tryParse(order['products_total']?.toString() ??
-                order['total_price']?.toString() ??
-                order['items_price']?.toString() ??
-                order['products_price']?.toString() ??
-                '0') ??
-            0.0;
+        final double deliveryFeeAmount = _parseDouble(order['delivery_fee']);
 
-        final double deliveryFeeAmount =
-            double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double explicitProductsPrice = _parseDouble(
+          order['products_total'] ??
+              order['items_price'] ??
+              order['products_price'],
+        );
 
-        final double dbTotalAmount = double.tryParse(
-                order['total_amount']?.toString() ??
-                    order['total']?.toString() ??
-                    '0') ??
-            0.0;
+        final double rawTotalPrice = _parseDouble(
+          order['total_price'] ?? order['total_amount'] ?? order['total'],
+        );
 
-        final double finalProductsPrice =
-            (productsPrice <= 0 && dbTotalAmount > deliveryFeeAmount)
-                ? (dbTotalAmount - deliveryFeeAmount)
-                : productsPrice;
+        double finalProductsPrice = explicitProductsPrice;
+        if (finalProductsPrice <= 0 && rawTotalPrice > 0) {
+          finalProductsPrice = rawTotalPrice > deliveryFeeAmount &&
+                  rawStatus != 'waitingForPricing'
+              ? (rawTotalPrice - deliveryFeeAmount)
+              : rawTotalPrice;
+        }
 
-        final double grandTotal = dbTotalAmount > 0
-            ? dbTotalAmount
+        final double grandTotal = rawTotalPrice > 0
+            ? rawTotalPrice
             : (finalProductsPrice + deliveryFeeAmount);
 
         if (!_feeControllers.containsKey(orderId)) {
