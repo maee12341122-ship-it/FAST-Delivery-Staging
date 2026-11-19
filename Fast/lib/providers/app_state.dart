@@ -22,7 +22,7 @@ import '../services/api_service.dart';
 
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonMapNullable = Map<String, dynamic>?;
-typedef JsonList = List<Map<String, dynamic>;
+typedef JsonList = List<Map<String, dynamic>>;
 
 class LocalStorageService {
   static Database? _database;
