@@ -21,6 +21,7 @@ class _AdminScreenState extends State<AdminScreen>
 
   final Map<String, TextEditingController> _feeControllers = {};
   final Map<String, String> _selectedCouriersForOrder = {};
+  final Set<String> _pricingOrderIds = {};
 
   @override
   void initState() {
@@ -1144,6 +1145,7 @@ class _AdminScreenState extends State<AdminScreen>
         final arabicStatus = _getArabicStatus(rawStatus);
 
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
+        final bool isPricingThisOrder = _pricingOrderIds.contains(orderId);
 
         final double productsPrice = double.tryParse(order['products_total']?.toString() ??
                 order['total_price']?.toString() ??
@@ -1455,39 +1457,64 @@ class _AdminScreenState extends State<AdminScreen>
                         foregroundColor: Colors.black,
                         minimumSize: const Size(double.infinity, 38),
                       ),
-                      onPressed: () async {
-                        double? fee = double.tryParse(
-                            _feeControllers[orderId]?.text ?? '0');
-                        String? selectedCourier =
-                            _selectedCouriersForOrder[orderId];
+                      onPressed: isPricingThisOrder
+                          ? null
+                          : () async {
+                              double? fee = double.tryParse(
+                                  _feeControllers[orderId]?.text ?? '0');
+                              String? selectedCourier =
+                                  _selectedCouriersForOrder[orderId];
 
-                        if (fee == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
-                          return;
-                        }
-                        if (selectedCourier == null ||
-                            selectedCourier.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
-                          return;
-                        }
+                              if (fee == null || fee < 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
+                                return;
+                              }
+                              if (selectedCourier == null ||
+                                  selectedCourier.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
+                                return;
+                              }
 
-                        await appState.setOrderDeliveryFee(
-                            orderId, fee, selectedCourier);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
-                        }
-                      },
-                      child: const Text('إرسال التسعير وتعيين المندوب 🚀',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
+                              setState(() => _pricingOrderIds.add(orderId));
+                              try {
+                                await appState.setOrderDeliveryFee(
+                                    orderId, fee, selectedCourier);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content: Text(
+                                              'تعذر إرسال التسعير: $e'),
+                                          backgroundColor: Colors.red));
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(
+                                      () => _pricingOrderIds.remove(orderId));
+                                }
+                              }
+                            },
+                      child: isPricingThisOrder
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  color: Colors.black, strokeWidth: 2),
+                            )
+                          : const Text('إرسال التسعير وتعيين المندوب 🚀',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ],
