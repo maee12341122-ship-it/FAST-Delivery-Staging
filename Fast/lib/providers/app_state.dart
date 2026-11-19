@@ -882,12 +882,6 @@ class AppState extends ChangeNotifier {
 
   bool isAdminLoggedIn = false;
 
-  void _loadAdminSession() async {
-    final user = supabase.auth.currentUser;
-    isAdminLoggedIn = user != null;
-    notifyListeners();
-  }
-
   Future<bool> loginAdminFromSupabase(String username, String password) async {
     try {
       final raw = username.trim().toLowerCase();
@@ -926,8 +920,8 @@ class AppState extends ChangeNotifier {
 
   void setUser({dynamic profile, String? name, String? phone, String? address}) {
     if (profile is Map<String, dynamic>) {
-      userProfile = profile;
-    } else if (name != null || phone != null) {
+      userProfile = Map<String, dynamic>.from(profile);
+    } else if (name != null || phone != null || address != null) {
       userProfile = {
         'name': name ?? userProfile?['name'] ?? '',
         'phone': phone ?? userProfile?['phone'] ?? '',
@@ -938,6 +932,42 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _persistUserSessionToPrefs(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userPhone', (data['phone'] ?? '').toString());
+    await prefs.setString('userName', (data['name'] ?? '').toString());
+    await prefs.setString('userAddress', (data['address'] ?? '').toString());
+    await prefs.setString('userCity', (data['city'] ?? currentCity).toString());
+  }
+
+  Future?> fetchCustomerRecordByPhone(String phone) async {
+    final cleanPhone = _normalizePhone(phone);
+    if (cleanPhone.isEmpty) return null;
+
+    final formattedPhone = '+967$cleanPhone';
+    final record = await supabase
+        .from('customers')
+        .select()
+        .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
+        .maybeSingle();
+
+    if (record == null) return null;
+
+    final normalizedData = {
+      'id': record['id'],
+      'phone': cleanPhone,
+      'name': record['name']?.toString() ?? '',
+      'address': record['address']?.toString() ?? '',
+      'city': currentCity,
+    };
+
+    userProfile = normalizedData;
+    await _persistUserSessionToPrefs(normalizedData);
+    await fetchUserAddressesFromSupabase();
+    notifyListeners();
+    return normalizedData;
+  }
+
   Future<void> _loadUserSession() async {
     final prefs = await SharedPreferences.getInstance();
     final phone = prefs.getString('userPhone');
@@ -946,32 +976,19 @@ class AppState extends ChangeNotifier {
     final city = prefs.getString('userCity') ?? currentCity;
 
     if (phone != null && phone.isNotEmpty) {
+      final cleanPhone = _normalizePhone(phone);
       try {
-        final cleanPhone = _normalizePhone(phone);
-        final response = await supabase
-            .from('customers')
-            .select()
-            .eq('phone', cleanPhone)
-            .maybeSingle();
-
-        if (response != null) {
-          userProfile = {
-            'phone': cleanPhone,
-            'name': response['name']?.toString() ?? name ?? '',
-            'city': city,
-            'address': response['address']?.toString() ?? address ?? '',
-          };
-          await fetchUserAddressesFromSupabase();
-          notifyListeners();
+        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+        if (dbRecord != null) {
           await restoreLastCustomerOrder();
           return;
         }
       } catch (e) {
-        debugPrint('⚠️ خطأ: $e');
+        debugPrint('⚠️ خطأ في جلب بيانات العميل: $e');
       }
 
       userProfile = {
-        'phone': phone,
+        'phone': cleanPhone,
         'name': name ?? '',
         'city': city,
         'address': address ?? '',
@@ -1007,41 +1024,8 @@ class AppState extends ChangeNotifier {
 
   Future<bool> checkAndLoginCustomer(String phone) async {
     try {
-      String cleanPhone = _normalizePhone(phone);
-      if (cleanPhone.length > 9) {
-        cleanPhone = cleanPhone.substring(cleanPhone.length - 9);
-      }
-
-      final response = await supabase
-          .from('customers')
-          .select()
-          .ilike('phone', '%$cleanPhone')
-          .maybeSingle();
-
-      if (response != null) {
-        String name = response['name']?.toString() ?? '';
-        String address = response['address']?.toString() ?? '';
-        String dbPhone = response['phone']?.toString() ?? cleanPhone;
-
-        userProfile = {
-          'phone': dbPhone,
-          'name': name,
-          'city': currentCity,
-          'address': address,
-        };
-
-        await fetchUserAddressesFromSupabase();
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userPhone', dbPhone);
-        await prefs.setString('userName', name);
-        await prefs.setString('userAddress', address);
-        await prefs.setString('userCity', currentCity);
-
-        notifyListeners();
-        return true;
-      }
-      return false;
+      final dbRecord = await fetchCustomerRecordByPhone(phone);
+      return dbRecord != null;
     } catch (e) {
       return false;
     }
@@ -1099,13 +1083,12 @@ class AppState extends ChangeNotifier {
 
       if (response != null) {
         await supabase.from('otp_codes').update({'is_used': true}).eq('id', response['id']);
-
-        await checkAndLoginCustomer(phone);
+        await checkAndLoginCustomer(cleanPhone);
         return true;
       }
 
       if (generatedDynamicOtp != null && trimmedOtp == generatedDynamicOtp.toString()) {
-        await checkAndLoginCustomer(phone);
+        await checkAndLoginCustomer(cleanPhone);
         return true;
       }
 
@@ -1118,7 +1101,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateUser({String? name, String? address, String? phone}) async {
     if (phone != null && phone.isNotEmpty && userProfile != null) {
-      userProfile!['phone'] = phone;
+      userProfile!['phone'] = _normalizePhone(phone);
     }
     await saveUserProfileDetails(
       name ?? userProfile?['name'] ?? '',
@@ -1128,18 +1111,16 @@ class AppState extends ChangeNotifier {
 
   Future<void> saveUserProfileDetails(String name, String address) async {
     if (userProfile != null) {
+      final cleanPhone = _normalizePhone(userProfile!['phone'] ?? '');
       userProfile!['name'] = name;
       userProfile!['address'] = address;
-      String phone = userProfile!['phone'] ?? '';
+      userProfile!['phone'] = cleanPhone;
 
-      final prefs = await SharedPreferences.getInstance();
-      prefs.setString('userName', name);
-      prefs.setString('userAddress', address);
-      prefs.setString('userPhone', phone);
+      await _persistUserSessionToPrefs(userProfile!);
 
       try {
         await supabase.from('customers').upsert({
-          'phone': phone,
+          'phone': cleanPhone,
           'name': name,
           'address': address,
         }, onConflict: 'phone');
@@ -1148,10 +1129,10 @@ class AppState extends ChangeNotifier {
 
         String? playerId = OneSignal.User.pushSubscription.id;
         if (playerId != null && playerId.isNotEmpty) {
-          await supabase.from('customers').update({'onesignal_player_id': playerId}).eq('phone', phone);
+          await supabase.from('customers').update({'onesignal_player_id': playerId}).eq('phone', cleanPhone);
         }
       } catch (e) {
-        debugPrint('❌ خطأ: $e');
+        debugPrint('❌ خطأ في حفظ بيانات العميل: $e');
       }
 
       notifyListeners();
@@ -1568,11 +1549,8 @@ class AppState extends ChangeNotifier {
       lastOrderTrackingCode = trackingCode;
       userProfile = {'phone': normalizedPhone, 'name': customerName, 'city': currentCity, 'address': address};
 
+      await _persistUserSessionToPrefs(userProfile!);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userPhone', normalizedPhone);
-      await prefs.setString('userName', customerName);
-      await prefs.setString('userAddress', address);
-      await prefs.setString('userCity', currentCity);
       await prefs.setString('fast_last_order_id', orderId.toString());
 
       orders.removeWhere((o) => o['id'].toString() == orderId.toString());
@@ -1583,7 +1561,7 @@ class AppState extends ChangeNotifier {
       removeCoupon();
       await fetchAdminFinancialReports();
 
-      addNotification('تم استلاستلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
+      addNotification('تم استلام الطلب ⏳', 'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل');
       notifyListeners();
     } catch (e) {
       debugPrint('❌ خطأ أثناء إرسال الطلب: $e');
