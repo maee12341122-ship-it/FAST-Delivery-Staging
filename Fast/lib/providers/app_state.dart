@@ -2166,67 +2166,26 @@ class AppState extends ChangeNotifier {
       JsonMap order = {};
       var trackingCode = (10000000 + Random().nextInt(90000000)).toString();
 
-      try {
-        final responseData = await ApiService.createOrder(
-          items: itemsPayload,
-          address: address.trim(),
-          notes: itemsDesc.trim(),
-          customerName: customerName.trim(),
-          phone: normalizedPhone,
-          couponCode: activeCouponCode,
-          paymentMethod: paymentMethod,
-          paymentAccount: paymentAccount,
-          productsTotal: cleanProductsTotal,
-          token: _accessToken,
-        ).timeout(const Duration(milliseconds: 1500));
+      final responseData = await ApiService.createOrder(
+        items: itemsPayload,
+        address: address.trim(),
+        notes: itemsDesc.trim(),
+        customerName: customerName.trim(),
+        phone: normalizedPhone,
+        couponCode: activeCouponCode,
+        paymentMethod: paymentMethod,
+        paymentAccount: paymentAccount,
+        productsTotal: cleanProductsTotal,
+        trackingCode: trackingCode,
+        token: _accessToken,
+      );
 
-        if (responseData['order'] is Map) {
-          order = Map<String, dynamic>.from(responseData['order']);
-          trackingCode =
-              order['tracking_code']?.toString().trim().isNotEmpty == true
-                  ? order['tracking_code'].toString()
-                  : trackingCode;
-        }
-      } catch (_) {
-        final inserted = await supabase
-            .from('orders')
-            .insert({
-              'customer_name': customerName.trim(),
-              'phone': normalizedPhone,
-              'address': address.trim(),
-              'items_desc': itemsDesc.trim(),
-              'total_price': cleanProductsTotal,
-              'products_total': cleanProductsTotal,
-              'payment_method': paymentMethod,
-              'payment_account': paymentAccount,
-              'status': 'waitingForPricing',
-              'tracking_code': trackingCode,
-              'created_at': DateTime.now().toIso8601String(),
-            })
-            .select()
-            .maybeSingle();
-
-        if (inserted != null) {
-          order = Map<String, dynamic>.from(inserted);
-          trackingCode =
-              order['tracking_code']?.toString().trim().isNotEmpty == true
-                  ? order['tracking_code'].toString()
-                  : trackingCode;
-        } else {
-          order = {
-            'customer_name': customerName.trim(),
-            'phone': normalizedPhone,
-            'address': address.trim(),
-            'items_desc': itemsDesc.trim(),
-            'total_price': cleanProductsTotal,
-            'products_total': cleanProductsTotal,
-            'payment_method': paymentMethod,
-            'payment_account': paymentAccount,
-            'status': 'waitingForPricing',
-            'tracking_code': trackingCode,
-            'created_at': DateTime.now().toIso8601String(),
-          };
-        }
+      if (responseData['order'] is Map) {
+        order = Map<String, dynamic>.from(responseData['order']);
+        trackingCode =
+            order['tracking_code']?.toString().trim().isNotEmpty == true
+                ? order['tracking_code'].toString()
+                : trackingCode;
       }
 
       order['total_price'] =
