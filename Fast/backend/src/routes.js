@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from './db.js';
 import { authenticate, allowRoles, loadUser } from './auth.js';
@@ -51,6 +52,7 @@ const ALLOWED_TRANSITIONS = {
 };
 
 const recentOrderSubmissions = new Map();
+const otpStore = new Map();
 
 function fail(status, message) {
   const error = new Error(message);
@@ -129,9 +131,10 @@ async function evaluateCoupon(code, subtotal) {
     fail(400, `الحد الأدنى للطلب لاستخدام هذا الكوبون هو ${minAmount} ر.ي.`);
   }
 
-  const usageLimit = coupon.usage_limit === null || coupon.usage_limit === undefined
-    ? null
-    : Number(coupon.usage_limit);
+  const usageLimit =
+    coupon.usage_limit === null || coupon.usage_limit === undefined
+      ? null
+      : Number(coupon.usage_limit);
   const usedCount = Number(coupon.used_count ?? 0);
   if (usageLimit !== null && usedCount >= usageLimit) {
     fail(400, 'تم الوصول إلى الحد الأقصى لاستخدام هذا الكوبون.');
@@ -163,12 +166,14 @@ async function evaluateCoupon(code, subtotal) {
 }
 
 function isOrderAssignedToCourier(order, userProfile) {
-  const profileId = userProfile?.id !== undefined && userProfile?.id !== null
-    ? String(userProfile.id).trim()
-    : '';
-  const orderCourierId = order?.courier_id !== undefined && order?.courier_id !== null
-    ? String(order.courier_id).trim()
-    : '';
+  const profileId =
+    userProfile?.id !== undefined && userProfile?.id !== null
+      ? String(userProfile.id).trim()
+      : '';
+  const orderCourierId =
+    order?.courier_id !== undefined && order?.courier_id !== null
+      ? String(order.courier_id).trim()
+      : '';
 
   if (orderCourierId && profileId) {
     return orderCourierId === profileId;
@@ -183,6 +188,120 @@ api.get('/health', async (_req, res) => {
   const { error } = await supabase.from('settings').select('id').limit(1);
   if (error) throw error;
   res.json({ status: 'ok', service: 'fast-delivery-api' });
+});
+
+// 🔐 طلب رمز تحقق OTP لرقم العميل
+api.post('/auth/otp/request', async (req, res) => {
+  const body = z.object({ phone: z.string().trim().min(6).max(25) }).parse(req.body);
+  const cleanPhone = normalizePhone(body.phone);
+  if (!cleanPhone) {
+    fail(400, 'رقم الهاتف غير صالح.');
+  }
+
+  const { data: existingCustomer } = await supabase
+    .from('customers')
+    .select('id, name, address')
+    .eq('phone', cleanPhone)
+    .maybeSingle();
+
+  const code = String(crypto.randomInt(100000, 999999));
+  otpStore.set(cleanPhone, {
+    code,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+
+  // في بيئة الإنتاج يُربط الإرسال بمزود SMS/WhatsApp ولا يُعاد الرمز في الاستجابة
+  const isProd = process.env.NODE_ENV === 'production';
+  res.json({
+    exists: Boolean(existingCustomer),
+    message: 'تم إرسال رمز التحقق بنجاح 💬',
+    ...(isProd ? {} : { debug_otp: code }),
+  });
+});
+
+// 🔐 التحقق من رمز OTP وتسجيل/تحديث بيانات العميل
+api.post('/auth/otp/verify', async (req, res) => {
+  const body = z
+    .object({
+      phone: z.string().trim().min(6).max(25),
+      otp_code: z.string().trim().min(4).max(10),
+    })
+    .parse(req.body);
+
+  const cleanPhone = normalizePhone(body.phone);
+  if (!cleanPhone) {
+    fail(400, 'رقم الهاتف غير صالح.');
+  }
+
+  const entry = otpStore.get(cleanPhone);
+  if (!entry || entry.expiresAt <= Date.now() || entry.code !== body.otp_code.trim()) {
+    return res.status(400).json({
+      verified: false,
+      error: 'رمز التحقق غير صحيح أو منتهي الصلاحية.',
+    });
+  }
+
+  otpStore.delete(cleanPhone);
+
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('id, phone, name, address')
+    .eq('phone', cleanPhone)
+    .maybeSingle();
+
+  res.json({
+    verified: true,
+    phone: cleanPhone,
+    name: customer?.name || '',
+    address: customer?.address || '',
+  });
+});
+
+// 🔔 إرسال إشعار OneSignal عبر مفاتيح الخادم السرية
+api.post('/notifications/send', ...authGuard, async (req, res) => {
+  const body = z
+    .object({
+      target_player_id: z.string().trim().min(1).max(200),
+      title: z.string().trim().min(1).max(200),
+      body: z.string().trim().min(1).max(1000),
+      additional_data: z.record(z.any()).optional(),
+    })
+    .parse(req.body);
+
+  const appId =
+    config.oneSignalAppId ||
+    process.env.ONESIGNAL_APP_ID ||
+    '60850bed-4af8-4df1-a2f5-77411630f447';
+  const restApiKey =
+    config.oneSignalRestApiKey || process.env.ONESIGNAL_REST_API_KEY;
+
+  if (!restApiKey) {
+    return res.status(503).json({
+      error: 'مفتاح OneSignal السري غير مضبوط على الخادم.',
+    });
+  }
+
+  const response = await fetch('https://api.onesignal.com/notifications', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${restApiKey}`,
+    },
+    body: JSON.stringify({
+      app_id: appId,
+      include_subscription_ids: [body.target_player_id],
+      headings: { en: body.title, ar: body.title },
+      contents: { en: body.body, ar: body.body },
+      ...(body.additional_data ? { data: body.additional_data } : {}),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    fail(response.status, data?.errors?.[0] || 'تعذر إرسال الإشعار عبر OneSignal.');
+  }
+
+  res.json({ sent: true, notification: data });
 });
 
 // 🌐 الكتالوج العام (المطاعم والمنتجات المتاحة)
@@ -206,10 +325,12 @@ api.get('/catalog', async (_req, res) => {
 
 // 🎟️ التحقق من الكوبون وحساب الخصم في الخادم
 api.post('/coupons/validate', ...authGuard, async (req, res) => {
-  const body = z.object({
-    code: z.string().trim().min(1).max(60),
-    subtotal: z.number().min(0),
-  }).parse(req.body);
+  const body = z
+    .object({
+      code: z.string().trim().min(1).max(60),
+      subtotal: z.number().min(0),
+    })
+    .parse(req.body);
 
   const { coupon, discountAmount } = await evaluateCoupon(body.code, body.subtotal);
 
@@ -224,23 +345,27 @@ api.post('/coupons/validate', ...authGuard, async (req, res) => {
 
 // 🛒 إنشاء طلب جديد (يعتمد معرف المنتج والكمية فقط ويحسب الأسعار في الخادم)
 api.post('/orders', ...customerGuard, async (req, res) => {
-  const body = z.object({
-    items: z
-      .array(
-        z.object({
-          product_id: z.string().trim().min(1).max(120),
-          quantity: z.number().int().min(1).max(99),
-        })
-      )
-      .min(1)
-      .max(50),
-    address: z.string().trim().min(4).max(500),
-    notes: z.string().max(1000).optional().default(''),
-    customer_name: z.string().trim().max(150).optional(),
-    phone: z.string().trim().max(25).optional(),
-    coupon_code: z.string().trim().max(60).optional(),
-    idempotency_key: z.string().trim().max(120).optional(),
-  }).parse(req.body);
+  const body = z
+    .object({
+      items: z
+        .array(
+          z.object({
+            product_id: z.string().trim().min(1).max(120),
+            quantity: z.number().int().min(1).max(99),
+          })
+        )
+        .min(1)
+        .max(50),
+      address: z.string().trim().min(4).max(500),
+      notes: z.string().max(1000).optional().default(''),
+      customer_name: z.string().trim().max(150).optional(),
+      phone: z.string().trim().max(25).optional(),
+      coupon_code: z.string().trim().max(60).optional(),
+      payment_method: z.string().trim().max(60).optional(),
+      payment_account: z.string().trim().max(120).optional(),
+      idempotency_key: z.string().trim().max(120).optional(),
+    })
+    .parse(req.body);
 
   const actorKey = `${req.user?.id || req.userProfile?.phone || 'anon'}`;
   const dedupSignature = body.idempotency_key
@@ -261,14 +386,12 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     });
   }
 
-  const customerName =
-    body.customer_name || req.userProfile?.name || 'عميل';
+  const customerName = body.customer_name || req.userProfile?.name || 'عميل';
   const phone = normalizePhone(body.phone || req.userProfile?.phone || '');
   if (!phone) {
     fail(400, 'رقم هاتف العميل مطلوب.');
   }
 
-  // تجميع الكميات حسب معرف المنتج
   const qtyByProductId = new Map();
   for (const item of body.items) {
     const currentQty = qtyByProductId.get(item.product_id) || 0;
@@ -346,8 +469,10 @@ api.post('/orders', ...customerGuard, async (req, res) => {
   const totalPrice = Math.round((discountedProductsTotal + deliveryFee) * 100) / 100;
   const itemsDescription = itemsDescriptionParts.join(', ');
 
-  const singleRestaurantId = restaurantIds.size === 1 ? Array.from(restaurantIds)[0] : null;
-  const singleRestaurantName = restaurantNames.size === 1 ? Array.from(restaurantNames)[0] : null;
+  const singleRestaurantId =
+    restaurantIds.size === 1 ? Array.from(restaurantIds)[0] : null;
+  const singleRestaurantName =
+    restaurantNames.size === 1 ? Array.from(restaurantNames)[0] : null;
   const isRestaurant = Boolean(
     singleRestaurantId ||
       (singleRestaurantName &&
@@ -367,6 +492,8 @@ api.post('/orders', ...customerGuard, async (req, res) => {
       delivery_fee: deliveryFee,
       total_price: totalPrice,
       total_amount: totalPrice,
+      ...(body.payment_method ? { payment_method: body.payment_method } : {}),
+      ...(body.payment_account ? { payment_account: body.payment_account } : {}),
       restaurant_id: singleRestaurantId,
       restaurant_name: singleRestaurantName,
       is_restaurant: isRestaurant,
@@ -410,7 +537,11 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     order: orderData,
   });
 
-  res.status(201).json({ order: orderData, message: 'تم إرسال الطلب بنجاح' });
+  res.status(201).json({
+    order: orderData,
+    discount_amount: discountAmount,
+    message: 'تم إرسال الطلب بنجاح',
+  });
 });
 
 // 📦 جلب طلبات العميل الشخصية (المسار المعتمد /api/orders/my والمتوافق /api/orders/mine)
@@ -449,7 +580,8 @@ api.get('/orders', ...authGuard, async (req, res) => {
   }
 
   if (role === 'courier') {
-    const courierId = req.userProfile?.id !== undefined ? String(req.userProfile.id).trim() : '';
+    const courierId =
+      req.userProfile?.id !== undefined ? String(req.userProfile.id).trim() : '';
     const courierName = String(req.userProfile?.name || '').trim();
 
     let query = supabase
@@ -458,7 +590,9 @@ api.get('/orders', ...authGuard, async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (courierId && courierName) {
-      query = query.or(`courier_id.eq.${courierId},assigned_courier.eq.${courierName}`);
+      query = query.or(
+        `courier_id.eq.${courierId},assigned_courier.eq.${courierName}`
+      );
     } else if (courierId) {
       query = query.eq('courier_id', courierId);
     } else if (courierName) {
@@ -532,8 +666,11 @@ async function handlePricingOrder(req, res) {
     courierRecord = cByName;
   }
 
-  const finalCourierName = courierRecord?.name || courierNameInput || 'مندوب عام';
-  const finalCourierId = courierRecord?.id ? String(courierRecord.id) : (body.courier_id || null);
+  const finalCourierName =
+    courierRecord?.name || courierNameInput || 'مندوب عام';
+  const finalCourierId = courierRecord?.id
+    ? String(courierRecord.id)
+    : body.courier_id || null;
 
   const { data: order, error: fetchError } = await supabase
     .from('orders')
@@ -544,7 +681,8 @@ async function handlePricingOrder(req, res) {
   if (fetchError) throw fetchError;
   if (!order) fail(404, 'الطلب غير موجود.');
 
-  const productsTotal = Number(order.products_total ?? order.total_price ?? 0) || 0;
+  const productsTotal =
+    Number(order.products_total ?? order.total_price ?? 0) || 0;
   const totalPrice = Math.round((productsTotal + fee) * 100) / 100;
   const nextStatus = 'pricingSentToCustomer';
 
@@ -597,7 +735,10 @@ async function handleAdminUpdateStatus(req, res) {
   if (!existing) fail(404, 'الطلب غير موجود.');
 
   if (!canTransitionStatus(existing.status, body.status)) {
-    fail(400, `لا يمكن الانتقال من الحالة (${existing.status}) إلى (${body.status}).`);
+    fail(
+      400,
+      `لا يمكن الانتقال من الحالة (${existing.status}) إلى (${body.status}).`
+    );
   }
 
   const { data, error } = await supabase
@@ -653,7 +794,9 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
   if (fetchErr) throw fetchErr;
   if (!existing) fail(404, 'الطلب غير موجود.');
 
-  const requesterPhone = normalizePhone(req.userProfile?.phone || body.phone || '');
+  const requesterPhone = normalizePhone(
+    req.userProfile?.phone || body.phone || ''
+  );
   const orderPhone = normalizePhone(existing.phone || '');
   if (orderPhone && requesterPhone && orderPhone !== requesterPhone) {
     fail(403, 'هذا الطلب لا يخص حسابك.');
@@ -667,7 +810,10 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
       : 'تم إلغاء الطلب من قبل العميل ❌';
 
   if (!canTransitionStatus(existing.status, nextStatus)) {
-    fail(400, `لا يمكن تنفيذ الإجراء على الطلب في حالته الحالية (${existing.status}).`);
+    fail(
+      400,
+      `لا يمكن تنفيذ الإجراء على الطلب في حالته الحالية (${existing.status}).`
+    );
   }
 
   const { data, error } = await supabase
@@ -695,7 +841,8 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
 
 // 🛵 طلبات المندوب المسندة إليه
 api.get('/courier/orders', ...courierGuard, async (req, res) => {
-  const courierId = req.userProfile?.id !== undefined ? String(req.userProfile.id).trim() : '';
+  const courierId =
+    req.userProfile?.id !== undefined ? String(req.userProfile.id).trim() : '';
   const courierName = String(req.userProfile?.name || '').trim();
   if (!courierId && !courierName) return res.json({ orders: [] });
 
@@ -705,7 +852,9 @@ api.get('/courier/orders', ...courierGuard, async (req, res) => {
     .order('created_at', { ascending: false });
 
   if (courierId && courierName) {
-    query = query.or(`courier_id.eq.${courierId},assigned_courier.eq.${courierName}`);
+    query = query.or(
+      `courier_id.eq.${courierId},assigned_courier.eq.${courierName}`
+    );
   } else if (courierId) {
     query = query.eq('courier_id', courierId);
   } else {
@@ -747,7 +896,10 @@ async function handleCourierUpdateStatus(req, res) {
   }
 
   if (!canTransitionStatus(existing.status, body.status)) {
-    fail(400, `انتقال غير مسموح من الحالة (${existing.status}) إلى (${body.status}).`);
+    fail(
+      400,
+      `انتقال غير مسموح من الحالة (${existing.status}) إلى (${body.status}).`
+    );
   }
 
   const updatePayload = {
