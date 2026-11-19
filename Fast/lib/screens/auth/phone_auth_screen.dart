@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
+import '../../services/notification_service.dart';
 import '../customer/map_location_screen.dart';
 import '../admin_screen.dart';
 import '../courier_screen.dart';
@@ -38,14 +38,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
-  String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
+  String _detectedRole =
+      'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
   Map<String, dynamic>? _pendingUserRecord;
 
   // عداد النقرات المخفية للوصول لإدارة النظام سراّ
   int _secretTapCount = 0;
-
-  // رمز OTP التجريبي التلقائي
-  static const String _trialOtpCode = '1234';
 
   @override
   void initState() {
@@ -53,39 +51,56 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     _checkExistingAdminOrCourierSession();
   }
 
+  String _normalizePhone(String rawPhone) {
+    String clean = rawPhone.trim().replaceAll(' ', '');
+    if (clean.startsWith('+967')) clean = clean.substring(4);
+    if (clean.startsWith('0')) clean = clean.substring(1);
+    if (clean.startsWith('967')) clean = clean.substring(3);
+    return clean;
+  }
+
   // 🛡️ التحقق التلقائي إذا كان المشرف أو المندوب مسجل الدخول مسبقاً لتخطي تسجيل الدخول
   Future<void> _checkExistingAdminOrCourierSession() async {
     try {
       final session = _supabase.auth.currentSession;
       if (session != null) {
-        final userId = session.user.id;
+        final user = session.user;
+        final appRole = user.appMetadata['role']?.toString();
 
-        // 1. فحص هل هو مشرف
-        final adminRes = await _supabase
-            .from('admins')
-            .select()
-            .eq('id', userId)
-            .maybeSingle();
+        if (appRole == 'admin') {
+          final email = (user.email ?? '').trim().toLowerCase();
+          final candidateUsername =
+              email.contains('@') ? email.split('@').first : email;
+          if (candidateUsername.isNotEmpty) {
+            final adminRes = await _supabase
+                .from('admins')
+                .select('id, username, phone')
+                .eq('username', candidateUsername)
+                .maybeSingle();
 
-        if (adminRes != null) {
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const AdminScreen()),
-          );
-          return;
+            if (adminRes != null && mounted) {
+              Provider.of<AppState>(context, listen: false).isAdminLoggedIn =
+                  true;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminScreen()),
+              );
+              return;
+            }
+          }
         }
 
-        // 2. فحص هل هو مندوب
+        // فحص هل هو مندوب عبر auth_user_id (uuid)
         final courierRes = await _supabase
             .from('couriers')
             .select()
-            .eq('auth_user_id', userId)
+            .eq('auth_user_id', user.id)
             .maybeSingle();
 
-        if (courierRes != null) {
+        if (courierRes != null && courierRes['status']?.toString() != 'disabled') {
           if (!mounted) return;
-          Provider.of<AppState>(context, listen: false).currentCourier = courierRes;
+          Provider.of<AppState>(context, listen: false).currentCourier =
+              Map<String, dynamic>.from(courierRes);
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const CourierScreen()),
@@ -132,9 +147,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           final formattedCoords = '($lat, $lng)';
 
           if (address != null && address.isNotEmpty) {
-            _addressController.text = '$address - الإحداثيات: $formattedCoords';
+            _addressController.text =
+                '$address - الإحداثيات: $formattedCoords';
           } else {
-            _addressController.text = 'الموقع المحدد - الإحداثيات: $formattedCoords';
+            _addressController.text =
+                'الموقع المحدد - الإحداثيات: $formattedCoords';
           }
         } else if (address != null && address.isNotEmpty) {
           _addressController.text = address;
@@ -143,21 +160,18 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  Future<void> _syncOneSignalPlayerId(String phone) async {
+  Future<void> _syncOneSignalPlayerId(String customerIdOrPhone) async {
     try {
-      final String? playerId = OneSignal.User.pushSubscription.id;
-      if (playerId != null && playerId.isNotEmpty) {
-        await _supabase
-            .from('customers')
-            .update({'onesignal_player_id': playerId})
-            .eq('phone', phone);
-      }
+      await NotificationService.saveUserPlayerId(
+        customerIdOrPhone,
+        'customers',
+      );
     } catch (e) {
       debugPrint('خطأ في حفظ Player ID: $e');
     }
   }
 
-  // 1️⃣ إرسال كود OTP وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
+  // 1️⃣ طلب إرسال كود OTP عبر الخادم وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -170,68 +184,79 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      String clean = phone.replaceAll(' ', '');
-      if (clean.startsWith('0')) clean = clean.substring(1);
-      if (clean.startsWith('967')) clean = clean.substring(3);
+      final clean = _normalizePhone(phone);
       _cleanPhoneInput = clean;
       _formattedPhone = '+967$clean';
       _pendingUserRecord = null;
+      _otpController.clear();
 
       // 1. فحص هل الرقم يتبع للمشرفين (admins)
       final adminRes = await _supabase
           .from('admins')
-          .select()
+          .select('id, username, phone')
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
           .maybeSingle();
 
       if (adminRes != null) {
         _detectedRole = 'admin';
         _pendingUserRecord = Map<String, dynamic>.from(adminRes);
-        _loginUsernameController.text = adminRes['username'] ?? adminRes['name'] ?? '';
-      } else {
-        // 2. فحص هل الرقم يتبع للمناديب (couriers)
-        final courierRes = await _supabase
-            .from('couriers')
-            .select()
-            .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-            .maybeSingle();
-
-        if (courierRes != null) {
-          _detectedRole = 'courier';
-          _pendingUserRecord = Map<String, dynamic>.from(courierRes);
-          _loginUsernameController.text = courierRes['username'] ?? courierRes['name'] ?? '';
-        } else {
-          // 3. فحص هل العميل موجود مسبقاً في جدول customers وجلب بياناته المسجلة
-          final existingCustomer = await _supabase
-              .from('customers')
-              .select()
-              .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-              .maybeSingle();
-
-          if (existingCustomer != null) {
-            _pendingUserRecord = Map<String, dynamic>.from(existingCustomer);
-            final savedName = (existingCustomer['name'] ?? '').toString().trim();
-            final savedAddress = (existingCustomer['address'] ?? '').toString().trim();
-
-            if (mounted) {
-              _nameController.text = savedName;
-              _addressController.text = savedAddress;
-            }
-
-            // إذا كانت بيانات الاسم والعنوان مكتملة في قاعدة البيانات فهو عميل مسجل بالكامل
-            if (savedName.isNotEmpty && savedAddress.isNotEmpty) {
-              _detectedRole = 'customer_existing';
-            } else {
-              _detectedRole = 'customer_new';
-            }
-          } else {
-            _detectedRole = 'customer_new';
-          }
+        _loginUsernameController.text = adminRes['username']?.toString() ?? '';
+        if (mounted) {
+          setState(() => _currentStep = 3);
         }
+        return;
       }
 
-      // وضع رمز OTP التجريبي تلقائياً 1234
-      _otpController.text = _trialOtpCode;
+      // 2. فحص هل الرقم يتبع للمناديب (couriers)
+      final courierRes = await _supabase
+          .from('couriers')
+          .select('id, username, name, phone, status')
+          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+          .maybeSingle();
+
+      if (courierRes != null) {
+        _detectedRole = 'courier';
+        _pendingUserRecord = Map<String, dynamic>.from(courierRes);
+        _loginUsernameController.text =
+            courierRes['username']?.toString() ?? '';
+        if (mounted) {
+          setState(() => _currentStep = 3);
+        }
+        return;
+      }
+
+      // 3. فحص هل العميل موجود مسبقاً في جدول customers وجلب بياناته المسجلة
+      final existingCustomer = await _supabase
+          .from('customers')
+          .select()
+          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+          .maybeSingle();
+
+      if (existingCustomer != null) {
+        _pendingUserRecord = Map<String, dynamic>.from(existingCustomer);
+        final savedName = (existingCustomer['name'] ?? '').toString().trim();
+        final savedAddress =
+            (existingCustomer['address'] ?? '').toString().trim();
+
+        if (mounted) {
+          _nameController.text = savedName;
+          _addressController.text = savedAddress;
+        }
+
+        if (savedName.isNotEmpty && savedAddress.isNotEmpty) {
+          _detectedRole = 'customer_existing';
+        } else {
+          _detectedRole = 'customer_new';
+        }
+      } else {
+        _detectedRole = 'customer_new';
+      }
+
+      // طلب توليد وإرسال OTP فعلياً عبر Backend
+      final reqResult = await appState.requestOtpForPhone(_cleanPhoneInput);
+      final msg = (reqResult is Map && reqResult['message'] != null)
+          ? reqResult['message'].toString()
+          : 'تم طلب إرسال رمز التحقق إلى $_formattedPhone 💬';
 
       if (mounted) {
         setState(() {
@@ -239,9 +264,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم تعبئة رمز التحقق التجريبي 1234 تلقائياً 💬'),
-            duration: Duration(seconds: 4),
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -249,7 +274,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       debugPrint('❌ خطأ في إرسال الرمز: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً')),
+          SnackBar(
+            content: Text(
+              e.toString().replaceAll('Exception: ', '').isNotEmpty
+                  ? e.toString().replaceAll('Exception: ', '')
+                  : 'تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً',
+            ),
+          ),
         );
       }
     } finally {
@@ -259,7 +290,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP وتفعيل الجلسة للعميل المسجل من قاعدة البيانات أو الانتقال للمرحلة التالية
+  // 2️⃣ التحقق من كود OTP عبر الخادم وتفعيل الجلسة للعميل أو الانتقال لاستكمال البروفايل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -272,18 +303,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      bool isValid = otpCode == _trialOtpCode;
+      final bool isValid =
+          await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
 
       if (isValid) {
-        if (_detectedRole == 'admin' || _detectedRole == 'courier') {
-          if (mounted) {
-            setState(() {
-              _currentStep = 3; // الانتقال لشاشة تسجيل الدخول الخاصة (مشرف أو مندوب)
-            });
-          }
-        } else if (_detectedRole == 'customer_existing' && _pendingUserRecord != null) {
-          // إعادة قراءة أحدث نسخة من السجل لضمان تطابقها مع قاعدة البيانات
-          final dbPhone = (_pendingUserRecord!['phone'] ?? _cleanPhoneInput).toString();
+        if (_detectedRole == 'customer_existing' && _pendingUserRecord != null) {
+          final dbPhone =
+              (_pendingUserRecord!['phone'] ?? _cleanPhoneInput).toString();
           final latestRecord = await _supabase
               .from('customers')
               .select()
@@ -291,9 +317,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               .maybeSingle();
 
           final customerRow = latestRecord ?? _pendingUserRecord!;
-          final String customerName = (customerRow['name'] ?? '').toString().trim();
-          final String customerPhone = (customerRow['phone'] ?? dbPhone).toString().trim();
-          final String customerAddress = (customerRow['address'] ?? '').toString().trim();
+          final String customerName =
+              (customerRow['name'] ?? '').toString().trim();
+          final String customerPhone =
+              (customerRow['phone'] ?? dbPhone).toString().trim();
+          final String customerAddress =
+              (customerRow['address'] ?? '').toString().trim();
 
           appState.setUser(
             name: customerName,
@@ -302,7 +331,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           );
 
           await appState.requestLocationAndNotificationPermissions();
-          await _syncOneSignalPlayerId(customerPhone);
+          final syncKey = customerRow['id']?.toString() ?? customerPhone;
+          await _syncOneSignalPlayerId(syncKey);
 
           if (!mounted) return;
           if (widget.onLoginSuccess != null) {
@@ -312,7 +342,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           }
 
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('أهلاً بك مجدداً يا $customerName! تم تسجيل الدخول بنجاح 🚀')),
+            SnackBar(
+              content: Text(
+                  'أهلاً بك مجدداً يا $customerName! تم تسجيل الدخول بنجاح 🚀'),
+            ),
           );
         } else {
           if (mounted) {
@@ -324,7 +357,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته ❌')),
+            const SnackBar(
+                content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته ❌')),
           );
         }
       }
@@ -358,7 +392,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
     try {
       if (_detectedRole == 'admin' || _detectedRole.isEmpty) {
-        bool adminSuccess = await appState.loginAdminFromSupabase(username, password);
+        bool adminSuccess =
+            await appState.loginAdminFromSupabase(username, password);
         if (adminSuccess) {
           if (!mounted) return;
           Navigator.pushReplacement(
@@ -417,9 +452,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final cleanPhone = _cleanPhoneInput.isNotEmpty
-          ? _cleanPhoneInput
-          : _formattedPhone;
+      final cleanPhone =
+          _cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : _formattedPhone;
 
       final savedRecord = await _supabase
           .from('customers')
@@ -433,7 +467,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       final finalName = (savedRecord?['name'] ?? name).toString().trim();
       final finalPhone = (savedRecord?['phone'] ?? cleanPhone).toString().trim();
-      final finalAddress = (savedRecord?['address'] ?? address).toString().trim();
+      final finalAddress =
+          (savedRecord?['address'] ?? address).toString().trim();
 
       appState.setUser(
         name: finalName,
@@ -442,7 +477,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       );
 
       await appState.requestLocationAndNotificationPermissions();
-      await _syncOneSignalPlayerId(finalPhone);
+      final syncKey = savedRecord?['id']?.toString() ?? finalPhone;
+      await _syncOneSignalPlayerId(syncKey);
 
       if (!mounted) return;
       if (widget.onLoginSuccess != null) {
@@ -452,13 +488,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
+        const SnackBar(
+            content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
       );
     } catch (e) {
       debugPrint('❌ خطأ في حفظ بيانات العميل: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر حفظ البيانات، يرجى المحاولة مرة أخرى')),
+          const SnackBar(
+              content: Text('تعذر حفظ البيانات، يرجى المحاولة مرة أخرى')),
         );
       }
     } finally {
@@ -491,7 +529,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             ),
             title: const Text(
               'FAST – تسجيل الدخول والتحقق',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
             ),
           ),
           body: Center(
@@ -502,7 +543,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 decoration: BoxDecoration(
                   color: cardColor,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: primaryGold.withOpacity(0.3), width: 1),
+                  border: Border.all(
+                      color: primaryGold.withOpacity(0.3), width: 1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.5),
@@ -522,9 +564,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           if (_secretTapCount >= 5) {
                             _secretTapCount = 0;
                             _detectedRole = 'admin';
-                            _currentStep = 3; // الانتقال المباشر لشاشة تسجيل دخول المشرف/المندوب سراً
+                            _currentStep = 3;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('🔐 تم تفعيل وضع الدخول الإداري السري')),
+                              const SnackBar(
+                                  content: Text(
+                                      '🔐 تم تفعيل وضع الدخول الإداري السري')),
                             );
                           }
                         });
@@ -539,7 +583,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           _currentStep == 1
                               ? Icons.mark_chat_read_outlined
                               : _currentStep == 3
-                                  ? (_detectedRole == 'admin' ? Icons.admin_panel_settings : Icons.delivery_dining)
+                                  ? (_detectedRole == 'admin'
+                                      ? Icons.admin_panel_settings
+                                      : Icons.delivery_dining)
                                   : Icons.person_outline_rounded,
                           size: 50,
                           color: primaryGold,
@@ -552,7 +598,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     if (_currentStep == 0) ...[
                       const Text(
                         'تسجيل الدخول برقم الهاتف',
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
@@ -569,7 +618,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'رقم الهاتف',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.phone_android, color: primaryGold),
+                          prefixIcon: const Icon(Icons.phone_android,
+                              color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -578,7 +628,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -587,17 +638,23 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading ? null : () => _sendSupabaseOTP(appState),
+                        onPressed:
+                            _isLoading ? null : () => _sendSupabaseOTP(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                    color: Colors.black, strokeWidth: 2),
                               )
                             : const Text('إرسال رمز التحقق عبر واتساب 💬',
-                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
                       ),
                     ]
 
@@ -605,12 +662,16 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     else if (_currentStep == 1) ...[
                       const Text(
                         'أدخل رمز التحقق (OTP)',
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'تم إرسال رمز التحقق إلى $_formattedPhone',
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 13),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 25),
@@ -619,12 +680,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         focusNode: _otpFocus,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 20, letterSpacing: 8),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            letterSpacing: 8),
                         maxLength: 4,
                         decoration: InputDecoration(
                           labelText: 'رمز التحقق (4 أرقام)',
-                          labelStyle: const TextStyle(color: Colors.grey, letterSpacing: 0),
-                          prefixIcon: const Icon(Icons.lock_clock_outlined, color: primaryGold),
+                          labelStyle: const TextStyle(
+                              color: Colors.grey, letterSpacing: 0),
+                          prefixIcon: const Icon(Icons.lock_clock_outlined,
+                              color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -633,7 +699,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -642,29 +709,42 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading ? null : () => _verifyOTPAndProceed(appState),
+                        onPressed: _isLoading
+                            ? null
+                            : () => _verifyOTPAndProceed(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                    color: Colors.black, strokeWidth: 2),
                               )
                             : const Text('تأكيد الرمز والمتابعة 🔑',
-                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
                       ),
                       TextButton(
                         onPressed: () => setState(() => _currentStep = 0),
-                        child: const Text('تغيير رقم الهاتف', style: TextStyle(color: primaryGold)),
+                        child: const Text('تغيير رقم الهاتف',
+                            style: TextStyle(color: primaryGold)),
                       ),
                     ]
 
                     // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب السرّية ----------------
                     else if (_currentStep == 3) ...[
                       Text(
-                        _detectedRole == 'admin' ? 'تسجيل دخول المشرف الآمن 🛡️' : 'بوابة تسجيل دخول الكابتن 🛵',
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        _detectedRole == 'admin'
+                            ? 'تسجيل دخول المشرف الآمن 🛡️'
+                            : 'بوابة تسجيل دخول الكابتن 🛵',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
@@ -680,7 +760,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'اسم المستخدم أو البريد الإلكتروني',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.person_outline, color: primaryGold),
+                          prefixIcon: const Icon(Icons.person_outline,
+                              color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -689,7 +770,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -701,7 +783,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'كلمة السر',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.lock_outline, color: primaryGold),
+                          prefixIcon:
+                              const Icon(Icons.lock_outline, color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -710,7 +793,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -719,23 +803,33 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading ? null : () => _verifyAdminOrCourierCredentials(appState),
+                        onPressed: _isLoading
+                            ? null
+                            : () => _verifyAdminOrCourierCredentials(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                    color: Colors.black, strokeWidth: 2),
                               )
                             : Text(
-                                _detectedRole == 'admin' ? 'دخول لوحة التحكم 🚀' : 'دخول لوحة الطلبات 🚀',
-                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15),
+                                _detectedRole == 'admin'
+                                    ? 'دخول لوحة التحكم 🚀'
+                                    : 'دخول لوحة الطلبات 🚀',
+                                style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15),
                               ),
                       ),
                       TextButton(
                         onPressed: () => setState(() => _currentStep = 0),
-                        child: const Text('العودة لتسجيل العملاء', style: TextStyle(color: primaryGold)),
+                        child: const Text('العودة لتسجيل العملاء',
+                            style: TextStyle(color: primaryGold)),
                       ),
                     ]
 
@@ -743,7 +837,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                     else ...[
                       const Text(
                         'استكمال وتأكيد البيانات الشخصية',
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       const Text(
@@ -760,7 +857,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'الاسم الكامل',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.person, color: primaryGold),
+                          prefixIcon:
+                              const Icon(Icons.person, color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -769,7 +867,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -782,7 +881,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         decoration: InputDecoration(
                           labelText: 'العنوان التفصيلي (أو حدده عبر الخريطة)',
                           labelStyle: const TextStyle(color: Colors.grey),
-                          prefixIcon: const Icon(Icons.location_on, color: primaryGold),
+                          prefixIcon: const Icon(Icons.location_on,
+                              color: primaryGold),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
@@ -791,7 +891,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: primaryGold, width: 2),
+                            borderSide:
+                                const BorderSide(color: primaryGold, width: 2),
                           ),
                         ),
                       ),
@@ -800,12 +901,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: primaryGold),
                           minimumSize: const Size(double.infinity, 45),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                         icon: const Icon(Icons.map, color: primaryGold),
                         label: const Text(
                           'تحديد موقعك عبر الخريطة التفاعلية 🗺️',
-                          style: TextStyle(color: primaryGold, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              color: primaryGold, fontWeight: FontWeight.bold),
                         ),
                         onPressed: _openInteractiveMap,
                       ),
@@ -814,17 +917,24 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGold,
                           minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: _isLoading ? null : () => _saveCustomerProfile(appState),
+                        onPressed: _isLoading
+                            ? null
+                            : () => _saveCustomerProfile(appState),
                         child: _isLoading
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                    color: Colors.black, strokeWidth: 2),
                               )
                             : const Text('حفظ والدخول للتطبيق 🚀',
-                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
                       ),
                     ],
                   ],
