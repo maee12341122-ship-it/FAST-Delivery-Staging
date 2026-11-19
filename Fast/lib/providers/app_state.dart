@@ -117,6 +117,10 @@ class AppState extends ChangeNotifier {
   StreamSubscription? _settingsSub;
   RealtimeChannel? _ordersChannel;
 
+  // مؤقت للتجربة حتى اكتمال مراجعة ميتا، ثم اجعله false
+  static const bool _useTestOtpBypass = true;
+  static const String _testOtpCode = '1234';
+
   AppState() {
     _initializeApplicationState();
     _initAuthListener();
@@ -1293,8 +1297,32 @@ class AppState extends ChangeNotifier {
   }
 
   Future requestOtpForPhone(String phone) async {
+    final cleanPhone = _normalizePhone(phone);
+    if (cleanPhone.isEmpty) {
+      throw Exception('الرجاء إدخال رقم هاتف صحيح.');
+    }
+
+    if (_useTestOtpBypass) {
+      bool existsInDb = false;
+      try {
+        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+        existsInDb = dbRecord != null;
+        if (existsInDb) {
+          await restoreLastCustomerOrder();
+        }
+      } catch (e) {
+        debugPrint('خطأ في التحقق من العميل في قاعدة البيانات: $e');
+      }
+      notifyListeners();
+      return Map.castFrom({
+        'exists': existsInDb,
+        'message': existsInDb
+            ? 'تم العثور على حسابك وجلب بياناتك. رمز التحقق التجريبي هو $_testOtpCode'
+            : 'رمز التحقق التجريبي هو $_testOtpCode',
+      });
+    }
+
     try {
-      final cleanPhone = _normalizePhone(phone);
       final response = await _postBackend('/api/auth/otp/request', {
         'phone': cleanPhone,
       });
@@ -1313,9 +1341,35 @@ class AppState extends ChangeNotifier {
 
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     if (enteredOtp.trim().isEmpty) return false;
+    final cleanPhone = _normalizePhone(phone);
+    if (cleanPhone.isEmpty) return false;
+
+    if (_useTestOtpBypass) {
+      if (enteredOtp.trim() != _testOtpCode) return false;
+
+      try {
+        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+        if (dbRecord != null) {
+          await restoreLastCustomerOrder();
+          return true;
+        }
+      } catch (e) {
+        debugPrint('خطأ في جلب سجل العميل بعد التحقق: $e');
+      }
+
+      userProfile = {
+        'phone': cleanPhone,
+        'name': '',
+        'address': '',
+        'city': currentCity,
+      };
+      await _persistUserSessionToPrefs(userProfile!);
+      await fetchUserAddressesFromSupabase();
+      notifyListeners();
+      return true;
+    }
 
     try {
-      final cleanPhone = _normalizePhone(phone);
       final response = await _postBackend('/api/auth/otp/verify', {
         'phone': cleanPhone,
         'otp_code': enteredOtp.trim(),
@@ -1335,7 +1389,12 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      await checkAndLoginCustomer(cleanPhone);
+      final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+      if (dbRecord != null) {
+        await restoreLastCustomerOrder();
+        return true;
+      }
+
       if (userProfile == null) {
         userProfile = {
           'phone': cleanPhone,
