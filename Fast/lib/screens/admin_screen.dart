@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../providers/app_state.dart';
-import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
-import 'home_screen.dart'; // 👈 مسار صحيح ومباشر داخل مجلد screens
+import 'home_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({Key? key}) : super(key: key);
@@ -16,7 +14,8 @@ class AdminScreen extends StatefulWidget {
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+class _AdminScreenState extends State<AdminScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedNavIndex = 0;
   late TabController _ordersTabController;
 
@@ -27,7 +26,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _ordersTabController = TabController(length: 3, vsync: this);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verifyAdminSecurity();
     });
@@ -36,6 +35,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Future<void> _verifyAdminSecurity() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
+      final session = Supabase.instance.client.auth.currentSession;
+
+      if (session != null &&
+          session.user.appMetadata['role']?.toString() == 'admin') {
+        appState.isAdminLoggedIn = true;
+        return;
+      }
+
       final currentPhone = appState.userProfile?['phone'] ?? '';
 
       if (currentPhone.isEmpty && !appState.isAdminLoggedIn) {
@@ -52,12 +59,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
       final adminRes = await Supabase.instance.client
           .from('admins')
-          .select()
+          .select('id, username, phone')
           .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone')
           .maybeSingle();
 
       if (adminRes == null) {
-        _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
+        _kickOutUnauthorizedUser(
+            'عذراً، لا تمتلك صلاحيات مشرف للوصول إلى هذه اللوحة 🚫');
       } else {
         appState.isAdminLoggedIn = true;
       }
@@ -70,7 +78,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => HomeScreen()), // بدون const
+      MaterialPageRoute(builder: (context) => HomeScreen()),
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -89,21 +97,31 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
   String _getArabicStatus(String status) {
     switch (status) {
-      case 'waitingForPricing': return '⏳ بانتظار التسعير';
-      case 'pricingSentToCustomer': return '🔔 بانتظار موافقة العميل';
-      case 'waitingCourierApproval': return '🛵 بانتظار قبول المندوب';
-      case 'acceptedByCourier': return '🚀 وافق المندوب';
-      case 'onTheWay': return '🟢 المندوب في الطريق';
+      case 'waitingForPricing':
+        return '⏳ بانتظار التسعير';
+      case 'pricingSentToCustomer':
+        return '🔔 بانتظار موافقة العميل';
+      case 'waitingCourierApproval':
+        return '🛵 بانتظار قبول المندوب';
+      case 'acceptedByCourier':
+        return '🚀 وافق المندوب';
+      case 'onTheWay':
+        return '🟢 المندوب في الطريق';
       case 'arrived':
-      case 'arrivedToCustomer': return '📍 وصل المندوب للموقع';
-      case 'delivered': return '✅ تم التسليم';
+      case 'arrivedToCustomer':
+        return '📍 وصل المندوب للموقع';
+      case 'delivered':
+        return '✅ تم التسليم';
       case 'cancelled':
-      case 'cancelledByCustomer': return '❌ ملغى';
-      default: return status;
+      case 'cancelledByCustomer':
+        return '❌ ملغى';
+      default:
+        return status;
     }
   }
 
-  void _handleAdminNotificationTap(BuildContext context, Map<String, dynamic> notification) {
+  void _handleAdminNotificationTap(
+      BuildContext context, Map<String, dynamic> notification) {
     final String? orderId = notification['order_id']?.toString() ??
         notification['related_id']?.toString() ??
         notification['additionalData']?['order_id']?.toString();
@@ -111,19 +129,28 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     if (orderId != null && orderId.isNotEmpty) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => OrderTrackingScreen(orderIdParam: orderId)),
+        MaterialPageRoute(
+            builder: (context) => OrderTrackingScreen(orderIdParam: orderId)),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
+        const SnackBar(
+            content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
       );
     }
   }
 
-  void _showAddOrEditBannerDialog(BuildContext context, AppState appState, Map<String, dynamic>? banner) {
-    final titleController = TextEditingController(text: banner?['title'] ?? '');
-    final subtitleController = TextEditingController(text: banner?['subtitle'] ?? '');
-    final codeController = TextEditingController(text: banner?['code'] ?? '');
+  void _showAddOrEditBannerDialog(
+    BuildContext context,
+    AppState appState,
+    Map<String, dynamic>? banner,
+  ) {
+    final titleController =
+        TextEditingController(text: banner?['title']?.toString() ?? '');
+    final subtitleController =
+        TextEditingController(text: banner?['subtitle']?.toString() ?? '');
+    final codeController =
+        TextEditingController(text: banner?['code']?.toString() ?? '');
 
     showDialog(
       context: context,
@@ -131,26 +158,37 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: Text(banner == null ? 'إضافة بنر ترويجي جديد 📢' : 'تعديل البنر الترويجي ✏️', style: const TextStyle(color: Colors.amber)),
+          title: Text(
+            banner == null
+                ? 'إضافة بنر ترويجي جديد 📢'
+                : 'تعديل البنر الترويجي ✏️',
+            style: const TextStyle(color: Colors.amber),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: titleController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'عنوان البنر', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: const InputDecoration(
+                    labelText: 'عنوان البنر',
+                    labelStyle: TextStyle(color: Colors.grey)),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: subtitleController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'الوصف أو التفاصيل', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: const InputDecoration(
+                    labelText: 'الوصف أو التفاصيل',
+                    labelStyle: TextStyle(color: Colors.grey)),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: codeController,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'كود الخصم (اختياري)', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: const InputDecoration(
+                    labelText: 'كود الخصم (اختياري)',
+                    labelStyle: TextStyle(color: Colors.grey)),
               ),
             ],
           ),
@@ -162,16 +200,20 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
               onPressed: () async {
-                if (titleController.text.isNotEmpty) {
+                if (titleController.text.trim().isNotEmpty) {
                   if (banner == null) {
-                    await Supabase.instance.client.from('promo_banners').insert({
+                    await Supabase.instance.client
+                        .from('promo_banners')
+                        .insert({
                       'title': titleController.text.trim(),
                       'subtitle': subtitleController.text.trim(),
                       'code': codeController.text.trim(),
                       'is_active': true,
                     });
                   } else {
-                    await Supabase.instance.client.from('promo_banners').update({
+                    await Supabase.instance.client
+                        .from('promo_banners')
+                        .update({
                       'title': titleController.text.trim(),
                       'subtitle': subtitleController.text.trim(),
                       'code': codeController.text.trim(),
@@ -180,10 +222,13 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   if (!context.mounted) return;
                   Navigator.pop(context);
                   setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ البنر بنجاح ✅')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم حفظ البنر بنجاح ✅')));
                 }
               },
-              child: const Text('حفظ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              child: const Text('حفظ',
+                  style: TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -202,9 +247,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('إدارة البنرات الترويجية 📢', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('إدارة البنرات الترويجية 📢',
+                    style: TextStyle(
+                        color: Colors.amber,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      foregroundColor: Colors.black),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('إضافة بنر'),
                   onPressed: () {
@@ -218,14 +269,20 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               width: double.maxFinite,
               height: 400,
               child: FutureBuilder<List<dynamic>>(
-                future: Supabase.instance.client.from('promo_banners').select().order('id', ascending: false),
+                future: Supabase.instance.client
+                    .from('promo_banners')
+                    .select()
+                    .order('id', ascending: false),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                    return const Center(
+                        child: CircularProgressIndicator(color: Colors.amber));
                   }
                   final banners = snapshot.data ?? [];
                   if (banners.isEmpty) {
-                    return const Center(child: Text('لا توجد بنرات مضافة حالياً 📭', style: TextStyle(color: Colors.grey)));
+                    return const Center(
+                        child: Text('لا توجد بنرات مضافة حالياً 📭',
+                            style: TextStyle(color: Colors.grey)));
                   }
 
                   return ListView.builder(
@@ -236,28 +293,46 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       return Card(
                         color: const Color(0xFF121212),
                         margin: const EdgeInsets.symmetric(vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.amber.withOpacity(0.3))),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                                color: Colors.amber.withOpacity(0.3))),
                         child: ListTile(
-                          title: Text(banner['title'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          subtitle: Text('${banner['subtitle']}\nكود الخصم: ${banner['code'] ?? "لا يوجد"}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          title: Text(banner['title']?.toString() ?? '',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                          subtitle: Text(
+                              '${banner['subtitle'] ?? ''}\nكود الخصم: ${banner['code'] ?? "لا يوجد"}',
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12)),
                           isThreeLine: true,
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
+                                icon: const Icon(Icons.edit,
+                                    color: Colors.blueAccent, size: 20),
                                 onPressed: () {
                                   Navigator.pop(context);
-                                  _showAddOrEditBannerDialog(context, appState, banner);
+                                  _showAddOrEditBannerDialog(
+                                      context, appState, banner);
                                 },
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                                icon: const Icon(Icons.delete,
+                                    color: Colors.redAccent, size: 20),
                                 onPressed: () async {
-                                  await Supabase.instance.client.from('promo_banners').delete().eq('id', banner['id']);
+                                  await Supabase.instance.client
+                                      .from('promo_banners')
+                                      .delete()
+                                      .eq('id', banner['id']);
                                   setDialogState(() {});
                                   if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف البنر بنجاح 🗑️')));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content:
+                                                Text('تم حذف البنر بنجاح 🗑️')));
                                   }
                                 },
                               ),
@@ -290,42 +365,53 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.star, color: Colors.amber),
                 SizedBox(width: 8),
-                Text('تقييمات وملاحظات المطاعم الشهرية ⭐', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                Text('تقييمات وملاحظات المطاعم الشهرية ⭐',
+                    style: TextStyle(color: Colors.amber, fontSize: 16)),
               ],
             ),
             content: SizedBox(
               width: double.maxFinite,
               height: 400,
-              child: FutureBuilder(
+              child: FutureBuilder<List<dynamic>>(
                 future: Supabase.instance.client
-                    .from('restaurant_ratings')
-                    .select()
-                    .order('rating', ascending: false),
-                builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    .from('ratings_and_reviews')
+                    .select('id, order_id, customer_phone, target_id, rating, comment, created_at')
+                    .eq('target_type', 'restaurant')
+                    .order('created_at', ascending: false),
+                builder: (BuildContext context, AsyncSnapshot<List<dynamic>> snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                    return const Center(
+                        child: CircularProgressIndicator(color: Colors.amber));
                   }
                   if (snapshot.hasError) {
-                    return const Center(child: Text('لا توجد تقييمات مسجلة أو خطأ في الجدول', style: TextStyle(color: Colors.grey)));
+                    return const Center(
+                        child: Text('تعذر جلب تقييمات المطاعم حالياً',
+                            style: TextStyle(color: Colors.grey)));
                   }
 
-                  final dynamic rawData = snapshot.data;
-                  if (rawData == null || (rawData is List && rawData.isEmpty)) {
-                    return const Center(child: Text('لا توجد تقييمات مطاعم مسجلة حتى الآن 📭', style: TextStyle(color: Colors.grey)));
+                  final List<dynamic> listData = snapshot.data ?? [];
+                  if (listData.isEmpty) {
+                    return const Center(
+                        child: Text('لا توجد تقييمات مطاعم مسجلة حتى الآن 📭',
+                            style: TextStyle(color: Colors.grey)));
                   }
-
-                  final List<dynamic> listData = rawData as List<dynamic>;
 
                   return ListView.builder(
                     itemCount: listData.length,
                     itemBuilder: (BuildContext context, int index) {
                       final dynamic item = listData[index];
-                      final Map<String, dynamic> r = item is Map<String, dynamic> ? item : {};
+                      final Map<String, dynamic> r =
+                          item is Map<String, dynamic> ? item : {};
+                      final targetLabel =
+                          (r['target_id'] ?? 'مطعم').toString().trim();
+                      final commentText =
+                          (r['comment'] ?? '').toString().trim();
 
                       return Card(
                         color: const Color(0xFF121212),
@@ -340,20 +426,38 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('🍽️ ${r['restaurant_name'] ?? 'مطعم'}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                                  Text(
+                                    '🍽️ $targetLabel',
+                                    style: const TextStyle(
+                                        color: Colors.amber,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15),
+                                  ),
                                   Row(
                                     children: [
-                                      const Icon(Icons.star, color: Colors.amber, size: 18),
+                                      const Icon(Icons.star,
+                                          color: Colors.amber, size: 18),
                                       const SizedBox(width: 4),
-                                      Text('${r['rating'] ?? r['average_rating'] ?? 5.0}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                                      Text(
+                                        '${r['rating'] ?? 0}',
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15),
+                                      ),
                                     ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('💬 الملاحظة: ${r['review_text'] ?? 'بدون تعليق'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                              Text(
+                                '💬 الملاحظة: ${commentText.isNotEmpty ? commentText : 'بدون تعليق'}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
                             ],
                           ),
                         ),
@@ -380,11 +484,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       future: Supabase.instance.client.from('couriers').select(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Colors.amber));
+          return const Center(
+              child: CircularProgressIndicator(color: Colors.amber));
         }
         final couriers = snapshot.data ?? [];
         if (couriers.isEmpty) {
-          return const Center(child: Text('لا يوجد مناديب مسجلين حالياً 🛵', style: TextStyle(color: Colors.grey)));
+          return const Center(
+              child: Text('لا يوجد مناديب مسجلين حالياً 🛵',
+                  style: TextStyle(color: Colors.grey)));
         }
 
         return ListView.builder(
@@ -392,19 +499,26 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           itemCount: couriers.length,
           itemBuilder: (context, index) {
             final courier = couriers[index];
-            final courierName = courier['name']?.toString().trim() ?? courier['full_name']?.toString().trim() ?? '';
+            final courierName = courier['name']?.toString().trim() ??
+                courier['full_name']?.toString().trim() ??
+                '';
 
             final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
               final name = o['courier_name']?.toString().trim() ?? '';
-              final bool isDelivered = o['status']?.toString().trim() == 'delivered';
+              final bool isDelivered =
+                  o['status']?.toString().trim() == 'delivered';
               final bool isSettled = o['is_settled'] == true;
-              return (assigned == courierName || name == courierName) && isDelivered && !isSettled;
+              return (assigned == courierName || name == courierName) &&
+                  isDelivered &&
+                  !isSettled;
             }).toList();
 
             double totalCourierEarnings = 0.0;
             for (var order in courierUnsettledOrders) {
-              totalCourierEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+              totalCourierEarnings +=
+                  double.tryParse(order['delivery_fee']?.toString() ?? '0') ??
+                      0.0;
             }
 
             double adminCommission = totalCourierEarnings * 0.20;
@@ -427,25 +541,40 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.two_wheeler, color: Colors.amber, size: 24),
+                            const Icon(Icons.two_wheeler,
+                                color: Colors.amber, size: 24),
                             const SizedBox(width: 10),
-                            Text(courierName.isNotEmpty ? courierName : 'مندوب', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text(
+                                courierName.isNotEmpty
+                                    ? courierName
+                                    : 'مندوب',
+                                style: const TextStyle(
+                                    color: Colors.amber,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16)),
                           ],
                         ),
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: Colors.green.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: Colors.green),
                               ),
-                              child: Text('📞 ${courier['phone'] ?? 'غير متوفر'}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                              child: Text(
+                                  '📞 ${courier['phone'] ?? 'غير متوفر'}',
+                                  style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold)),
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.delete_sweep, color: Colors.redAccent, size: 24),
+                              icon: const Icon(Icons.delete_sweep,
+                                  color: Colors.redAccent, size: 24),
                               tooltip: 'تصفير الحساب والعمولات',
                               onPressed: () {
                                 showDialog(
@@ -454,25 +583,60 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                     textDirection: TextDirection.rtl,
                                     child: AlertDialog(
                                       backgroundColor: const Color(0xFF1E1E1E),
-                                      title: const Text('تصفير حساب المندوب ⚠️', style: TextStyle(color: Colors.amber, fontSize: 16)),
-                                      content: Text('هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\nسيتم تصفير العداد للبدء من جديد.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                      title: const Text(
+                                          'تصفير حساب المندوب ⚠️',
+                                          style: TextStyle(
+                                              color: Colors.amber,
+                                              fontSize: 16)),
+                                      content: Text(
+                                          'هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\nسيتم تصفير العداد للبدء من جديد.',
+                                          style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 13)),
                                       actions: [
                                         TextButton(
                                           onPressed: () => Navigator.pop(ctx),
-                                          child: const Text('لا', style: TextStyle(color: Colors.grey)),
+                                          child: const Text('لا',
+                                              style:
+                                                  TextStyle(color: Colors.grey)),
                                         ),
                                         ElevatedButton(
-                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.redAccent,
+                                              foregroundColor: Colors.white),
                                           onPressed: () async {
                                             Navigator.pop(ctx);
-                                            await appState.settleCourierEarnings(courierName);
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('تم تصفير حساب المندوب $courierName بنجاح ✅')),
-                                              );
+                                            try {
+                                              await appState
+                                                  .settleCourierEarnings(
+                                                      courierName);
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                      content: Text(
+                                                          'تم تصفير حساب المندوب $courierName بنجاح ✅')),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(e
+                                                        .toString()
+                                                        .replaceAll(
+                                                            'Exception: ',
+                                                            '')),
+                                                    backgroundColor:
+                                                        Colors.orange,
+                                                  ),
+                                                );
+                                              }
                                             }
                                           },
-                                          child: const Text('نعم، تصفير الحساب'),
+                                          child:
+                                              const Text('نعم، تصفير الحساب'),
                                         ),
                                       ],
                                     ),
@@ -488,9 +652,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStatColumn('طلبات غير مسوية', '${courierUnsettledOrders.length} طلب', Colors.white70),
-                        _buildStatColumn('إجمالي التوصيل', '${totalCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.amber),
-                        _buildStatColumn('صافي المندوب (80%)', '${netCourierEarnings.toStringAsFixed(0)} ر.ي', Colors.greenAccent),
+                        _buildStatColumn(
+                            'طلبات غير مسوية',
+                            '${courierUnsettledOrders.length} طلب',
+                            Colors.white70),
+                        _buildStatColumn(
+                            'إجمالي التوصيل',
+                            '${totalCourierEarnings.toStringAsFixed(0)} ر.ي',
+                            Colors.amber),
+                        _buildStatColumn(
+                            'صافي المندوب (80%)',
+                            '${netCourierEarnings.toStringAsFixed(0)} ر.ي',
+                            Colors.greenAccent),
                       ],
                     ),
                   ],
@@ -508,20 +681,28 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       children: [
         Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11)),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(value,
+            style: TextStyle(
+                color: valueColor, fontWeight: FontWeight.bold, fontSize: 14)),
       ],
     );
   }
 
   Widget _buildSettingsTab(AppState appState) {
-    final startHourController = TextEditingController(text: appState.startHour.toString());
-    final endHourController = TextEditingController(text: appState.endHour.toString());
+    final startHourController =
+        TextEditingController(text: appState.startHour.toString());
+    final endHourController =
+        TextEditingController(text: appState.endHour.toString());
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: ListView(
         children: [
-          const Text('إعدادات ومواعيد عمل التطبيق ⏰', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('إعدادات ومواعيد عمل التطبيق ⏰',
+              style: TextStyle(
+                  color: Colors.amber,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(16),
@@ -533,7 +714,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('تحديد ساعات فتح وإغلاق التطبيق يومياً:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const Text('تحديد ساعات فتح وإغلاق التطبيق يومياً:',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -542,7 +724,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         controller: startHourController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(labelText: 'ساعة الفتح (مثال: 8)', labelStyle: TextStyle(color: Colors.grey), border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                            labelText: 'ساعة الفتح (مثال: 8)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                            border: OutlineInputBorder()),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -551,25 +736,35 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         controller: endHourController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(labelText: 'ساعة الإغلاق (مثال: 23)', labelStyle: TextStyle(color: Colors.grey), border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                            labelText: 'ساعة الإغلاق (مثال: 23)',
+                            labelStyle: TextStyle(color: Colors.grey),
+                            border: OutlineInputBorder()),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 14),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 44)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.amber,
+                      minimumSize: const Size(double.infinity, 44)),
                   onPressed: () async {
                     int? newStart = int.tryParse(startHourController.text);
                     int? newEnd = int.tryParse(endHourController.text);
                     if (newStart != null && newEnd != null) {
                       await appState.updateStoreHours(newStart, newEnd);
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث أوقات العمل بنجاح ✅')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('تم تحديث أوقات العمل بنجاح ✅')));
                       }
                     }
                   },
-                  child: const Text('حفظ وتحديث أوقات العمل 💾', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  child: const Text('حفظ وتحديث أوقات العمل 💾',
+                      style: TextStyle(
+                          color: Colors.black, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -577,19 +772,27 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const SizedBox(height: 16),
           ListTile(
             tileColor: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             leading: const Icon(Icons.star, color: Colors.amber),
-            title: const Text('عرض تقييمات المطاعم الشهرية ⭐', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            title: const Text('عرض تقييمات المطاعم الشهرية ⭐',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios,
+                size: 16, color: Colors.grey),
             onTap: () => _showRestaurantRatingsDialog(context),
           ),
           const SizedBox(height: 10),
           ListTile(
             tileColor: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             leading: const Icon(Icons.campaign, color: Colors.amber),
-            title: const Text('إدارة البنرات الترويجية 📢', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            title: const Text('إدارة البنرات الترويجية 📢',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.arrow_forward_ios,
+                size: 16, color: Colors.grey),
             onTap: () => _showBannersManagementDialog(context, appState),
           ),
         ],
@@ -612,7 +815,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           SizedBox(width: 8),
           Text(
             'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
-            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -623,7 +827,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
-    final int totalCompletedOrdersCount = appState.orders.where((o) => o['status'] == 'delivered').length;
+    final int totalCompletedOrdersCount =
+        appState.orders.where((o) => o['status'] == 'delivered').length;
 
     final List<Widget> adminPages = [
       _buildOrdersManagementWithTabs(appState),
@@ -640,13 +845,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
           elevation: 2,
-          title: const Text('لوحة تحكم المشرف FAST', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          title: const Text('لوحة تحكم المشرف FAST',
+              style: TextStyle(
+                  color: Colors.amber,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold)),
           actions: [
             Stack(
               alignment: Alignment.center,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
+                  icon: const Icon(Icons.notifications_active,
+                      color: Colors.amber, size: 24),
                   tooltip: 'سجل الإشعارات والطلبات الجديدة',
                   onPressed: () {
                     showDialog(
@@ -659,38 +869,58 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             children: [
                               Icon(Icons.notifications, color: Colors.amber),
                               SizedBox(width: 8),
-                              Text('إشعارات النظام الفورية 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                              Text('إشعارات النظام الفورية 🛎️',
+                                  style: TextStyle(
+                                      color: Colors.amber, fontSize: 16)),
                             ],
                           ),
                           content: SizedBox(
                             width: double.maxFinite,
                             height: 350,
                             child: appState.notifications.isEmpty
-                                ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
+                                ? const Center(
+                                    child: Text(
+                                        'لا توجد إشعارات جديدة حالياً 📭',
+                                        style: TextStyle(color: Colors.grey)))
                                 : ListView.builder(
-                              itemCount: appState.notifications.length,
-                              itemBuilder: (_, idx) {
-                                final notif = appState.notifications[idx];
-                                return Card(
-                                  color: const Color(0xFF121212),
-                                  margin: const EdgeInsets.symmetric(vertical: 4),
-                                  child: ListTile(
-                                    title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-                                    subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                    trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      _handleAdminNotificationTap(context, notif);
+                                    itemCount: appState.notifications.length,
+                                    itemBuilder: (_, idx) {
+                                      final notif = appState.notifications[idx];
+                                      return Card(
+                                        color: const Color(0xFF121212),
+                                        margin: const EdgeInsets.symmetric(
+                                            vertical: 4),
+                                        child: ListTile(
+                                          title: Text(
+                                              notif['title']?.toString() ?? '',
+                                              style: const TextStyle(
+                                                  color: Colors.amber,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13)),
+                                          subtitle: Text(
+                                              notif['body']?.toString() ?? '',
+                                              style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 12)),
+                                          trailing: const Icon(
+                                              Icons.arrow_forward_ios,
+                                              color: Colors.amber,
+                                              size: 14),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            _handleAdminNotificationTap(
+                                                context, notif);
+                                          },
+                                        ),
+                                      );
                                     },
                                   ),
-                                );
-                              },
-                            ),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
-                              child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                              child: const Text('إغلاق',
+                                  style: TextStyle(color: Colors.grey)),
                             ),
                           ],
                         ),
@@ -698,17 +928,24 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     );
                   },
                 ),
-                if (appState.orders.where((o) => o['status'] == 'waitingForPricing').isNotEmpty)
+                if (appState.orders
+                    .where((o) => o['status'] == 'waitingForPricing')
+                    .isNotEmpty)
                   Positioned(
                     top: 8,
                     right: 8,
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      decoration: const BoxDecoration(
+                          color: Colors.red, shape: BoxShape.circle),
+                      constraints:
+                          const BoxConstraints(minWidth: 18, minHeight: 18),
                       child: Text(
                         '${appState.orders.where((o) => o['status'] == 'waitingForPricing').length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -738,22 +975,32 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+                        border: Border.all(
+                            color: Colors.amber.withOpacity(0.4), width: 1.5),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), shape: BoxShape.circle),
-                            child: const Icon(Icons.remove_red_eye, color: Colors.amber, size: 20),
+                            decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.2),
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.remove_red_eye,
+                                color: Colors.amber, size: 20),
                           ),
                           const SizedBox(width: 10),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('إجمالي الزوار', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              const Text('إجمالي الزوار',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 11)),
                               const SizedBox(height: 2),
-                              Text('${appState.totalVisitorsCount} زائر', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('${appState.totalVisitorsCount} زائر',
+                                  style: const TextStyle(
+                                      color: Colors.amber,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
                             ],
                           ),
                         ],
@@ -767,22 +1014,32 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.green.withOpacity(0.4), width: 1.5),
+                        border: Border.all(
+                            color: Colors.green.withOpacity(0.4), width: 1.5),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), shape: BoxShape.circle),
-                            child: const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                            decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.check_circle,
+                                color: Colors.greenAccent, size: 20),
                           ),
                           const SizedBox(width: 10),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('الطلبات المكتملة', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                              const Text('الطلبات المكتملة',
+                                  style: TextStyle(
+                                      color: Colors.grey, fontSize: 11)),
                               const SizedBox(height: 2),
-                              Text('$totalCompletedOrdersCount طلب', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('$totalCompletedOrdersCount طلب',
+                                  style: const TextStyle(
+                                      color: Colors.greenAccent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
                             ],
                           ),
                         ],
@@ -805,11 +1062,16 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           unselectedItemColor: Colors.grey,
           type: BottomNavigationBarType.fixed,
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'الطلبات'),
-            BottomNavigationBarItem(icon: Icon(Icons.fastfood), label: 'المنتجات'),
-            BottomNavigationBarItem(icon: Icon(Icons.delivery_dining), label: 'المناديب'),
-            BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'التقارير'),
-            BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'الإعدادات'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.receipt_long), label: 'الطلبات'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.fastfood), label: 'المنتجات'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.delivery_dining), label: 'المناديب'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart), label: 'التقارير'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.settings), label: 'الإعدادات'),
           ],
         ),
       ),
@@ -817,9 +1079,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   }
 
   Widget _buildOrdersManagementWithTabs(AppState appState) {
-    final activeOrders = appState.orders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
-    final completedOrders = appState.orders.where((o) => o['status'] == 'delivered').toList();
-    final cancelledOrders = appState.orders.where((o) => o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer').toList();
+    final activeOrders = appState.orders
+        .where((o) =>
+            o['status'] != 'delivered' &&
+            o['status'] != 'cancelled' &&
+            o['status'] != 'cancelledByCustomer')
+        .toList();
+    final completedOrders =
+        appState.orders.where((o) => o['status'] == 'delivered').toList();
+    final cancelledOrders = appState.orders
+        .where((o) =>
+            o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer')
+        .toList();
 
     return Column(
       children: [
@@ -841,9 +1112,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           child: TabBarView(
             controller: _ordersTabController,
             children: [
-              _buildOrdersList(appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
-              _buildOrdersList(appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
-              _buildOrdersList(appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
+              _buildOrdersList(
+                  appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
+              _buildOrdersList(
+                  appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
+              _buildOrdersList(
+                  appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
             ],
           ),
         ),
@@ -851,9 +1125,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildOrdersList(AppState appState, List ordersList, String emptyMessage) {
+  Widget _buildOrdersList(
+      AppState appState, List ordersList, String emptyMessage) {
     if (ordersList.isEmpty) {
-      return Center(child: Text(emptyMessage, style: const TextStyle(color: Colors.grey, fontSize: 15)));
+      return Center(
+          child: Text(emptyMessage,
+              style: const TextStyle(color: Colors.grey, fontSize: 15)));
     }
 
     return ListView.builder(
@@ -862,37 +1139,40 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       itemBuilder: (context, index) {
         final order = ordersList[index];
         final orderId = order['id'].toString();
-        final rawStatus = order['status'] ?? '';
+        final intOrderId = int.tryParse(orderId);
+        final rawStatus = order['status']?.toString() ?? '';
         final arabicStatus = _getArabicStatus(rawStatus);
 
         final bool isWaitingPricing = rawStatus == 'waitingForPricing';
 
-        final double productsPrice = double.tryParse(
-            order['total_price']?.toString() ??
+        final double productsPrice = double.tryParse(order['products_total']?.toString() ??
+                order['total_price']?.toString() ??
                 order['items_price']?.toString() ??
-                order['products_total']?.toString() ??
-                order['products_price']?.toString() ?? '0'
-        ) ?? 0.0;
+                order['products_price']?.toString() ??
+                '0') ??
+            0.0;
 
-        final double deliveryFeeAmount = double.tryParse(
-            order['delivery_fee']?.toString() ?? '0'
-        ) ?? 0.0;
+        final double deliveryFeeAmount =
+            double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
 
         final double dbTotalAmount = double.tryParse(
-            order['total_amount']?.toString() ??
-                order['total']?.toString() ?? '0'
-        ) ?? 0.0;
+                order['total_amount']?.toString() ??
+                    order['total']?.toString() ??
+                    '0') ??
+            0.0;
 
-        final double finalProductsPrice = (productsPrice <= 0 && dbTotalAmount > deliveryFeeAmount)
-            ? (dbTotalAmount - deliveryFeeAmount)
-            : productsPrice;
+        final double finalProductsPrice =
+            (productsPrice <= 0 && dbTotalAmount > deliveryFeeAmount)
+                ? (dbTotalAmount - deliveryFeeAmount)
+                : productsPrice;
 
         final double grandTotal = dbTotalAmount > 0
             ? dbTotalAmount
             : (finalProductsPrice + deliveryFeeAmount);
 
         if (!_feeControllers.containsKey(orderId)) {
-          _feeControllers[orderId] = TextEditingController(text: order['delivery_fee']?.toString() ?? '0');
+          _feeControllers[orderId] = TextEditingController(
+              text: order['delivery_fee']?.toString() ?? '0');
         }
 
         return Card(
@@ -901,7 +1181,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: isWaitingPricing ? Colors.amber : Colors.green.withOpacity(0.4), width: 1.5),
+            side: BorderSide(
+                color: isWaitingPricing
+                    ? Colors.amber
+                    : Colors.green.withOpacity(0.4),
+                width: 1.5),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -909,7 +1193,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                  builder: (context) =>
+                      OrderTrackingScreen(orderIdParam: orderId),
                 ),
               );
             },
@@ -921,13 +1206,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('طلب #$orderId',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16)),
                       Row(
                         children: [
-                          // 🗑️ زر حذف الطلب للمشرف فقط مع رسالة تأكيد (هل تريد الحذف حقاً؟)
                           IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.red.withOpacity(0.2)),
-                            icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 20),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.red.withOpacity(0.2)),
+                            icon: const Icon(Icons.delete_forever,
+                                color: Colors.redAccent, size: 20),
                             tooltip: 'حذف الطلب',
                             onPressed: () {
                               showDialog(
@@ -938,34 +1228,59 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                                     backgroundColor: const Color(0xFF1E1E1E),
                                     title: const Row(
                                       children: [
-                                        Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                        Icon(Icons.warning_amber_rounded,
+                                            color: Colors.redAccent),
                                         SizedBox(width: 8),
-                                        Text('تأكيد الحذف 🗑️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                                        Text('تأكيد الحذف 🗑️',
+                                            style: TextStyle(
+                                                color: Colors.amber,
+                                                fontSize: 16)),
                                       ],
                                     ),
-                                    content: Text('هل تريد الحذف حقاً للطلب #$orderId؟\n(لن يمكنك التراجع عن هذا الإجراء بعد الحذف).', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                    content: Text(
+                                        'هل تريد الحذف حقاً للطلب #$orderId؟\n(لن يمكنك التراجع عن هذا الإجراء بعد الحذف).',
+                                        style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13)),
                                     actions: [
                                       TextButton(
                                         onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                                        child: const Text('إلغاء',
+                                            style:
+                                                TextStyle(color: Colors.grey)),
                                       ),
                                       ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.redAccent,
+                                            foregroundColor: Colors.white),
                                         onPressed: () async {
                                           Navigator.pop(ctx);
                                           try {
-                                            await Supabase.instance.client.from('orders').delete().eq('id', orderId);
-                                            await appState.fetchProductsFromSupabase(); // إعادة تحديث البيانات
-                                            setState(() {});
+                                            if (intOrderId != null) {
+                                              await Supabase.instance.client
+                                                  .from('orders')
+                                                  .delete()
+                                                  .eq('id', intOrderId);
+                                            }
+                                            await appState.fetchOrders();
                                             if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('تم حذف الطلب #$orderId بنجاح ✅'), backgroundColor: Colors.green),
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                    content: Text(
+                                                        'تم حذف الطلب #$orderId بنجاح ✅'),
+                                                    backgroundColor:
+                                                        Colors.green),
                                               );
                                             }
                                           } catch (e) {
                                             if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('فشل حذف الطلب: $e'), backgroundColor: Colors.red),
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                    content: Text(
+                                                        'فشل حذف الطلب: $e'),
+                                                    backgroundColor: Colors.red),
                                               );
                                             }
                                           }
@@ -980,58 +1295,100 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           ),
                           const SizedBox(width: 4),
                           IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
-                            icon: const Icon(Icons.map, color: Colors.amber, size: 20),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.amber.withOpacity(0.2)),
+                            icon: const Icon(Icons.map,
+                                color: Colors.amber, size: 20),
                             tooltip: 'تتبع الطلب',
                             onPressed: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                                  builder: (context) =>
+                                      OrderTrackingScreen(orderIdParam: orderId),
                                 ),
                               );
                             },
                           ),
                           const SizedBox(width: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: isWaitingPricing ? Colors.amber.withOpacity(0.15) : Colors.green.withOpacity(0.2),
+                              color: isWaitingPricing
+                                  ? Colors.amber.withOpacity(0.15)
+                                  : Colors.green.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isWaitingPricing ? Colors.amber : Colors.green),
+                              border: Border.all(
+                                  color: isWaitingPricing
+                                      ? Colors.amber
+                                      : Colors.green),
                             ),
-                            child: Text(arabicStatus, style: TextStyle(color: isWaitingPricing ? Colors.amber : Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                            child: Text(arabicStatus,
+                                style: TextStyle(
+                                    color: isWaitingPricing
+                                        ? Colors.amber
+                                        : Colors.greenAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
                     ],
                   ),
                   const Divider(color: Colors.white12, height: 16),
-                  Text('👤 العميل: ${order['customer_name'] ?? 'غير معروف'} \n📞 ${order['phone'] ?? ''}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(
+                      '👤 العميل: ${order['customer_name'] ?? 'غير معروف'} \n📞 ${order['phone'] ?? ''}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
                   const SizedBox(height: 6),
-                  Text('📍 العنوان: ${order['address'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text('📍 العنوان: ${order['address'] ?? ''}',
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 6),
-                  Text('🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}', style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                  Text(
+                      '🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}',
+                      style: const TextStyle(
+                          color: Colors.amberAccent, fontSize: 12)),
                   const Divider(color: Colors.white12, height: 16),
-
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text(
+                            '🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 4),
-                        Text('🏍️ رسوم التوصيل: ${deliveryFeeAmount.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text(
+                            '🏍️ رسوم التوصيل: ${deliveryFeeAmount.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.amber,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold)),
                         const Divider(color: Colors.white12, height: 8),
-                        Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(
+                            '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.greenAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-
                   if (isWaitingPricing) ...[
-                    const Text('⚙️ تسعير الطلب وتعيين المندوب:', style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const Text('⚙️ تسعير الطلب وتعيين المندوب:',
+                        style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -1042,7 +1399,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
                               labelText: 'رسوم التوصيل (ر.ي)',
-                              labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                              labelStyle:
+                                  TextStyle(color: Colors.grey, fontSize: 12),
                               border: OutlineInputBorder(),
                               isDense: true,
                             ),
@@ -1051,21 +1409,27 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         const SizedBox(width: 8),
                         Expanded(
                           child: FutureBuilder<List<dynamic>>(
-                            future: Supabase.instance.client.from('couriers').select(),
+                            future:
+                                Supabase.instance.client.from('couriers').select(),
                             builder: (context, courierSnapshot) {
                               final couriersList = courierSnapshot.data ?? [];
                               return DropdownButtonFormField<String>(
                                 value: _selectedCouriersForOrder[orderId],
                                 dropdownColor: const Color(0xFF1E1E1E),
-                                style: const TextStyle(color: Colors.white, fontSize: 12),
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 12),
                                 decoration: const InputDecoration(
                                   labelText: 'اختر المندوب',
-                                  labelStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                                  labelStyle: TextStyle(
+                                      color: Colors.grey, fontSize: 12),
                                   border: OutlineInputBorder(),
                                   isDense: true,
                                 ),
-                                items: couriersList.map<DropdownMenuItem<String>>((courier) {
-                                  String name = courier['name']?.toString() ?? courier['full_name']?.toString() ?? 'مندوب';
+                                items: couriersList
+                                    .map<DropdownMenuItem<String>>((courier) {
+                                  String name = courier['name']?.toString() ??
+                                      courier['full_name']?.toString() ??
+                                      'مندوب';
                                   return DropdownMenuItem<String>(
                                     value: name,
                                     child: Text(name),
@@ -1092,24 +1456,38 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                         minimumSize: const Size(double.infinity, 38),
                       ),
                       onPressed: () async {
-                        double? fee = double.tryParse(_feeControllers[orderId]?.text ?? '0');
-                        String? selectedCourier = _selectedCouriersForOrder[orderId];
+                        double? fee = double.tryParse(
+                            _feeControllers[orderId]?.text ?? '0');
+                        String? selectedCourier =
+                            _selectedCouriersForOrder[orderId];
 
                         if (fee == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
                           return;
                         }
-                        if (selectedCourier == null || selectedCourier.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
+                        if (selectedCourier == null ||
+                            selectedCourier.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
                           return;
                         }
 
-                        await appState.setOrderDeliveryFee(orderId, fee, selectedCourier);
+                        await appState.setOrderDeliveryFee(
+                            orderId, fee, selectedCourier);
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
                         }
                       },
-                      child: const Text('إرسال التسعير وتعيين المندوب 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text('إرسال التسعير وتعيين المندوب 🚀',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ],
