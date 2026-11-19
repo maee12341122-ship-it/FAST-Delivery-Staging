@@ -30,19 +30,29 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
 
   void _add() {
     if (!_formKey.currentState!.validate()) return;
+
+    final String name = _nameController.text.trim();
+    final int price = int.parse(_priceController.text.trim());
+    final int quantity = int.parse(_quantityController.text.trim());
+    final String notes = _notesController.text.trim();
+
     context.read<AppState>().addCustomItem(
-          name: _nameController.text,
-          price: int.parse(_priceController.text),
-          quantity: int.parse(_quantityController.text),
-          notes: _notesController.text,
+          name: name,
+          price: price,
+          quantity: quantity,
+          notes: notes,
         );
+
     _nameController.clear();
     _priceController.clear();
     _quantityController.text = '1';
     _notesController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('أُضيف الطلب الخاص إلى السلة بنجاح! 🛒')),
-    );
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(content: Text('أُضيف الطلب الخاص إلى السلة بنجاح! 🛒')),
+      );
   }
 
   @override
@@ -58,7 +68,14 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
               children: [
                 Icon(Icons.edit_note, color: AppConstants.gold, size: 24),
                 SizedBox(width: 8),
-                Text('طلبات خاصة وخدمات أخرى', style: TextStyle(color: AppConstants.gold, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(
+                  'طلبات خاصة وخدمات أخرى',
+                  style: TextStyle(
+                    color: AppConstants.gold,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -76,7 +93,10 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Color(0xFF1E1E1E),
-                prefixIcon: Icon(Icons.shopping_bag_outlined, color: AppConstants.gold),
+                prefixIcon: Icon(
+                  Icons.shopping_bag_outlined,
+                  color: AppConstants.gold,
+                ),
               ),
               validator: (value) => Validators.requiredText(value),
             ),
@@ -91,10 +111,16 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Color(0xFF1E1E1E),
-                prefixIcon: Icon(Icons.attach_money, color: AppConstants.gold),
+                prefixIcon: Icon(
+                  Icons.attach_money,
+                  color: AppConstants.gold,
+                ),
               ),
               validator: (value) {
-                if (value == null || int.tryParse(value) == null || int.parse(value) < 0) return 'أدخل سعراً صحيحاً';
+                final parsed = int.tryParse((value ?? '').trim());
+                if (parsed == null || parsed < 0) {
+                  return 'أدخل سعراً صحيحاً';
+                }
                 return null;
               },
             ),
@@ -109,10 +135,16 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: Color(0xFF1E1E1E),
-                prefixIcon: Icon(Icons.format_list_numbered, color: AppConstants.gold),
+                prefixIcon: Icon(
+                  Icons.format_list_numbered,
+                  color: AppConstants.gold,
+                ),
               ),
               validator: (value) {
-                if (value == null || int.tryParse(value) == null || int.parse(value) < 1) return 'أدخل كمية صحيحة';
+                final parsed = int.tryParse((value ?? '').trim());
+                if (parsed == null || parsed < 1) {
+                  return 'أدخل كمية صحيحة';
+                }
                 return null;
               },
             ),
@@ -136,11 +168,16 @@ class _CustomOrderWidgetState extends State<CustomOrderWidget> {
                 backgroundColor: AppConstants.gold,
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               onPressed: _add,
               icon: const Icon(Icons.add_shopping_cart, color: Colors.black),
-              label: const Text('إضافة الطلب إلى السلة 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              label: const Text(
+                'إضافة الطلب إلى السلة 🚀',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
           ],
         ),
