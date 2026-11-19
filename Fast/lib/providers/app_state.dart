@@ -123,7 +123,7 @@ class AppState extends ChangeNotifier {
     supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
       isAdminLoggedIn = session != null;
-      
+
       if (session != null) {
         await _loadCourierSession();
       } else {
@@ -251,7 +251,7 @@ class AppState extends ChangeNotifier {
     if (previousState && !isConnectedToInternet) {
       addLocalNotification(
         '⚠️ تم انقطاع الإنترنت',
-        '', // تم إزالة النص التفصيلي بناءً على طلبك
+        '',
         type: 'network_alert',
       );
     } else if (!previousState && isConnectedToInternet) {
@@ -337,10 +337,10 @@ class AppState extends ChangeNotifier {
 
     try {
       final response = await ApiService.validateCoupon(code.trim(), cartSubtotal);
-      
+
       couponDiscountAmount = double.tryParse(response['discount_amount'].toString()) ?? 0.0;
       activeCouponCode = response['code'];
-      
+
       notifyListeners();
       return response['message'] ?? 'تم تطبيق الكوبون بنجاح! 🎉';
     } catch (e) {
@@ -404,7 +404,7 @@ class AppState extends ChangeNotifier {
           .select('restaurant_rating, restaurant_review')
           .eq('id', orderId.toString())
           .maybeSingle();
-      
+
       if (response != null && response['restaurant_rating'] != null) {
         return Map<String, dynamic>.from(response);
       }
@@ -770,11 +770,37 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  Future<void> requestLocationAndNotificationPermissions() async {
+  /// 📍 التحقق من حالة تشغيل الموقع وطلب الإذن والصلاحيات
+  Future<bool> isLocationServiceEnabled() async {
+    return await Geolocator.isLocationServiceEnabled();
+  }
+
+  Future<bool> openLocationSettingsDirectly() async {
+    return await Geolocator.openLocationSettings();
+  }
+
+  Future<bool> openAppSettingsDirectly() async {
+    return await Geolocator.openAppSettings();
+  }
+
+  Future<bool> requestLocationAndNotificationPermissions({bool openSettingsIfDisabled = false}) async {
+    bool locationReady = false;
     try {
-      LocationPermission locationPermission = await Geolocator.checkPermission();
-      if (locationPermission == LocationPermission.denied) {
-        locationPermission = await Geolocator.requestPermission();
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (openSettingsIfDisabled) {
+          await Geolocator.openLocationSettings();
+        }
+      } else {
+        LocationPermission locationPermission = await Geolocator.checkPermission();
+        if (locationPermission == LocationPermission.denied) {
+          locationPermission = await Geolocator.requestPermission();
+        }
+        if (locationPermission == LocationPermission.deniedForever && openSettingsIfDisabled) {
+          await Geolocator.openAppSettings();
+        }
+        locationReady = locationPermission == LocationPermission.always ||
+            locationPermission == LocationPermission.whileInUse;
       }
 
       PermissionStatus notificationStatus = await Permission.notification.status;
@@ -792,6 +818,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ خطأ في الأذونات: $e');
     }
+    return locationReady;
   }
 
   Future<void> fetchStoreSettings() async {
@@ -1029,12 +1056,10 @@ class AppState extends ChangeNotifier {
 
       final expiresAt = DateTime.now().add(const Duration(minutes: 5)).toIso8601String();
 
-      // حذف أي رموز قديمة لنفس الرقم
       try {
         await supabase.from('otp_codes').delete().eq('phone_number', cleanPhone);
       } catch (_) {}
 
-      // إدراج الرمز الجديد في جدول otp_codes
       await supabase.from('otp_codes').insert({
         'phone_number': cleanPhone,
         'otp_code': otp,
@@ -1042,7 +1067,6 @@ class AppState extends ChangeNotifier {
         'is_used': false,
       });
 
-      // إرسال الكود فعلياً عبر رقم الشغل باستخدام دالة الـ ApiService الجديدة
       await ApiService.sendRealWhatsAppOtp(
         phone: cleanPhone,
         otpCode: otp,
@@ -1065,7 +1089,6 @@ class AppState extends ChangeNotifier {
       final cleanPhone = _normalizePhone(phone);
       final trimmedOtp = enteredOtp.trim();
 
-      // البحث عن الرمز في جدول otp_codes
       final response = await supabase
           .from('otp_codes')
           .select()
@@ -1075,14 +1098,12 @@ class AppState extends ChangeNotifier {
           .maybeSingle();
 
       if (response != null) {
-        // تحديث الرمز ليصبح مستخدماً لمرة واحدة فقط
         await supabase.from('otp_codes').update({'is_used': true}).eq('id', response['id']);
 
         await checkAndLoginCustomer(phone);
         return true;
       }
 
-      // دعم احتياطي للرمز المحلي المؤقت
       if (generatedDynamicOtp != null && trimmedOtp == generatedDynamicOtp.toString()) {
         await checkAndLoginCustomer(phone);
         return true;
@@ -1471,7 +1492,7 @@ class AppState extends ChangeNotifier {
             } else {
               orders.add(payload.newRecord);
             }
-            
+
             String newStatus = getArabicStatus(payload.newRecord['status']?.toString());
             String assignedCourier = payload.newRecord['assigned_courier']?.toString() ?? '';
 
@@ -1573,7 +1594,7 @@ class AppState extends ChangeNotifier {
   Future<void> setOrderDeliveryFee(dynamic orderId, double fee, String courierName) async {
     try {
       final orderIndex = orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      
+
       double productsTotal = 0.0;
       if (orderIndex != -1) {
         productsTotal = double.tryParse(orders[orderIndex]['products_total']?.toString() ?? orders[orderIndex]['total_price']?.toString() ?? '0') ?? 0.0;
