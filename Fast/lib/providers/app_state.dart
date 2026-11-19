@@ -779,6 +779,7 @@ class AppState extends ChangeNotifier {
     required String orderId,
     required double rating,
     required String reviewText,
+    String? restaurantName,
   }) async {
     try {
       final intOrderId = int.tryParse(orderId);
@@ -787,7 +788,7 @@ class AppState extends ChangeNotifier {
       }
       final customerPhone = _requireCustomerPhoneForRating(intOrderId);
 
-      var targetId = 'restaurant';
+      var targetId = (restaurantName ?? '').trim();
       final orderIndex =
           orders.indexWhere((o) => o['id'].toString() == orderId.toString());
       if (orderIndex != -1) {
@@ -795,9 +796,14 @@ class AppState extends ChangeNotifier {
             orders[orderIndex]['restaurant_id']?.toString().trim() ?? '';
         final restName =
             orders[orderIndex]['restaurant_name']?.toString().trim() ?? '';
-        targetId = restId.isNotEmpty
-            ? restId
-            : (restName.isNotEmpty ? restName : 'restaurant');
+        if (restId.isNotEmpty) {
+          targetId = restId;
+        } else if (targetId.isEmpty && restName.isNotEmpty) {
+          targetId = restName;
+        }
+      }
+      if (targetId.isEmpty) {
+        targetId = 'restaurant';
       }
 
       final existing = await supabase
