@@ -63,7 +63,7 @@ class AdminOrdersTab extends StatelessWidget {
     final orders = context
         .watch<AppState>()
         .orders
-        .whereType()
+        .whereType>()
         .map((row) => OrderModel.fromJson(Map<String, dynamic>.from(row)))
         .toList();
 
@@ -90,7 +90,7 @@ class _AdminOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final courier = state.couriers
-        .whereType()
+        .whereType>()
         .map(
           (row) => DeliveryModel(
             id: row['id']?.toString() ?? '',
@@ -280,7 +280,7 @@ class _AdminOrderCard extends StatelessWidget {
   Future<void> _assignCourier(BuildContext context, String orderId) async {
     final state = context.read<AppState>();
     final available = state.couriers
-        .whereType()
+        .whereType>()
         .map(
           (row) => DeliveryModel(
             id: row['id']?.toString() ?? '',
@@ -513,6 +513,7 @@ class AdminCouriersTab extends StatelessWidget {
                               await NotificationService.saveUserPlayerId(
                                 courier.id,
                                 'couriers',
+                                identifierValue: courier.phone,
                               );
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -659,8 +660,8 @@ class AdminCouriersTab extends StatelessWidget {
                     backgroundColor: AppConstants.gold,
                     foregroundColor: Colors.black,
                   ),
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, formKey.currentState!.validate()),
+                  onPressed: () => Navigator.pop(
+                      dialogContext, formKey.currentState!.validate()),
                   child: const Text('حفظ'),
                 ),
               ],
@@ -769,10 +770,10 @@ class AdminCouriersTab extends StatelessWidget {
                         }
                       },
                       decoration: const InputDecoration(
-                        labelText: 'كلمة مرور مؤقتة (10 أحرف على الأقل)',
+                        labelText: 'كلمة مرور مؤقتة (6 أحرف على الأقل)',
                       ),
-                      validator: (v) => (v == null || v.length < 10)
-                          ? '10 أحرف على الأقل'
+                      validator: (v) => (v == null || v.length < 6)
+                          ? '6 أحرف على الأقل'
                           : null,
                     ),
                   ],
@@ -791,8 +792,8 @@ class AdminCouriersTab extends StatelessWidget {
                     backgroundColor: AppConstants.gold,
                     foregroundColor: Colors.black,
                   ),
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, formKey.currentState!.validate()),
+                  onPressed: () => Navigator.pop(
+                      dialogContext, formKey.currentState!.validate()),
                   child: const Text('حفظ'),
                 ),
               ],
