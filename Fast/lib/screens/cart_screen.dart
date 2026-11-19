@@ -59,6 +59,8 @@ class _CartScreenState extends State<CartScreen> {
     if (_isSubmitting) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    FocusScope.of(dialogContext).unfocus();
+
     final itemsDescription = appState.cartItems
         .map((item) => '${item.name} (${item.quantity})')
         .join(', ');
@@ -78,7 +80,9 @@ class _CartScreenState extends State<CartScreen> {
         paymentAccount: 'نقدي',
       );
       if (!context.mounted) return;
-      Navigator.pop(dialogContext);
+      if (Navigator.canPop(dialogContext)) {
+        Navigator.pop(dialogContext);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -94,7 +98,7 @@ class _CartScreenState extends State<CartScreen> {
       }
     } finally {
       _isSubmitting = false;
-      if (mounted) {
+      if (dialogContext.mounted) {
         try {
           setDialogState(() {});
         } catch (_) {}
@@ -103,6 +107,7 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   void _showCheckoutDialog(BuildContext context, AppState appState) {
+    if (_isSubmitting) return;
     _isSubmitting = false;
     showDialog(
       context: context,
@@ -211,8 +216,11 @@ class _CartScreenState extends State<CartScreen> {
                         focusNode: _addressFocus,
                         enabled: !_isSubmitting,
                         textInputAction: TextInputAction.done,
-                        onSubmitted: (_) =>
-                            _submitOrder(context, appState, ctx, setDialogState),
+                        onSubmitted: (_) {
+                          if (!_isSubmitting) {
+                            _submitOrder(context, appState, ctx, setDialogState);
+                          }
+                        },
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
                           labelText: 'العنوان التفصيلي (تعز)',
@@ -256,27 +264,6 @@ class _CartScreenState extends State<CartScreen> {
                                 });
                               },
                       ),
-                      if (false && _selectedPaymentMethod != 'cash') ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _accountNumberController,
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            labelText:
-                                'رقم الحساب المحول منه ($_selectedPaymentMethod)',
-                            labelStyle:
-                                const TextStyle(color: Colors.amberAccent),
-                            border: const OutlineInputBorder(),
-                            filled: true,
-                            fillColor: const Color(0xFF121212),
-                          ),
-                          validator: (v) => _selectedPaymentMethod != 'cash' &&
-                                  (v == null || v.trim().isEmpty)
-                              ? 'يرجى إدخال رقم الحساب'
-                              : null,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -451,7 +438,7 @@ class _CartScreenState extends State<CartScreen> {
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12)),
                               ),
-                              onPressed: appState.isStoreOpen
+                              onPressed: (appState.isStoreOpen && !_isSubmitting)
                                   ? () => _showCheckoutDialog(context, appState)
                                   : null,
                               child: Text(
