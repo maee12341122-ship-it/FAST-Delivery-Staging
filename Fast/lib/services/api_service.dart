@@ -23,7 +23,7 @@ class ApiService {
   static final http.Client _httpClient = http.Client();
 
   static const Duration _requestTimeout = Duration(seconds: 20);
-  static const Duration _orderTimeout = Duration(seconds: 3);
+  static const Duration _orderTimeout = Duration(seconds: 4);
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
@@ -219,7 +219,7 @@ class ApiService {
     }
   }
 
-  // 3. تمرير الطلب خلال 3 ثوانٍ كحد أقصى للـ Backend ثم التمرير السريع إلى Supabase
+  // 3. إنشاء الطلب مرة واحدة فقط (مع منع التكرار عبر tracking_code وقفل الإرسال)
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -230,6 +230,7 @@ class ApiService {
     String? paymentMethod,
     String? paymentAccount,
     double? productsTotal,
+    String? trackingCode,
     String? token,
   }) async {
     if (_isCreatingOrder) {
@@ -238,6 +239,10 @@ class ApiService {
     _isCreatingOrder = true;
 
     try {
+      final resolvedTrackingCode = (trackingCode != null && trackingCode.trim().isNotEmpty)
+          ? trackingCode.trim()
+          : (10000000 + Random().nextInt(90000000)).toString();
+
       final sanitizedItems = items.map((item) {
         final rawProductId = item['product_id'] ?? item['id'];
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
@@ -251,6 +256,7 @@ class ApiService {
         'items': sanitizedItems,
         'address': address.trim(),
         'notes': notes.trim(),
+        'tracking_code': resolvedTrackingCode,
         if (customerName != null && customerName.trim().isNotEmpty)
           'customer_name': customerName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
@@ -262,24 +268,46 @@ class ApiService {
           'payment_account': paymentAccount.trim(),
       };
 
-      try {
-        final data = await _sendJsonRequest(
-          method: 'POST',
-          path: '/api/orders',
-          body: payload,
-          explicitToken: token,
-          timeoutOverride: _orderTimeout,
-        );
+      final isLocalDefaultBackend =
+          baseUrl.contains('10.0.2.2') || baseUrl.contains('localhost');
 
-        if (data is Map<String, dynamic>) {
-          return data;
+      if (!isLocalDefaultBackend) {
+        try {
+          final data = await _sendJsonRequest(
+            method: 'POST',
+            path: '/api/orders',
+            body: payload,
+            explicitToken: token,
+            timeoutOverride: _orderTimeout,
+          );
+
+          if (data is Map<String, dynamic>) {
+            return data;
+          }
+        } catch (e) {
+          debugPrint(
+              '⚠️ تعذر الوصول للـ Backend، التمرير الآمن إلى Supabase: $e');
         }
-      } catch (e) {
-        debugPrint(
-            '⚠️ تجاوز مهلة 3 ثوانٍ أو تعذر الوصول للـ Backend، التمرير إلى Supabase: $e');
       }
 
-      final trackingCode = Random().nextDouble().toString().substring(2, 10);
+      // التحقق أولاً من عدم وجود طلب مسبق بنفس رمز التتبع لمنع أي تكرار نهائياً
+      final existingOrder = await _supabase
+          .from('orders')
+          .select()
+          .eq('tracking_code', resolvedTrackingCode)
+          .maybeSingle();
+
+      if (existingOrder != null) {
+        return {
+          'success': true,
+          'order': Map<String, dynamic>.from(existingOrder),
+        };
+      }
+
+      final cleanTotal = (productsTotal != null && productsTotal > 0)
+          ? productsTotal
+          : 0.0;
+
       final inserted = await _supabase
           .from('orders')
           .insert({
@@ -287,11 +315,12 @@ class ApiService {
             'phone': (phone ?? '').trim(),
             'address': address.trim(),
             'items_desc': notes.trim(),
-            'total_price': productsTotal ?? 0.0,
+            'total_price': cleanTotal,
+            'products_total': cleanTotal,
             'payment_method': (paymentMethod ?? 'cash').trim(),
             'payment_account': (paymentAccount ?? 'نقدي').trim(),
             'status': 'waitingForPricing',
-            'tracking_code': trackingCode,
+            'tracking_code': resolvedTrackingCode,
             'created_at': DateTime.now().toIso8601String(),
           })
           .select()
@@ -304,11 +333,13 @@ class ApiService {
               'phone': (phone ?? '').trim(),
               'address': address.trim(),
               'items_desc': notes.trim(),
-              'total_price': productsTotal ?? 0.0,
+              'total_price': cleanTotal,
+              'products_total': cleanTotal,
               'payment_method': (paymentMethod ?? 'cash').trim(),
               'payment_account': (paymentAccount ?? 'نقدي').trim(),
               'status': 'waitingForPricing',
-              'tracking_code': trackingCode,
+              'tracking_code': resolvedTrackingCode,
+              'created_at': DateTime.now().toIso8601String(),
             };
 
       return {
