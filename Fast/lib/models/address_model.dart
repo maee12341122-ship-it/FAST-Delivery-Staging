@@ -17,7 +17,12 @@ class AddressModel {
     this.instructions = '',
   });
 
-  bool get hasCoordinates => latitude != null && longitude != null;
+  bool get hasCoordinates {
+    final lat = latitude;
+    final lng = longitude;
+    if (lat == null || lng == null) return false;
+    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -29,15 +34,35 @@ class AddressModel {
         'instructions': instructions,
       };
 
-  factory AddressModel.fromJson(Map<String, dynamic> json) => AddressModel(
-        id: json['id'] as String? ?? DateTime.now().microsecondsSinceEpoch.toString(),
-        title: json['title'] as String? ?? 'العنوان الرئيسي',
-        area: json['area'] as String? ?? '',
-        details: json['details'] as String? ?? '',
-        latitude: (json['latitude'] as num?)?.toDouble(),
-        longitude: (json['longitude'] as num?)?.toDouble(),
-        instructions: json['instructions'] as String? ?? '',
-      );
+  static double? _parseCoordinate(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) {
+      final val = raw.toDouble();
+      return val.isFinite ? val : null;
+    }
+    final parsed = double.tryParse(raw.toString().trim());
+    if (parsed == null || !parsed.isFinite) return null;
+    return parsed;
+  }
+
+  factory AddressModel.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id']?.toString().trim();
+    final resolvedId = (rawId != null && rawId.isNotEmpty)
+        ? rawId
+        : DateTime.now().microsecondsSinceEpoch.toString();
+
+    return AddressModel(
+      id: resolvedId,
+      title: json['title']?.toString().trim().isNotEmpty == true
+          ? json['title'].toString().trim()
+          : 'العنوان الرئيسي',
+      area: json['area']?.toString() ?? '',
+      details: json['details']?.toString() ?? '',
+      latitude: _parseCoordinate(json['latitude']),
+      longitude: _parseCoordinate(json['longitude']),
+      instructions: json['instructions']?.toString() ?? '',
+    );
+  }
 
   AddressModel copyWith({
     String? title,
