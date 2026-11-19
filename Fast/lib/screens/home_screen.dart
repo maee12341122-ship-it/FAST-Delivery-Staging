@@ -62,6 +62,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _showPopupBadge = false;
   String _latestNotificationText = 'إشعار جديد!';
 
+  Color _accent(AppState appState) =>
+      appState.isDarkMode ? Colors.amber : const Color(0xFF0D47A1);
+
   String _formatPrice(double value) {
     if (value % 1 == 0) {
       return value.toInt().toString();
@@ -171,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
     bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy;
+    final accent = _accent(appState);
 
     if (!hasAcceptedPrivacy) {
       showDialog(
@@ -182,15 +186,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
-              side: BorderSide(color: Colors.amber.withOpacity(0.5), width: 1.5),
+              side: BorderSide(color: accent.withOpacity(0.5), width: 1.5),
             ),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.shield_outlined, color: Colors.amber, size: 26),
-                SizedBox(width: 8),
+                Icon(Icons.shield_outlined, color: accent, size: 26),
+                const SizedBox(width: 8),
                 Text(
                   'شروط وسياسة تطبيق FAST 🛡️',
-                  style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -202,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 decoration: BoxDecoration(
                   color: appState.isDarkMode ? const Color(0xFF121212) : Colors.grey[100],
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  border: Border.all(color: accent.withOpacity(0.3)),
                 ),
                 child: ListView(
                   shrinkWrap: true,
@@ -217,16 +221,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _buildPrivacyPoint(
                       '1. مراجعة وتأكيد تفاصيل الطلب:',
                       'يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك. ✅',
+                      accent,
+                      appState.isDarkMode,
                     ),
                     const SizedBox(height: 12),
                     _buildPrivacyPoint(
                       '2. سياسة الحسابات والإيداع المالي:',
                       'لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع إرسال البيان. 🪪',
+                      accent,
+                      appState.isDarkMode,
                     ),
                     const SizedBox(height: 12),
                     _buildPrivacyPoint(
                       '3. التواصل والاتصال بالمندوب:',
                       'لا تغلق تلفونك حتى تتم عملية التوصيل. 🏍️',
+                      accent,
+                      appState.isDarkMode,
                     ),
                   ],
                 ),
@@ -237,8 +247,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    foregroundColor: Colors.black,
+                    backgroundColor: accent,
+                    foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
                     minimumSize: const Size(double.infinity, 48),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -256,13 +266,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Widget _buildPrivacyPoint(String title, String desc) {
+  Widget _buildPrivacyPoint(String title, String desc, Color accent, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(title, style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 3),
-        Text(desc, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+        Text(desc, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12, height: 1.4)),
       ],
     );
   }
@@ -283,7 +293,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     await _launchWhatsApp(message: 'مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
   }
 
-  Widget _buildDynamicPromoBanners() {
+  Widget _buildDynamicPromoBanners(AppState appState) {
+    final accent = _accent(appState);
     return FutureBuilder<List<dynamic>>(
       future: Supabase.instance.client.from('promo_banners').select().eq('is_active', true).order('id', ascending: false),
       builder: (context, snapshot) {
@@ -304,7 +315,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.amber.shade800, Colors.amber.shade600, Colors.orangeAccent],
+                    colors: appState.isDarkMode
+                        ? [Colors.amber.shade800, Colors.amber.shade600, Colors.orangeAccent]
+                        : [const Color(0xFF0D47A1), const Color(0xFF1565C0), const Color(0xFF1E88E5)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -317,13 +330,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(banner['title'] ?? '', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text(
+                            banner['title'] ?? '',
+                            style: TextStyle(
+                              color: appState.isDarkMode ? Colors.black : Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
                           const SizedBox(height: 3),
-                          Text(banner['subtitle'] ?? '', style: const TextStyle(color: Colors.black87, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(
+                            banner['subtitle'] ?? '',
+                            style: TextStyle(
+                              color: appState.isDarkMode ? Colors.black87 : Colors.white70,
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.local_offer, color: Colors.black87, size: 28),
+                    Icon(Icons.local_offer, color: appState.isDarkMode ? Colors.black87 : Colors.white, size: 28),
                   ],
                 ),
               );
@@ -334,18 +362,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildAdBannerWidget(Color cardBg, Color textColor) {
+  Widget _buildAdBannerWidget(AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.withOpacity(0.35), width: 1),
+        border: Border.all(color: accent.withOpacity(0.35), width: 1),
       ),
       child: Row(
         children: [
-          const Icon(Icons.campaign_rounded, color: Colors.amber, size: 26),
+          Icon(Icons.campaign_rounded, color: accent, size: 26),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -365,8 +394,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber,
-              foregroundColor: Colors.black,
+              backgroundColor: accent,
+              foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               minimumSize: Size.zero,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -379,7 +408,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildCustomDeliveryBanner(BuildContext context, String token) {
+  Widget _buildCustomDeliveryBanner(BuildContext context, AppState appState, String token) {
+    final accent = _accent(appState);
+    final isDark = appState.isDarkMode;
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -396,35 +427,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF332700), Color(0xFF1E1E1E)],
+          gradient: LinearGradient(
+            colors: isDark
+                ? [const Color(0xFF332700), const Color(0xFF1E1E1E)]
+                : [const Color(0xFFE3F2FD), Colors.white],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.amber, width: 1.2),
+          border: Border.all(color: accent, width: 1.2),
         ),
         child: Row(
           children: [
-            const Icon(Icons.delivery_dining, color: Colors.amber, size: 28),
+            Icon(Icons.delivery_dining, color: accent, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     'وصل لي (توصيل خاص مرن 🚀)',
-                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
                     'من أين، إلى أين، وبأفضل الأسعار',
-                    style: TextStyle(color: Colors.grey, fontSize: 11.5),
+                    style: TextStyle(
+                      color: isDark ? Colors.grey : Colors.black54,
+                      fontSize: 11.5,
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 15),
+            Icon(Icons.arrow_forward_ios, color: accent, size: 15),
           ],
         ),
       ),
@@ -432,6 +472,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildCategoriesHorizontalList(AppState appState, Color textColor, Color cardBg) {
+    final accent = _accent(appState);
     final categoriesList = [
       {'title': 'الكل', 'image': 'https://images.unsplash.com/photo-1513104890138-7c749659a591', 'category': 'الكل'},
       {'title': 'المطاعم', 'image': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5', 'category': 'المطاعم'},
@@ -469,10 +510,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.amber.withOpacity(0.25) : cardBg,
+                color: isSelected ? accent.withOpacity(0.18) : cardBg,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.25),
+                  color: isSelected ? accent : Colors.grey.withOpacity(0.25),
                   width: isSelected ? 1.5 : 1,
                 ),
               ),
@@ -495,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isSelected ? Colors.amber : textColor,
+                      color: isSelected ? accent : textColor,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                       fontSize: 10.5,
                     ),
@@ -534,6 +575,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showProductModifiersDialog(BuildContext context, AppState appState, ProductModel product) {
     final Set<String> selectedModifiers = {};
     double additionalTotalPrice = 0.0;
+    final accent = _accent(appState);
 
     showDialog(
       context: context,
@@ -546,7 +588,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+                side: BorderSide(color: accent.withOpacity(0.4)),
               ),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -583,8 +625,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               height: 100,
                               width: 100,
                               fit: BoxFit.cover,
-                              placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
-                              errorWidget: (context, url, error) => const Icon(Icons.fastfood, size: 50, color: Colors.amber),
+                              placeholder: (context, url) => Center(child: CircularProgressIndicator(color: accent)),
+                              errorWidget: (context, url, error) => Icon(Icons.fastfood, size: 50, color: accent),
                             ),
                           ),
                         ),
@@ -609,15 +651,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             final bool isSelected = selectedModifiers.contains(modName);
 
                             return CheckboxListTile(
-                              activeColor: Colors.amber,
-                              checkColor: Colors.black,
+                              activeColor: accent,
+                              checkColor: appState.isDarkMode ? Colors.black : Colors.white,
                               controlAffinity: ListTileControlAffinity.leading,
                               title: Text(
                                 modName,
                                 style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
                               ),
                               subtitle: modPrice > 0
-                                  ? Text('+${_formatPrice(modPrice)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
+                                  ? Text('+${_formatPrice(modPrice)} ر.ي', style: TextStyle(color: accent, fontSize: 12))
                                   : null,
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -642,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           const Text('السعر الإجمالي:', style: TextStyle(color: Colors.grey, fontSize: 13)),
                           Text(
                             '${_formatPrice(product.price + additionalTotalPrice)} ر.ي',
-                            style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
+                            style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ],
                       ),
@@ -658,8 +700,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    foregroundColor: Colors.black,
+                    backgroundColor: accent,
+                    foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () {
@@ -693,7 +735,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _showContactUsDialog(BuildContext context, Color cardBg, Color textColor) {
+  void _showContactUsDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -701,11 +744,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: AlertDialog(
           backgroundColor: cardBg,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.headset_mic, color: Colors.amber),
-              SizedBox(width: 10),
-              Text('خدمة العملاء والتواصل 📞', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+              Icon(Icons.headset_mic, color: accent),
+              const SizedBox(width: 10),
+              Text('خدمة العملاء والتواصل 📞', style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
           content: Column(
@@ -733,7 +776,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: _launchPhoneCall,
-                icon: const Icon(Icons.phone, color: Colors.amber),
+                icon: Icon(Icons.phone, color: accent),
                 label: const Text('اتصل بخدمة العملاء (776857316) 📞', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
@@ -749,7 +792,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void showExitConfirmationDialog(BuildContext context, Color cardBg, Color textColor) {
+  void showExitConfirmationDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -758,13 +802,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           backgroundColor: cardBg,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+            side: BorderSide(color: accent.withOpacity(0.3)),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.exit_to_app, color: Colors.amber),
-              SizedBox(width: 10),
-              Text('تأكيد الخروج', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+              Icon(Icons.exit_to_app, color: accent),
+              const SizedBox(width: 10),
+              Text('تأكيد الخروج', style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
           content: Text(
@@ -773,12 +817,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+              style: ElevatedButton.styleFrom(backgroundColor: accent),
               onPressed: () {
                 Navigator.pop(context);
                 SystemNavigator.pop();
               },
-              child: const Text('نعم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              child: Text('نعم', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -790,7 +834,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _showHowToUseDialog(BuildContext context, Color cardBg, Color textColor) {
+  void _showHowToUseDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -799,13 +844,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           backgroundColor: cardBg,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+            side: BorderSide(color: accent.withOpacity(0.4)),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.help_center, color: Colors.amber, size: 28),
-              SizedBox(width: 10),
-              Text('كيفية استخدام تطبيق FAST 🌟', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+              Icon(Icons.help_center, color: accent, size: 28),
+              const SizedBox(width: 10),
+              Text('كيفية استخدام تطبيق FAST 🌟', style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
           content: SingleChildScrollView(
@@ -817,24 +862,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   '1️⃣ تصفح المنتجات أو اطلب خدمة "وصل لي"',
                   'اختر قسمك المفضل أو استخدم خدمة "وصل لي" لتحديد مكان الاستلام والتوصيل وتفاصيل شحنتك الخاصة.',
                   textColor,
+                  accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
                   '2️⃣ تحديد الموقع وإرسال الطلب',
                   'أضف منتجاتك للسلة أو أرسل تفاصيل التوصيل الخاص، حدد عنوانك بدقة، ثم اضغط على "تأكيد وإرسال".',
                   textColor,
+                  accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
                   '3️⃣ مراجعة التسعيرة من الإدارة',
                   'ستقوم الإدارة بتحديد رسوم التوصيل وإرسالها لك. ستظهر لك نافذة فورية للموافقة على السعر أو رفضه.',
                   textColor,
+                  accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
                   '4️⃣ تعيين المندوب والتوصيل الفوري',
                   'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته حتى يصل باب منزلك ✅',
                   textColor,
+                  accent,
                 ),
               ],
             ),
@@ -842,11 +891,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           actions: [
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber,
+                backgroundColor: accent,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () => Navigator.pop(context),
-              child: const Text('فهمت، شكراً 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              child: Text('فهمت، شكراً 🚀', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -854,11 +903,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildInstructionStep(String title, String desc, Color textColor) {
+  Widget _buildInstructionStep(String title, String desc, Color textColor, Color accent) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(title, style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 14)),
         const SizedBox(height: 4),
         Text(desc, style: TextStyle(color: textColor.withOpacity(0.8), fontSize: 12, height: 1.4)),
       ],
@@ -868,6 +917,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showRatingDialog(BuildContext context, AppState appState, String orderId, String courierName, Color cardBg, Color textColor) {
     double rating = 5.0;
     final TextEditingController commentController = TextEditingController();
+    final accent = _accent(appState);
 
     showDialog(
       context: context,
@@ -879,9 +929,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                const Icon(Icons.star, color: Colors.amber),
+                Icon(Icons.star, color: accent),
                 const SizedBox(width: 8),
-                Text('تقييم المندوب ($courierName)', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
+                Text('تقييم المندوب ($courierName)', style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.bold)),
               ],
             ),
             content: Column(
@@ -895,7 +945,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     return IconButton(
                       icon: Icon(
                         index < rating ? Icons.star : Icons.star_border,
-                        color: Colors.amber,
+                        color: accent,
                         size: 32,
                       ),
                       onPressed: () {
@@ -926,7 +976,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                style: ElevatedButton.styleFrom(backgroundColor: accent),
                 onPressed: () async {
                   await appState.submitCourierRating(
                     orderId: orderId,
@@ -940,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المندوب بنجاح ⭐')),
                   );
                 },
-                child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: Text('إرسال التقييم', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -952,6 +1002,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showRestaurantRatingDialog(BuildContext context, AppState appState, String orderId, String restaurantName, Color cardBg, Color textColor) {
     double rating = 5.0;
     final TextEditingController commentController = TextEditingController();
+    final accent = _accent(appState);
 
     showDialog(
       context: context,
@@ -963,9 +1014,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                const Icon(Icons.restaurant_menu, color: Colors.amber),
+                Icon(Icons.restaurant_menu, color: accent),
                 const SizedBox(width: 8),
-                Text('تقييم مطعم ($restaurantName)', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
+                Text('تقييم مطعم ($restaurantName)', style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.bold)),
               ],
             ),
             content: Column(
@@ -979,7 +1030,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     return IconButton(
                       icon: Icon(
                         index < rating ? Icons.star : Icons.star_border,
-                        color: Colors.amber,
+                        color: accent,
                         size: 32,
                       ),
                       onPressed: () {
@@ -1010,7 +1061,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                style: ElevatedButton.styleFrom(backgroundColor: accent),
                 onPressed: () async {
                   await appState.submitRestaurantRating(
                     orderId: orderId,
@@ -1023,7 +1074,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     const SnackBar(content: Text('شكراً لك! تم إرسال تقييم المطعم بنجاح 🍽️⭐')),
                   );
                 },
-                child: const Text('إرسال التقييم', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: Text('إرسال التقييم', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1035,6 +1086,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _showEnterPriceDialog(BuildContext context, AppState appState, ProductModel product) {
     final TextEditingController priceController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    final accent = _accent(appState);
 
     showDialog(
       context: context,
@@ -1046,11 +1098,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             backgroundColor: appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+              side: BorderSide(color: accent.withOpacity(0.4)),
             ),
             title: Row(
               children: [
-                const Icon(Icons.monetization_on, color: Colors.amber),
+                Icon(Icons.monetization_on, color: accent),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1082,7 +1134,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     style: TextStyle(color: appState.isDarkMode ? Colors.white : Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(
                       labelText: 'السعر الإلزامي (ر.ي)*',
-                      labelStyle: const TextStyle(color: Colors.amber),
+                      labelStyle: TextStyle(color: accent),
                       hintText: 'اكتب السعر هنا...',
                       hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
                       filled: true,
@@ -1100,7 +1152,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
+                  backgroundColor: accent,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () {
@@ -1123,7 +1175,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     );
                   }
                 },
-                child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                child: Text('إضافة للسلة', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1140,6 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     final TextEditingController couponController = TextEditingController();
+    final accent = _accent(appState);
 
     showDialog(
       context: context,
@@ -1151,7 +1204,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: AlertDialog(
               backgroundColor: cardBg,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('بيانات التوصيل وطريقة الدفع 💳', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+              title: Text('بيانات التوصيل وطريقة الدفع 💳', style: TextStyle(color: accent, fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Form(
                   key: _formKey,
@@ -1188,8 +1241,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.amber,
-                            side: const BorderSide(color: Colors.amber),
+                            foregroundColor: accent,
+                            side: BorderSide(color: accent),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: () async {
@@ -1208,7 +1261,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               });
                             }
                           },
-                          icon: const Icon(Icons.map, color: Colors.amber),
+                          icon: Icon(Icons.map, color: accent),
                           label: const Text('تحديد الموقع عبر الخريطة والـ GPS 🗺️', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -1245,8 +1298,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           const SizedBox(width: 8),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber,
-                              foregroundColor: Colors.black,
+                              backgroundColor: accent,
+                              foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -1280,22 +1333,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.1),
+                          color: accent.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                          border: Border.all(color: accent.withOpacity(0.4)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Column(
+                            Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('حساب الكريمي (حاسب):', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
-                                Text('2655872', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                                Text('حساب الكريمي (حاسب):', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                Text('2655872', style: TextStyle(color: textColor, fontSize: 14, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             IconButton(
-                              icon: const Icon(Icons.copy, color: Colors.amber, size: 20),
+                              icon: Icon(Icons.copy, color: accent, size: 20),
                               tooltip: 'نسخ رقم الحساب',
                               onPressed: () {
                                 Clipboard.setData(const ClipboardData(text: '2655872'));
@@ -1309,7 +1362,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                       const SizedBox(height: 12),
 
-                      const Text('اختر طريقة الدفع:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text('اختر طريقة الدفع:', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: _selectedPaymentMethod,
@@ -1340,8 +1393,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber,
-                    foregroundColor: Colors.black,
+                    backgroundColor: accent,
+                    foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () async {
@@ -1386,6 +1439,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _checkAndShowPricingDialog(BuildContext context, AppState appState, Color cardBg, Color textColor) {
     if (appState.userProfile == null || appState.isAdminLoggedIn || appState.currentCourier != null) return;
 
+    final accent = _accent(appState);
     final customerOrders = appState.customerOrders;
     for (var order in customerOrders) {
       final orderId = order['id']?.toString() ?? '';
@@ -1403,21 +1457,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: AlertDialog(
                 backgroundColor: cardBg,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: const Row(
+                title: Row(
                   children: [
-                    Icon(Icons.notifications_active, color: Colors.amber),
-                    SizedBox(width: 10),
-                    Text('تسعيرة جديدة من المشرف', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                    Icon(Icons.notifications_active, color: accent),
+                    const SizedBox(width: 10),
+                    Text('تسعيرة جديدة من المشرف', style: TextStyle(color: accent, fontSize: 16)),
                   ],
                 ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                    Text('طلب #$orderId', style: TextStyle(color: accent, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Text('• رسوم التوصيل: (${order['delivery_fee']} ر.ي)', style: TextStyle(color: textColor, fontSize: 14)),
-                    Text('• الإجمالي الكلي: ${order['total_price']} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text('• الإجمالي الكلي: ${order['total_price']} ر.ي', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(height: 12),
                     Text('هل توافق على رسوم التوصيل وتأكيد الطلب ليرسل للمندوب؟', style: TextStyle(color: textColor, fontSize: 13)),
                   ],
@@ -1479,12 +1533,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildOrderWarningNotice() {
+  Widget _buildOrderWarningNotice(AppState appState) {
+    final isDark = appState.isDarkMode;
+    final bg = isDark ? Colors.amber : const Color(0xFF0D47A1);
+    final fg = isDark ? Colors.black : Colors.white;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.amber,
+        color: bg,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.2),
@@ -1493,19 +1550,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.black, size: 18),
-          SizedBox(width: 8),
-          Text(
-            '⚠️ الرجاء عدم إغلاق الإنترنت أو الخروج من التطبيق أثناء الطلب',
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 11.5,
-              fontWeight: FontWeight.bold,
+          Icon(Icons.warning_amber_rounded, color: fg, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '⚠️ الرجاء عدم إغلاق الإنترنت أو الخروج من التطبيق أثناء الطلب',
+              style: TextStyle(
+                color: fg,
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -1515,6 +1574,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
+    final accent = _accent(appState);
 
     if (appState.unreadNotificationsCount > _previousUnreadCount) {
       _latestNotificationText = appState.latestNotificationMessage ?? 'لديك إشعار جديد!';
@@ -1568,7 +1628,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               _currentIndex = 0;
             });
           } else {
-            showExitConfirmationDialog(context, cardBg, textColor);
+            showExitConfirmationDialog(context, appState, cardBg, textColor);
           }
         },
         child: Directionality(
@@ -1588,9 +1648,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
+                  Text(
                     'FAST – تعز',
-                    style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -1612,7 +1672,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   },
                 ),
                 IconButton(
-                  icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.amber, size: 24),
+                  icon: Icon(_isSearching ? Icons.close : Icons.search, color: accent, size: 24),
                   tooltip: 'البحث السريع',
                   onPressed: () {
                     HapticFeedback.selectionClick();
@@ -1639,11 +1699,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             margin: const EdgeInsets.only(left: 4),
                             decoration: BoxDecoration(
-                              color: Colors.amber,
+                              color: accent,
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.amber.withOpacity(0.5),
+                                  color: accent.withOpacity(0.5),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 ),
@@ -1652,15 +1712,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.bolt, size: 14, color: Colors.black),
+                                Icon(Icons.bolt, size: 14, color: appState.isDarkMode ? Colors.black : Colors.white),
                                 const SizedBox(width: 4),
                                 ConstrainedBox(
                                   constraints: const BoxConstraints(maxWidth: 150),
                                   child: Text(
                                     _latestNotificationText,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.black,
+                                    style: TextStyle(
+                                      color: appState.isDarkMode ? Colors.black : Colors.white,
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -1675,7 +1735,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       alignment: Alignment.center,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.notifications_rounded, color: Colors.amber, size: 26),
+                          icon: Icon(Icons.notifications_rounded, color: accent, size: 26),
                           tooltip: 'الإشعارات والتنبيهات',
                           onPressed: () {
                             HapticFeedback.selectionClick();
@@ -1724,7 +1784,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             body: Column(
               children: [
                 _buildNetworkStatusBar(appState),
-                _buildOrderWarningNotice(),
+                _buildOrderWarningNotice(appState),
                 Expanded(
                   child: Stack(
                     children: [
@@ -1749,14 +1809,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
-                                    colors: [Colors.amber.shade800, Colors.amber.shade600],
+                                    colors: appState.isDarkMode
+                                        ? [Colors.amber.shade800, Colors.amber.shade600]
+                                        : [const Color(0xFF0D47A1), const Color(0xFF1976D2)],
                                     begin: Alignment.centerLeft,
                                     end: Alignment.centerRight,
                                   ),
                                   borderRadius: BorderRadius.circular(30),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.amber.withOpacity(0.4),
+                                      color: accent.withOpacity(0.4),
                                       blurRadius: 15,
                                       offset: const Offset(0, 6),
                                     ),
@@ -1766,11 +1828,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black,
+                                      decoration: BoxDecoration(
+                                        color: appState.isDarkMode ? Colors.black : Colors.white,
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(Icons.shopping_bag_outlined, color: Colors.amber, size: 20),
+                                      child: Icon(Icons.shopping_bag_outlined, color: accent, size: 20),
                                     ),
                                     const SizedBox(width: 12),
                                     Column(
@@ -1779,21 +1841,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       children: [
                                         Text(
                                           '${appState.totalCartItemsCount} منتجات بالسلة',
-                                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                                          style: TextStyle(
+                                            color: appState.isDarkMode ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
                                         ),
                                         Text(
                                           '${_formatPrice(appState.totalAmount)} ر.ي',
-                                          style: const TextStyle(color: Colors.black87, fontSize: 11.5, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            color: appState.isDarkMode ? Colors.black87 : Colors.white70,
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ],
                                     ),
                                     const Spacer(),
-                                    const Text(
+                                    Text(
                                       'إتمام الطلب',
-                                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
+                                      style: TextStyle(
+                                        color: appState.isDarkMode ? Colors.black : Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                     const SizedBox(width: 4),
-                                    const Icon(Icons.arrow_forward_ios, color: Colors.black, size: 14),
+                                    Icon(Icons.arrow_forward_ios, color: appState.isDarkMode ? Colors.black : Colors.white, size: 14),
                                   ],
                                 ),
                               ),
@@ -1832,7 +1906,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 setState(() => _currentIndex = index);
               },
               backgroundColor: cardBg,
-              selectedItemColor: Colors.amber,
+              selectedItemColor: accent,
               unselectedItemColor: Colors.grey,
               type: BottomNavigationBarType.fixed,
               items: [
@@ -1871,6 +1945,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
+
     if (selectedCategory == 'طلبات أخرى') {
       return Padding(
         padding: const EdgeInsets.all(12.0),
@@ -1883,12 +1959,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                border: Border.all(color: accent.withOpacity(0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('طلب خاص أو خدمة أخرى', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text('طلب خاص أو خدمة أخرى', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _customItemNameController,
@@ -1904,7 +1980,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 42)),
+                    style: ElevatedButton.styleFrom(backgroundColor: accent, minimumSize: const Size(double.infinity, 42)),
                     onPressed: () {
                       if (_customItemNameController.text.isNotEmpty && _customItemPriceController.text.isNotEmpty) {
                         final price = double.tryParse(_customItemPriceController.text) ?? 1000.0;
@@ -1914,7 +1990,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الطلب الخاص للسلة 🚀')));
                       }
                     },
-                    child: const Text('إضافة للسلة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    child: Text('إضافة للسلة', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -1945,7 +2021,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     return RefreshIndicator(
-      color: Colors.amber,
+      color: accent,
       onRefresh: () async {
         await appState.fetchStoreSettings();
         await appState.fetchProductsFromSupabase();
@@ -1954,9 +2030,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         children: [
-          _buildDynamicPromoBanners(),
-          _buildCustomDeliveryBanner(context, appState.userProfile?['id'] ?? 'guest'),
-          _buildAdBannerWidget(cardBg, textColor),
+          _buildDynamicPromoBanners(appState),
+          _buildCustomDeliveryBanner(context, appState, appState.userProfile?['id'] ?? 'guest'),
+          _buildAdBannerWidget(appState, cardBg, textColor),
 
           if (_isSearching)
             Padding(
@@ -1967,7 +2043,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   hintText: 'ابحث عن منتج أو مطعم...',
-                  prefixIcon: const Icon(Icons.search, color: Colors.amber, size: 20),
+                  prefixIcon: Icon(Icons.search, color: accent, size: 20),
                   filled: true,
                   fillColor: cardBg,
                   isDense: true,
@@ -2005,9 +2081,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Text('اختر متجراً (🏬)', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Text('اختر متجراً (🏬)', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                     SizedBox(
                       height: 98,
@@ -2032,16 +2108,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               decoration: BoxDecoration(
                                 color: cardBg,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                                border: Border.all(color: accent.withOpacity(0.35)),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   CircleAvatar(
                                     radius: 22,
-                                    backgroundColor: Colors.amber.withOpacity(0.2),
+                                    backgroundColor: accent.withOpacity(0.2),
                                     backgroundImage: logoUrl.isNotEmpty ? CachedNetworkImageProvider(logoUrl) : null,
-                                    child: logoUrl.isEmpty ? const Icon(Icons.store, color: Colors.amber, size: 20) : null,
+                                    child: logoUrl.isEmpty ? Icon(Icons.store, color: accent, size: 20) : null,
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
@@ -2068,10 +2144,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('منتجات: $selectedRestaurantName', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text('منتجات: $selectedRestaurantName', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 13)),
                     TextButton(
                       onPressed: () => setState(() => selectedRestaurantName = null),
-                      child: const Text('تغيير المتجر', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                      child: Text('تغيير المتجر', style: TextStyle(color: accent, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -2106,7 +2182,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         decoration: BoxDecoration(
                           color: cardBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                          border: Border.all(color: accent.withOpacity(0.35)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.15),
@@ -2126,16 +2202,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         imageUrl: product.imageUrl,
                                         width: double.infinity,
                                         fit: BoxFit.cover,
-                                        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)),
+                                        placeholder: (context, url) => Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2)),
                                         errorWidget: (context, url, error) => Container(
-                                          color: Colors.amber.withOpacity(0.1),
-                                          child: const Icon(Icons.fastfood, color: Colors.amber, size: 32),
+                                          color: accent.withOpacity(0.1),
+                                          child: Icon(Icons.fastfood, color: accent, size: 32),
                                         ),
                                       )
                                     : Container(
                                         width: double.infinity,
-                                        color: Colors.amber.withOpacity(0.15),
-                                        child: const Icon(Icons.fastfood, color: Colors.amber, size: 32),
+                                        color: accent.withOpacity(0.15),
+                                        child: Icon(Icons.fastfood, color: accent, size: 32),
                                       ),
                               ),
                             ),
@@ -2156,7 +2232,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             const SizedBox(height: 4),
                             Text(
                               isVariable ? 'يدوي' : '${_formatPrice(product.price)} ر.ي',
-                              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
+                              style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             const SizedBox(height: 8),
                             isVariable
@@ -2165,12 +2241,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     height: 34,
                                     child: ElevatedButton(
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.amber,
+                                        backgroundColor: accent,
                                         padding: EdgeInsets.zero,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
                                       onPressed: () => _showEnterPriceDialog(context, appState, product),
-                                      child: const Text('حدد السعر', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      child: Text('حدد السعر', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                                     ),
                                   )
                                 : (qtyInCart == 0
@@ -2179,23 +2255,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         height: 34,
                                         child: ElevatedButton(
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.amber,
+                                            backgroundColor: accent,
                                             padding: EdgeInsets.zero,
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                           ),
                                           onPressed: () => _handleProductTapOrAdd(context, appState, product),
-                                          child: const Text('إضافة 🛒', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          child: Text('إضافة 🛒', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                                         ),
                                       )
                                     : Container(
                                         height: 34,
-                                        decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(8)),
+                                        decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(8)),
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                                           children: [
-                                            InkWell(onTap: () => appState.updateQuantity(product.id, -1), child: const Icon(Icons.remove, size: 16, color: Colors.black)),
-                                            Text('$qtyInCart', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
-                                            InkWell(onTap: () => appState.updateQuantity(product.id, 1), child: const Icon(Icons.add, size: 16, color: Colors.black)),
+                                            InkWell(onTap: () => appState.updateQuantity(product.id, -1), child: Icon(Icons.remove, size: 16, color: appState.isDarkMode ? Colors.black : Colors.white)),
+                                            Text('$qtyInCart', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                            InkWell(onTap: () => appState.updateQuantity(product.id, 1), child: Icon(Icons.add, size: 16, color: appState.isDarkMode ? Colors.black : Colors.white)),
                                           ],
                                         ),
                                       )),
@@ -2212,6 +2288,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
+
     if (appState.userProfile == null) {
       return Center(
         child: Padding(
@@ -2219,13 +2297,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.lock_outline, size: 70, color: Colors.amber),
+              Icon(Icons.lock_outline, size: 70, color: accent),
               const SizedBox(height: 15),
               Text('يجب تسجيل الدخول للوصول إلى السلة ومتابعة طلباتك', style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
+                  backgroundColor: accent,
                   minimumSize: const Size(220, 48),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -2242,7 +2320,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   );
                 },
-                child: const Text('تسجيل الدخول برقم الهاتف 📱', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                child: Text('تسجيل الدخول برقم الهاتف 📱', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ],
           ),
@@ -2267,7 +2345,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('سلة المشتريات والطلبات المجمعة', style: TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('سلة المشتريات والطلبات المجمعة', style: TextStyle(color: accent, fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           Expanded(
             child: ListView.builder(
@@ -2295,7 +2373,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Row(
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: Colors.amber, size: 22),
+                              icon: Icon(Icons.remove_circle_outline, color: accent, size: 22),
                               onPressed: () {
                                 HapticFeedback.lightImpact();
                                 appState.updateQuantity(item.id, -1);
@@ -2303,7 +2381,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             ),
                             Text('${item.quantity}', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 15)),
                             IconButton(
-                              icon: const Icon(Icons.add_circle_outline, color: Colors.amber, size: 22),
+                              icon: Icon(Icons.add_circle_outline, color: accent, size: 22),
                               onPressed: () {
                                 HapticFeedback.lightImpact();
                                 appState.updateQuantity(item.id, 1);
@@ -2327,20 +2405,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('إجمالي السلة المجمعة:', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-              Text('${_formatPrice(appState.totalAmount)} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('${_formatPrice(appState.totalAmount)} ر.ي', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
           const SizedBox(height: 15),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber,
+              backgroundColor: accent,
               minimumSize: const Size(double.infinity, 48),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () {
               _showCheckoutDialog(context, appState, cardBg, textColor);
             },
-            child: Text('الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي) 🚀', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+            child: Text('الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي) 🚀', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
           ),
         ],
       ),
@@ -2371,6 +2449,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
     final customerOrders = appState.customerOrders;
+    final accent = _accent(appState);
 
     return Column(
       children: [
@@ -2380,7 +2459,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.amber.withOpacity(0.6), width: 1.5),
+            border: Border.all(color: accent.withOpacity(0.6), width: 1.5),
             boxShadow: [
               BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 2)),
             ],
@@ -2390,12 +2469,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             children: [
               Row(
                 children: [
-                  const Icon(Icons.account_balance_wallet, color: Colors.amber, size: 24),
+                  Icon(Icons.account_balance_wallet, color: accent, size: 24),
                   const SizedBox(width: 10),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('حساب حاسب الكريمي (للدفع الإلكتروني):', style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('حساب حاسب الكريمي (للدفع الإلكتروني):', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 2),
                       Text('2655872', style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                     ],
@@ -2404,8 +2483,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
-                  foregroundColor: Colors.black,
+                  backgroundColor: accent,
+                  foregroundColor: appState.isDarkMode ? Colors.black : Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -2478,7 +2557,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       elevation: 3,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+                        side: BorderSide(color: accent.withOpacity(0.3)),
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
@@ -2503,16 +2582,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 children: [
                                   Row(
                                     children: [
-                                      Text('طلب #${order['id']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                                      Text('طلب #${order['id']}', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(width: 8),
-                                      const Icon(Icons.touch_app, color: Colors.amber, size: 16),
+                                      Icon(Icons.touch_app, color: accent, size: 16),
                                     ],
                                   ),
                                   Row(
                                     children: [
                                       IconButton(
                                         style: IconButton.styleFrom(backgroundColor: Colors.black12),
-                                        icon: const Icon(Icons.share, color: Colors.amber, size: 18),
+                                        icon: Icon(Icons.share, color: accent, size: 18),
                                         tooltip: 'مشاركة الفاتورة',
                                         onPressed: () {
                                           final invoiceText = '⚡ فاتورة تطبيق FAST - تعز\n'
@@ -2529,7 +2608,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       const SizedBox(width: 4),
                                       IconButton(
                                         style: IconButton.styleFrom(backgroundColor: Colors.blueGrey.withOpacity(0.2)),
-                                        icon: const Icon(Icons.chat, color: Colors.amber, size: 18),
+                                        icon: Icon(Icons.chat, color: accent, size: 18),
                                         tooltip: 'مراسلة الإدارة ودعم الطلب',
                                         onPressed: () {
                                           Navigator.push(
@@ -2558,14 +2637,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   padding: const EdgeInsets.all(10),
                                   margin: const EdgeInsets.only(bottom: 10),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.1),
+                                    color: accent.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.amber),
+                                    border: Border.all(color: accent),
                                   ),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text('🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      Text('🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:', style: TextStyle(color: accent, fontWeight: FontWeight.bold, fontSize: 12)),
                                       const SizedBox(height: 8),
                                       Row(
                                         children: [
@@ -2617,7 +2696,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                                decoration: BoxDecoration(
+                                  color: appState.isDarkMode ? Colors.black26 : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -2625,9 +2707,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       Text('🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي', style: TextStyle(color: textColor, fontSize: 13)),
                                       const SizedBox(height: 4),
                                     ],
-                                    Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                                    const Divider(color: Colors.white12, height: 8),
-                                    Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                                    Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.bold)),
+                                    Divider(color: appState.isDarkMode ? Colors.white12 : Colors.black12, height: 8),
+                                    Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: TextStyle(color: appState.isDarkMode ? Colors.greenAccent : Colors.green.shade800, fontWeight: FontWeight.bold, fontSize: 14)),
                                   ],
                                 ),
                               ),
@@ -2636,12 +2718,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 const SizedBox(height: 14),
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.amber.withOpacity(0.15),
-                                    foregroundColor: Colors.amber,
+                                    backgroundColor: accent.withOpacity(0.15),
+                                    foregroundColor: accent,
                                     minimumSize: const Size(double.infinity, 42),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                                      side: BorderSide(color: accent.withOpacity(0.5)),
                                     ),
                                   ),
                                   onPressed: () {
@@ -2654,12 +2736,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   const SizedBox(height: 8),
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.amber.withOpacity(0.15),
-                                      foregroundColor: Colors.amber,
+                                      backgroundColor: accent.withOpacity(0.15),
+                                      foregroundColor: accent,
                                       minimumSize: const Size(double.infinity, 42),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        side: BorderSide(color: Colors.amber.withOpacity(0.5)),
+                                        side: BorderSide(color: accent.withOpacity(0.5)),
                                       ),
                                     ),
                                     onPressed: () {
@@ -2684,6 +2766,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildProfileTab(AppState appState, Color cardBg, Color textColor) {
     final profile = appState.userProfile;
+    final accent = _accent(appState);
 
     bool isAdmin = appState.isAdminLoggedIn || (profile != null && profile['is_admin'] == true);
     bool isCourier = appState.currentCourier != null || (profile != null && profile['is_courier'] == true);
@@ -2697,14 +2780,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         const SizedBox(height: 20),
 
         if (isAdmin) ...[
-          _buildProfileItem(Icons.admin_panel_settings, 'لوحة تحكم المشرف الإدارية ⚙️', cardBg, textColor, () {
+          _buildProfileItem(Icons.admin_panel_settings, 'لوحة تحكم المشرف الإدارية ⚙️', cardBg, textColor, accent, () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => AdminScreen()));
           }),
           const SizedBox(height: 10),
         ],
 
         if (isCourier) ...[
-          _buildProfileItem(Icons.delivery_dining, 'لوحة طلبات المندوب وتوصيل الشحنات 🏍️', cardBg, textColor, () {
+          _buildProfileItem(Icons.delivery_dining, 'لوحة طلبات المندوب وتوصيل الشحنات 🏍️', cardBg, textColor, accent, () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => CourierScreen()));
           }),
           const SizedBox(height: 10),
@@ -2716,11 +2799,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+            border: Border.all(color: accent.withOpacity(0.3)),
           ),
           child: Column(
             children: [
-              const Icon(Icons.person, size: 60, color: Colors.amber),
+              Icon(Icons.person, size: 60, color: accent),
               const SizedBox(height: 10),
               Text('أنت لست مسجل دخول!', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 5),
@@ -2728,7 +2811,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(height: 18),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber,
+                  backgroundColor: accent,
                   minimumSize: const Size(double.infinity, 48),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -2743,7 +2826,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   );
                 },
-                child: const Text('تسجيل الدخول برقم الهاتف 📱', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                child: Text('تسجيل الدخول برقم الهاتف 📱', style: TextStyle(color: appState.isDarkMode ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ],
           ),
@@ -2753,14 +2836,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+            border: Border.all(color: accent.withOpacity(0.3)),
           ),
           child: Row(
             children: [
-              const CircleAvatar(
-                backgroundColor: Colors.amber,
+              CircleAvatar(
+                backgroundColor: accent,
                 radius: 24,
-                child: Icon(Icons.person, color: Colors.black, size: 28),
+                child: Icon(Icons.person, color: appState.isDarkMode ? Colors.black : Colors.white, size: 28),
               ),
               const SizedBox(width: 15),
               Expanded(
@@ -2775,7 +2858,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         onTap: () => _launchWhatsApp(message: 'مرحباً، بخصوص عنواني المسجل في التطبيق: ${profile['address']} 📍'),
                         child: Text(
                           '🏠 العنوان: ${formatLocationAddress(profile['address'])} (اضغط للتواصل 💬)',
-                          style: const TextStyle(color: Colors.amber, fontSize: 12, decoration: TextDecoration.underline),
+                          style: TextStyle(color: accent, fontSize: 12, decoration: TextDecoration.underline),
                         ),
                       ),
                   ],
@@ -2790,7 +2873,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
         const SizedBox(height: 20),
 
-        _buildProfileItem(Icons.edit, 'تعديل البيانات الشخصية', cardBg, textColor, () {
+        _buildProfileItem(Icons.edit, 'تعديل البيانات الشخصية', cardBg, textColor, accent, () {
           Navigator.push(
             context,
             PageRouteBuilder(
@@ -2802,7 +2885,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         }),
 
-        _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, () {
+        _buildProfileItem(Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, accent, () {
           Navigator.push(
             context,
             PageRouteBuilder(
@@ -2814,7 +2897,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         }),
 
-        _buildProfileItem(Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, () {
+        _buildProfileItem(Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, accent, () {
           Navigator.push(
             context,
             PageRouteBuilder(
@@ -2826,28 +2909,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         }),
 
-        _buildProfileItem(Icons.headset_mic, 'خدمة العملاء وتواصل معنا 📞', cardBg, textColor, () {
-          _showContactUsDialog(context, cardBg, textColor);
+        _buildProfileItem(Icons.headset_mic, 'خدمة العملاء وتواصل معنا 📞', cardBg, textColor, accent, () {
+          _showContactUsDialog(context, appState, cardBg, textColor);
         }),
 
-        _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, () {
-          _showHowToUseDialog(context, cardBg, textColor);
+        _buildProfileItem(Icons.help_center_outlined, 'كيفية استخدام التطبيق 📖', cardBg, textColor, accent, () {
+          _showHowToUseDialog(context, appState, cardBg, textColor);
         }),
 
-        _buildProfileItem(Icons.privacy_tip_outlined, 'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, () {
+        _buildProfileItem(Icons.privacy_tip_outlined, 'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, accent, () {
           appState.setPrivacyPolicyAccepted(false);
           _checkAndShowPrivacyPolicyDialog(context, appState);
         }),
 
-        _buildProfileItem(Icons.dark_mode, 'مظهر التطبيق (${appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})', cardBg, textColor, () {
+        _buildProfileItem(Icons.dark_mode, 'مظهر التطبيق (${appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})', cardBg, textColor, accent, () {
           appState.toggleTheme();
         }),
-        _buildProfileItem(Icons.location_city, 'المدينة (تعز - اليمن - حصرياً)', cardBg, textColor, () {
+        _buildProfileItem(Icons.location_city, 'المدينة (تعز - اليمن - حصرياً)', cardBg, textColor, accent, () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('تطبيق FAST مخصص لخدمة مدينة تعز بكل سرعة 🌟')),
           );
         }),
-        _buildProfileItem(Icons.share, 'مشاركة التطبيق مع الأصدقاء', cardBg, textColor, () {
+        _buildProfileItem(Icons.share, 'مشاركة التطبيق مع الأصدقاء', cardBg, textColor, accent, () {
           appState.shareApp();
         }),
 
@@ -2862,7 +2945,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(height: 4),
               Text(
                 'تم التطوير بواسطة Eng. Maeen Almurish',
-                style: TextStyle(color: Colors.amber.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: appState.isDarkMode ? Colors.amber.shade700 : const Color(0xFF0D47A1),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -2872,7 +2959,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildProfileItem(IconData icon, String title, Color cardBg, Color textColor, VoidCallback onTap) {
+  Widget _buildProfileItem(IconData icon, String title, Color cardBg, Color textColor, Color accent, VoidCallback onTap) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
@@ -2881,7 +2968,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         border: Border.all(color: Colors.grey.withOpacity(0.2)),
       ),
       child: ListTile(
-        leading: Icon(icon, color: Colors.amber),
+        leading: Icon(icon, color: accent),
         title: Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
         trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
         onTap: onTap,
