@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../providers/app_state.dart';
 import '../customer/map_location_screen.dart';
-import '../admin_screen.dart';   
-import '../courier_screen.dart'; 
+import '../admin_screen.dart';
+import '../courier_screen.dart';
 
 class PhoneAuthScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -21,7 +21,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  
+
   // حقول شاشة تسجيل الدخول الخاصة بالأدمن والمندوب
   final TextEditingController _loginUsernameController = TextEditingController();
   final TextEditingController _loginPasswordController = TextEditingController();
@@ -39,7 +39,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
   String _detectedRole = 'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
-  Map<String, dynamic>? _pendingUserRecord; 
+  Map<String, dynamic>? _pendingUserRecord;
 
   // عداد النقرات المخفية للوصول لإدارة النظام سراّ
   int _secretTapCount = 0;
@@ -59,12 +59,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final session = _supabase.auth.currentSession;
       if (session != null) {
         final userId = session.user.id;
-        
+
         // 1. فحص هل هو مشرف
         final adminRes = await _supabase
             .from('admins')
             .select()
-            .eq('id', userId) // أو التحقق عبر الـ role في الـ metadata
+            .eq('id', userId)
             .maybeSingle();
 
         if (adminRes != null) {
@@ -143,7 +143,21 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ إرسال كود OTP وتوليده وحفظه في جدول otp_codes في Supabase وفحص دور المستخدم
+  Future<void> _syncOneSignalPlayerId(String phone) async {
+    try {
+      final String? playerId = OneSignal.User.pushSubscription.id;
+      if (playerId != null && playerId.isNotEmpty) {
+        await _supabase
+            .from('customers')
+            .update({'onesignal_player_id': playerId})
+            .eq('phone', phone);
+      }
+    } catch (e) {
+      debugPrint('خطأ في حفظ Player ID: $e');
+    }
+  }
+
+  // 1️⃣ إرسال كود OTP وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -161,6 +175,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (clean.startsWith('967')) clean = clean.substring(3);
       _cleanPhoneInput = clean;
       _formattedPhone = '+967$clean';
+      _pendingUserRecord = null;
 
       // 1. فحص هل الرقم يتبع للمشرفين (admins)
       final adminRes = await _supabase
@@ -171,7 +186,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       if (adminRes != null) {
         _detectedRole = 'admin';
-        _pendingUserRecord = adminRes;
+        _pendingUserRecord = Map<String, dynamic>.from(adminRes);
         _loginUsernameController.text = adminRes['username'] ?? adminRes['name'] ?? '';
       } else {
         // 2. فحص هل الرقم يتبع للمناديب (couriers)
@@ -183,10 +198,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
         if (courierRes != null) {
           _detectedRole = 'courier';
-          _pendingUserRecord = courierRes;
+          _pendingUserRecord = Map<String, dynamic>.from(courierRes);
           _loginUsernameController.text = courierRes['username'] ?? courierRes['name'] ?? '';
         } else {
-          // 3. فحص هل العميل موجود مسبقاً
+          // 3. فحص هل العميل موجود مسبقاً في جدول customers وجلب بياناته المسجلة
           final existingCustomer = await _supabase
               .from('customers')
               .select()
@@ -194,10 +209,20 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               .maybeSingle();
 
           if (existingCustomer != null) {
-            _detectedRole = 'customer_existing';
+            _pendingUserRecord = Map<String, dynamic>.from(existingCustomer);
+            final savedName = (existingCustomer['name'] ?? '').toString().trim();
+            final savedAddress = (existingCustomer['address'] ?? '').toString().trim();
+
             if (mounted) {
-              _nameController.text = existingCustomer['name'] ?? '';
-              _addressController.text = existingCustomer['address'] ?? '';
+              _nameController.text = savedName;
+              _addressController.text = savedAddress;
+            }
+
+            // إذا كانت بيانات الاسم والعنوان مكتملة في قاعدة البيانات فهو عميل مسجل بالكامل
+            if (savedName.isNotEmpty && savedAddress.isNotEmpty) {
+              _detectedRole = 'customer_existing';
+            } else {
+              _detectedRole = 'customer_new';
             }
           } else {
             _detectedRole = 'customer_new';
@@ -210,7 +235,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       if (mounted) {
         setState(() {
-          _currentStep = 1; 
+          _currentStep = 1;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -234,7 +259,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP من جدول otp_codes والانتقال للشاشة التالية
+  // 2️⃣ التحقق من كود OTP وتفعيل الجلسة للعميل المسجل من قاعدة البيانات أو الانتقال للمرحلة التالية
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -250,25 +275,49 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       bool isValid = otpCode == _trialOtpCode;
 
       if (isValid) {
-        if (mounted) {
-          if (_detectedRole == 'admin' || _detectedRole == 'courier') {
+        if (_detectedRole == 'admin' || _detectedRole == 'courier') {
+          if (mounted) {
             setState(() {
               _currentStep = 3; // الانتقال لشاشة تسجيل الدخول الخاصة (مشرف أو مندوب)
             });
+          }
+        } else if (_detectedRole == 'customer_existing' && _pendingUserRecord != null) {
+          // إعادة قراءة أحدث نسخة من السجل لضمان تطابقها مع قاعدة البيانات
+          final dbPhone = (_pendingUserRecord!['phone'] ?? _cleanPhoneInput).toString();
+          final latestRecord = await _supabase
+              .from('customers')
+              .select()
+              .eq('phone', dbPhone)
+              .maybeSingle();
+
+          final customerRow = latestRecord ?? _pendingUserRecord!;
+          final String customerName = (customerRow['name'] ?? '').toString().trim();
+          final String customerPhone = (customerRow['phone'] ?? dbPhone).toString().trim();
+          final String customerAddress = (customerRow['address'] ?? '').toString().trim();
+
+          appState.setUser(
+            name: customerName,
+            phone: customerPhone,
+            address: customerAddress,
+          );
+
+          await appState.requestLocationAndNotificationPermissions();
+          await _syncOneSignalPlayerId(customerPhone);
+
+          if (!mounted) return;
+          if (widget.onLoginSuccess != null) {
+            widget.onLoginSuccess!();
           } else {
-            if (_detectedRole == 'customer_existing') {
-              if (widget.onLoginSuccess != null) {
-                widget.onLoginSuccess!();
-              } else {
-                Navigator.pop(context);
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('أهلاً بك مجدداً! تم تسجيل الدخول بنجاح 🚀')),
-              );
-              return;
-            }
+            Navigator.pop(context);
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('أهلاً بك مجدداً يا $customerName! تم تسجيل الدخول بنجاح 🚀')),
+          );
+        } else {
+          if (mounted) {
             setState(() {
-              _currentStep = 2; // استكمال بيانات العميل الجديد
+              _currentStep = 2; // استكمال بيانات العميل الجديد أو الناقصة
             });
           }
         }
@@ -297,7 +346,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
     final username = _loginUsernameController.text.trim();
     final password = _loginPasswordController.text.trim();
-    
+
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال اسم المستخدم وكلمة المرور')),
@@ -353,42 +402,49 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 4️⃣ حفظ بيانات العميل النهائية
+  // 4️⃣ حفظ بيانات العميل النهائية في قاعدة البيانات وتحديث AppState
   Future<void> _saveCustomerProfile(AppState appState) async {
     final name = _nameController.text.trim();
     final address = _addressController.text.trim();
 
-    if (name.isNotEmpty && address.isNotEmpty) {
-      final cleanPhone = _cleanPhoneInput.isNotEmpty 
-          ? _cleanPhoneInput 
+    if (name.isEmpty || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final cleanPhone = _cleanPhoneInput.isNotEmpty
+          ? _cleanPhoneInput
           : _formattedPhone;
 
-      await _supabase.from('customers').upsert({
-        'phone': cleanPhone,
-        'name': name,
-        'address': address,
-      }, onConflict: 'phone');
+      final savedRecord = await _supabase
+          .from('customers')
+          .upsert({
+            'phone': cleanPhone,
+            'name': name,
+            'address': address,
+          }, onConflict: 'phone')
+          .select()
+          .maybeSingle();
+
+      final finalName = (savedRecord?['name'] ?? name).toString().trim();
+      final finalPhone = (savedRecord?['phone'] ?? cleanPhone).toString().trim();
+      final finalAddress = (savedRecord?['address'] ?? address).toString().trim();
 
       appState.setUser(
-        name: name,
-        phone: cleanPhone,
-        address: address,
+        name: finalName,
+        phone: finalPhone,
+        address: finalAddress,
       );
 
       await appState.requestLocationAndNotificationPermissions();
+      await _syncOneSignalPlayerId(finalPhone);
 
-      try {
-        String? playerId = OneSignal.User.pushSubscription.id;
-        if (playerId != null && playerId.isNotEmpty) {
-          await _supabase
-              .from('customers')
-              .update({'onesignal_player_id': playerId})
-              .eq('phone', cleanPhone);
-        }
-      } catch (e) {
-        debugPrint('خطأ في حفظ Player ID: $e');
-      }
-
+      if (!mounted) return;
       if (widget.onLoginSuccess != null) {
         widget.onLoginSuccess!();
       } else {
@@ -398,10 +454,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أهلاً بك! تم حفظ البيانات وتسجيل الدخول بنجاح 🎉')),
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال الاسم والعنوان كاملاً')),
-      );
+    } catch (e) {
+      debugPrint('❌ خطأ في حفظ بيانات العميل: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حفظ البيانات، يرجى المحاولة مرة أخرى')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -753,9 +816,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           minimumSize: const Size(double.infinity, 50),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: () => _saveCustomerProfile(appState),
-                        child: const Text('حفظ والدخول للتطبيق 🚀',
-                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                        onPressed: _isLoading ? null : () => _saveCustomerProfile(appState),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                              )
+                            : const Text('حفظ والدخول للتطبيق 🚀',
+                                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                     ],
                   ],
