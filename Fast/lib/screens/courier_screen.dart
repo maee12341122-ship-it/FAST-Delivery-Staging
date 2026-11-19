@@ -21,6 +21,7 @@ class CourierScreen extends StatefulWidget {
 class _CourierScreenState extends State<CourierScreen> {
   StreamSubscription<Position>? _locationSubscription;
   bool _isLoadingSession = true;
+  final Set<String> _updatingOrderIds = {};
 
   @override
   void initState() {
@@ -30,12 +31,10 @@ class _CourierScreenState extends State<CourierScreen> {
     });
   }
 
-  // 🛡️ دالة ذكية للتحقق واسترجاع جلسة المندوب المحفوظة محلياً لمنع فقدان تسجيل الدخول
   Future<void> _verifyAndRestoreCourierSession() async {
     try {
       final appState = Provider.of<AppState>(context, listen: false);
 
-      // إذا كانت الجلسة موجودة في الذاكرة
       if (appState.currentCourier != null) {
         final String courierId = (appState.currentCourier!['id'] ??
                 appState.currentCourier!['name'] ??
@@ -49,7 +48,6 @@ class _CourierScreenState extends State<CourierScreen> {
         return;
       }
 
-      // محاولة استرجاع الجلسة المحفوظة محلياً عبر SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final String? savedCourierJson = prefs.getString('saved_courier_session');
 
@@ -66,7 +64,6 @@ class _CourierScreenState extends State<CourierScreen> {
         return;
       }
 
-      // التحقق عبر رقم الهاتف المسجل في الملف الشخصي
       final currentPhone = appState.userProfile?['phone']?.toString() ?? '';
       if (currentPhone.isEmpty) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
@@ -209,6 +206,31 @@ class _CourierScreenState extends State<CourierScreen> {
     return null;
   }
 
+  Future<void> _changeOrderStatus(
+    BuildContext context,
+    AppState appState,
+    String orderId,
+    String nextStatus,
+  ) async {
+    if (_updatingOrderIds.contains(orderId)) return;
+    setState(() => _updatingOrderIds.add(orderId));
+    try {
+      await appState.updateOrderStatus(orderId, nextStatus);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _updatingOrderIds.remove(orderId));
+      }
+    }
+  }
+
   Widget _buildNetworkStatusBar(AppState appState) {
     if (appState.isConnectedToInternet) {
       return const SizedBox.shrink();
@@ -245,8 +267,11 @@ class _CourierScreenState extends State<CourierScreen> {
                 .toLowerCase();
             final courierName =
                 (courier['name'] ?? '').toString().trim().toLowerCase();
-            final String orderStatus = o['status']?.toString() ?? '';
-            return (assigned == courierName) &&
+            final courierId = (courier['id'] ?? '').toString().trim();
+            final String orderStatus = o['status']?.toString().trim() ?? '';
+            final bool isMyOrder =
+                assigned == courierName || (courierId.isNotEmpty && assigned == courierId);
+            return isMyOrder &&
                 (orderStatus == 'waitingCourierApproval' ||
                     orderStatus == 'approvedByCustomer');
           }).length
@@ -386,7 +411,7 @@ class _CourierScreenState extends State<CourierScreen> {
                     await _locationSubscription?.cancel();
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('saved_courier_session');
-                    appState.logoutCourier();
+                    await appState.logoutCourier();
                     if (context.mounted) Navigator.pop(context);
                   },
                 ),
@@ -425,8 +450,7 @@ class _CourierScreenState extends State<CourierScreen> {
       final assigned =
           (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
       return assigned == courierName ||
-          assigned == courierId ||
-          (courierName.isNotEmpty && assigned.contains(courierName));
+          (courierId.isNotEmpty && assigned == courierId);
     }).toList();
 
     final completedOrders = myOrders.where((o) {
@@ -618,7 +642,8 @@ class _CourierScreenState extends State<CourierScreen> {
         final order = ordersList[index];
         final orderId = order['id'].toString();
         final String customerAddress = order['address']?.toString() ?? '';
-        final String orderStatus = order['status']?.toString() ?? '';
+        final String orderStatus = order['status']?.toString().trim() ?? '';
+        final bool isUpdating = _updatingOrderIds.contains(orderId);
 
         final double productsPrice =
             double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
@@ -841,20 +866,21 @@ class _CourierScreenState extends State<CourierScreen> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () async {
-                          try {
-                            await appState.updateOrderStatus(
-                                orderId, 'onTheWay');
-                          } catch (e) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('قبول الطلب والبدء 🚀',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: isUpdating
+                            ? null
+                            : () => _changeOrderStatus(
+                                context, appState, orderId, 'onTheWay'),
+                        icon: isUpdating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.check_circle),
+                        label: Text(
+                          isUpdating ? 'جاري التحديث...' : 'قبول الطلب والبدء 🚀',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                   ] else if (orderStatus == 'onTheWay') ...[
@@ -868,23 +894,27 @@ class _CourierScreenState extends State<CourierScreen> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () async {
-                          try {
-                            await appState.updateOrderStatus(
-                                orderId, 'arrived');
-                          } catch (e) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.location_pin),
-                        label: const Text('وصلت إلى الموقع 📍',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: isUpdating
+                            ? null
+                            : () => _changeOrderStatus(context, appState,
+                                orderId, 'arrivedToCustomer'),
+                        icon: isUpdating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.black))
+                            : const Icon(Icons.location_pin),
+                        label: Text(
+                          isUpdating
+                              ? 'جاري التحديث...'
+                              : 'وصلت إلى الموقع 📍',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
-                  ] else if (orderStatus == 'arrived') ...[
+                  ] else if (orderStatus == 'arrivedToCustomer' ||
+                      orderStatus == 'arrived') ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -895,20 +925,23 @@ class _CourierScreenState extends State<CourierScreen> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () async {
-                          try {
-                            await appState.updateOrderStatus(
-                                orderId, 'delivered');
-                          } catch (e) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.done_all),
-                        label: const Text('تم التسليم بنجاح ✅',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: isUpdating
+                            ? null
+                            : () => _changeOrderStatus(
+                                context, appState, orderId, 'delivered'),
+                        icon: isUpdating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.done_all),
+                        label: Text(
+                          isUpdating
+                              ? 'جاري التحديث...'
+                              : 'تم التسليم بنجاح ✅',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                   ],
