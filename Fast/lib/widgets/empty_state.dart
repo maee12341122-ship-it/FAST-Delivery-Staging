@@ -4,7 +4,11 @@ import '../utils/constants.dart';
 class EmptyState extends StatelessWidget {
   final String message;
   final IconData icon;
-  const EmptyState({super.key, required this.message, this.icon = Icons.inbox_outlined});
+  const EmptyState({
+    super.key,
+    required this.message,
+    this.icon = Icons.inbox_outlined,
+  });
 
   @override
   Widget build(BuildContext context) => Center(
@@ -15,7 +19,11 @@ class EmptyState extends StatelessWidget {
             children: [
               Icon(icon, size: 58, color: AppConstants.gold.withOpacity(0.8)),
               const SizedBox(height: 12),
-              Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey),
+              ),
             ],
           ),
         ),
