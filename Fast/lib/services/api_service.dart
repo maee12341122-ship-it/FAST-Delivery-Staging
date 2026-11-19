@@ -1,20 +1,137 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http; // 👈 مهم جداً لطلبات الـ HTTP لإرسال الـ OTP عبر البوابة
 
-// تعريفات مخصصة لتجنب أخطاء الأقواس نهائياً
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonList = List<JsonMap>;
 
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => message;
+}
+
 class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
+  static final http.Client _httpClient = http.Client();
 
-  // 🔑 إعدادات بوابة الواتساب الخاصة برقم الشغل (+967776857316)
-  // استبدل YOUR_INSTANCE_ID و YOUR_API_TOKEN بالبيانات الحقيقية من منصة البوابة لاحقاً
-  static const String _whatsappApiUrl = 'https://api.green-api.com/waInstanceYOUR_INSTANCE_ID/SendMessage/YOUR_API_TOKEN';
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
-  // 1. جلب الكتالوج العام (المطاعم والمنتجات المتاحة من Supabase)
+  // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
+  static const String baseUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: 'http://10.0.2.2:3000',
+  );
+
+  static Uri _buildUri(String path, [Map<String, String>? queryParams]) {
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    final uri = Uri.parse('$normalizedBase$normalizedPath');
+    if (queryParams == null || queryParams.isEmpty) {
+      return uri;
+    }
+    return uri.replace(queryParameters: {
+      ...uri.queryParameters,
+      ...queryParams,
+    });
+  }
+
+  static String? _resolveAccessToken([String? explicitToken]) {
+    final sessionToken = _supabase.auth.currentSession?.accessToken;
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      return sessionToken;
+    }
+    if (explicitToken != null &&
+        explicitToken.trim().isNotEmpty &&
+        explicitToken.trim().contains('.')) {
+      return explicitToken.trim();
+    }
+    return null;
+  }
+
+  static Map<String, String> _headers({String? explicitToken}) {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    final token = _resolveAccessToken(explicitToken);
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
+
+  static dynamic _decodeBody(http.Response response) {
+    if (response.body.isEmpty) return <String, dynamic>{};
+    return jsonDecode(response.body);
+  }
+
+  static Future<dynamic> _sendJsonRequest({
+    required String method,
+    required String path,
+    Map<String, String>? queryParams,
+    Map<String, dynamic>? body,
+    String? explicitToken,
+  }) async {
+    final uri = _buildUri(path, queryParams);
+    final headers = _headers(explicitToken: explicitToken);
+
+    try {
+      http.Response response;
+      switch (method.toUpperCase()) {
+        case 'GET':
+          response = await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
+          break;
+        case 'POST':
+          response = await _httpClient
+              .post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .timeout(_requestTimeout);
+          break;
+        case 'PATCH':
+          response = await _httpClient
+              .patch(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .timeout(_requestTimeout);
+          break;
+        case 'PUT':
+          response = await _httpClient
+              .put(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+              .timeout(_requestTimeout);
+          break;
+        default:
+          throw ApiException('طريقة طلب غير مدعومة: $method');
+      }
+
+      final decoded = _decodeBody(response);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return decoded;
+      }
+
+      final serverMessage = decoded is Map<String, dynamic>
+          ? (decoded['error'] ?? decoded['message'] ?? 'حدث خطأ في الخادم').toString()
+          : 'حدث خطأ في الخادم';
+      throw ApiException(serverMessage, statusCode: response.statusCode);
+    } on TimeoutException {
+      throw ApiException('انتهت مهلة الاتصال بالخادم، يرجى المحاولة مرة أخرى.');
+    } on http.ClientException {
+      throw ApiException('تعذر الاتصال بالخادم، تحقق من الاتصال بالإنترنت.');
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      debugPrint('❌ خطأ في طلب HTTP ($method $path): $e');
+      throw ApiException('تعذر إتمام الطلب: $e');
+    }
+  }
+
+  // 1. جلب الكتالوج العام من جدول products في Supabase
   static Future<JsonMap> fetchCatalog() async {
     try {
       final response = await _supabase.from('products').select();
@@ -25,10 +142,13 @@ class ApiService {
     }
   }
 
-  // 1. أ) جلب قائمة المطاعم/المتاجر من جدول restaurants (لضمان تقسيم الأقسام مثل الشميري وو)
+  // 1. أ) جلب قائمة المطاعم/المتاجر النشطة من جدول restaurants
   static Future<List<dynamic>> fetchRestaurants() async {
     try {
-      final response = await _supabase.from('restaurants').select().eq('is_active', true);
+      final response = await _supabase
+          .from('restaurants')
+          .select()
+          .eq('is_active', true);
       return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب المطاعم: $e');
@@ -36,10 +156,13 @@ class ApiService {
     }
   }
 
-  // 1. ب) جلب الأقسام العامة من جدول categories
+  // 1. ب) جلب الأقسام العامة النشطة من جدول categories
   static Future<List<dynamic>> fetchCategories() async {
     try {
-      final response = await _supabase.from('categories').select().eq('is_active', true);
+      final response = await _supabase
+          .from('categories')
+          .select()
+          .eq('is_active', true);
       return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب الأقسام: $e');
@@ -47,226 +170,271 @@ class ApiService {
     }
   }
 
-  // 2. التحقق من الكوبون وتطبيق الخصم
-  static Future<JsonMap> validateCoupon(String code, double subtotal) async {
+  // 2. التحقق من الكوبون وحساب الخصم عبر Node.js Backend
+  static Future<JsonMap> validateCoupon(
+    String code,
+    double subtotal, {
+    String? explicitToken,
+  }) async {
     try {
-      final response = await _supabase
-          .from('coupons')
-          .select()
-          .eq('code', code.trim())
-          .maybeSingle();
+      final data = await _sendJsonRequest(
+        method: 'POST',
+        path: '/api/coupons/validate',
+        body: {
+          'code': code.trim(),
+          'subtotal': subtotal,
+        },
+        explicitToken: explicitToken,
+      );
 
-      if (response == null) {
-        throw Exception('كود الخصم غير صالح أو منتهي الصلاحية.');
+      if (data is Map<String, dynamic>) {
+        return data;
       }
-
-      double discountValue = double.tryParse(response['discount_value']?.toString() ?? '0') ?? 0.0;
-      String discountType = response['discount_type']?.toString() ?? 'percentage';
-      
-      double discountAmount = 0.0;
-      if (discountType == 'percentage') {
-        discountAmount = subtotal * (discountValue / 100);
-      } else {
-        discountAmount = discountValue; // خصم مبلغ ثابت
-      }
-
-      return {
-        'code': response['code'],
-        'discount_amount': discountAmount,
-        'message': 'تم تطبيق الكوبون بنجاح! 🎉'
-      };
+      throw ApiException('استجابة غير متوقعة من خدمة التحقق من الكوبون.');
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من الكوبون: $e');
       rethrow;
     }
   }
 
-  // 3. إنشاء طلب جديد مباشرة في جدول orders في Supabase
+  // 3. إنشاء طلب جديد عبر Node.js Backend (يعتمد الأسعار والإجمالي من الخادم)
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
     required String notes,
-    required String token, // رقم هاتف العميل المنقى
+    String? customerName,
+    String? phone,
+    String? couponCode,
+    String? paymentMethod,
+    String? paymentAccount,
+    String? token,
   }) async {
     try {
-      double productsTotal = 0.0;
-      for (var item in items) {
-        double price = double.tryParse(item['price'].toString()) ?? 0.0;
-        int qty = int.tryParse(item['quantity'].toString()) ?? 1;
-        productsTotal += price * qty;
-      }
+      final sanitizedItems = items.map((item) {
+        final rawProductId = item['product_id'] ?? item['id'];
+        final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+        return {
+          'product_id': rawProductId?.toString() ?? '',
+          'quantity': qty > 0 ? qty : 1,
+        };
+      }).toList();
 
-      final response = await _supabase.from('orders').insert({
-        'phone': token,
+      final payload = <String, dynamic>{
+        'items': sanitizedItems,
         'address': address.trim(),
-        'items_description': notes.trim(),
-        'products_total': productsTotal,
-        'total_price': productsTotal,
-        'status': 'waitingForPricing', // بانتظار تسعير الإدارة
-        'admin_message': 'بانتظار تحديد رسوم التوصيل من المشرف',
-        'created_at': DateTime.now().toIso8601String(),
-      }).select().single();
-
-      return {
-        'order': response,
-        'message': 'تم إرسال الطلب بنجاح'
+        'notes': notes.trim(),
+        if (customerName != null && customerName.trim().isNotEmpty)
+          'customer_name': customerName.trim(),
+        if (phone != null && phone.trim().isNotEmpty)
+          'phone': phone.trim(),
+        if (couponCode != null && couponCode.trim().isNotEmpty)
+          'coupon_code': couponCode.trim(),
+        if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
+          'payment_method': paymentMethod.trim(),
+        if (paymentAccount != null && paymentAccount.trim().isNotEmpty)
+          'payment_account': paymentAccount.trim(),
       };
+
+      final data = await _sendJsonRequest(
+        method: 'POST',
+        path: '/api/orders',
+        body: payload,
+        explicitToken: token,
+      );
+
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      throw ApiException('استجابة غير متوقعة عند إنشاء الطلب.');
     } catch (e) {
-      debugPrint('❌ خطأ في إنشاء الطلب (Supabase): $e');
-      throw Exception('تعذر إرسال الطلب: $e');
+      debugPrint('❌ خطأ في إنشاء الطلب: $e');
+      rethrow;
     }
   }
 
-  // 4. جلب طلبات العميل الشخصية بناءً على رقم الهاتف
-  static Future<List<dynamic>> fetchMyOrders(String phone) async {
+  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
+  static Future<List<dynamic>> fetchMyOrders(String phone, {String? token}) async {
     try {
-      final response = await _supabase.from('orders').select().eq('phone', phone);
-      return response;
+      final data = await _sendJsonRequest(
+        method: 'GET',
+        path: '/api/orders/my',
+        queryParams: {'phone': phone.trim()},
+        explicitToken: token,
+      );
+
+      if (data is List) return data;
+      if (data is Map<String, dynamic> && data['orders'] is List) {
+        return data['orders'] as List<dynamic>;
+      }
+      return [];
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات العميل: $e');
       return [];
     }
   }
 
-  // 5. [لوحة المشرف] جلب جميع الطلبات
-  static Future<List<dynamic>> fetchAdminOrders(String token, {String? status}) async {
+  // 5. [لوحة المشرف] جلب جميع الطلبات عبر Node.js Backend
+  static Future<List<dynamic>> fetchAdminOrders(
+    String token, {
+    String? status,
+  }) async {
     try {
-      var query = _supabase.from('orders').select();
-      if (status != null && status.isNotEmpty) {
-        query = query.eq('status', status) as dynamic;
+      final queryParams = <String, String>{};
+      if (status != null && status.trim().isNotEmpty) {
+        queryParams['status'] = status.trim();
       }
-      final response = await query;
-      return response;
+
+      final data = await _sendJsonRequest(
+        method: 'GET',
+        path: '/api/orders',
+        queryParams: queryParams,
+        explicitToken: token,
+      );
+
+      if (data is List) return data;
+      if (data is Map<String, dynamic> && data['orders'] is List) {
+        return data['orders'] as List<dynamic>;
+      }
+      return [];
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات المشرف: $e');
       rethrow;
     }
   }
 
-  // 6. [لوحة المشرف] تحديد رسوم التوصيل وتعيين المندوب (التسعير)
+  // 6. [لوحة المشرف] تحديد رسوم التوصيل وتعيين المندوب عبر Node.js Backend
   static Future<JsonMap> adminPricingOrder(
     String token,
     int orderId,
     double deliveryFee,
-    String assignedCourier,
-  ) async {
+    String assignedCourier, {
+    String? courierId,
+  }) async {
     try {
-      final orderRes = await _supabase.from('orders').select('products_total, total_price').eq('id', orderId).single();
-      double productsTotal = double.tryParse(orderRes['products_total']?.toString() ?? orderRes['total_price']?.toString() ?? '0') ?? 0.0;
-      double totalPrice = productsTotal + deliveryFee;
+      final data = await _sendJsonRequest(
+        method: 'POST',
+        path: '/api/orders/$orderId/pricing',
+        body: {
+          'delivery_fee': deliveryFee,
+          'assigned_courier': assignedCourier.trim(),
+          if (courierId != null && courierId.trim().isNotEmpty)
+            'courier_id': courierId.trim(),
+        },
+        explicitToken: token,
+      );
 
-      final response = await _supabase.from('orders').update({
-        'delivery_fee': deliveryFee,
-        'products_total': productsTotal,
-        'total_price': totalPrice,
-        'assigned_courier': assignedCourier.trim(),
-        'status': 'pricingSentToCustomer',
-        'is_fee_sent': true,
-        'admin_message': 'تم تحديد رسوم التوصيل ($deliveryFee ر.ي). بانتظار موافقة العميل ⏳',
-      }).eq('id', orderId).select().single();
-
-      return {'order': response, 'message': 'تم تحديث السعر بنجاح'};
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      throw ApiException('استجابة غير متوقعة عند تسعير الطلب.');
     } catch (e) {
       debugPrint('❌ خطأ في تسعير الطلب: $e');
       rethrow;
     }
   }
 
-  // 7. [لوحة المشرف] تحديث حالة الطلب مباشرة (تم تصحيح الخطأ المطبعي هنا)
+  // 7. [لوحة المشرف] تحديث حالة الطلب عبر Node.js Backend
   static Future<JsonMap> adminUpdateOrderStatus(
     String token,
     int orderId,
     String status,
   ) async {
     try {
-      final response = await _supabase.from('orders').update({
-        'status': status,
-      }).eq('id', orderId).select().single();
+      final data = await _sendJsonRequest(
+        method: 'PATCH',
+        path: '/api/orders/$orderId/status',
+        body: {'status': status.trim()},
+        explicitToken: token,
+      );
 
-      return {'order': response, 'message': 'تم تحديث الحالة بنجاح'};
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      throw ApiException('استجابة غير متوقعة عند تحديث حالة الطلب.');
     } catch (e) {
       debugPrint('❌ خطأ في تحديث حالة الطلب للمشرف: $e');
       rethrow;
     }
   }
 
-  // 8. [لوحة المندوب] جلب الطلبات المسندة للمندوب الحالي
-  static Future<List<dynamic>> fetchCourierOrders(String courierName) async {
+  // 8. [لوحة المندوب] جلب الطلبات المسندة للمندوب عبر Node.js Backend
+  static Future<List<dynamic>> fetchCourierOrders(
+    String courierName, {
+    String? courierId,
+    String? token,
+  }) async {
     try {
-      final response = await _supabase.from('orders').select().eq('assigned_courier', courierName.trim());
-      return response;
+      final queryParams = <String, String>{};
+      if (courierId != null && courierId.trim().isNotEmpty) {
+        queryParams['courier_id'] = courierId.trim();
+      }
+      if (courierName.trim().isNotEmpty) {
+        queryParams['courier_name'] = courierName.trim();
+      }
+
+      final data = await _sendJsonRequest(
+        method: 'GET',
+        path: '/api/orders',
+        queryParams: queryParams,
+        explicitToken: token,
+      );
+
+      if (data is List) return data;
+      if (data is Map<String, dynamic> && data['orders'] is List) {
+        return data['orders'] as List<dynamic>;
+      }
+      return [];
     } catch (e) {
       debugPrint('❌ خطأ في جلب طلبات المندوب: $e');
       return [];
     }
   }
 
-  // 9. [لوحة المندوب] تحديث حالة الطلب
+  // 9. [لوحة المندوب] تحديث حالة الطلب عبر Node.js Backend
   static Future<JsonMap> courierUpdateOrderStatus(
     String token,
     int orderId,
     String status,
   ) async {
     try {
-      final response = await _supabase.from('orders').update({
-        'status': status,
-      }).eq('id', orderId).select().single();
+      final data = await _sendJsonRequest(
+        method: 'PATCH',
+        path: '/api/orders/$orderId/status',
+        body: {'status': status.trim()},
+        explicitToken: token,
+      );
 
-      return {'order': response, 'message': 'تم تحديث الحالة بنجاح'};
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      throw ApiException('استجابة غير متوقعة عند تحديث حالة الطلب.');
     } catch (e) {
       debugPrint('❌ خطأ في تحديث حالة الطلب للمندوب: $e');
       rethrow;
     }
   }
 
-  // 10. [لوحة المندوب] إرسال وتحديث الموقع الجغرافي للمندوب
+  // 10. [لوحة المندوب] إرسال وتحديث الموقع الجغرافي للمندوب عبر Node.js Backend
   static Future<void> updateCourierLocation(
     String token,
     double latitude,
-    double longitude,
-  ) async {
+    double longitude, {
+    int? orderId,
+  }) async {
     try {
-      debugPrint('📍 تحديث الموقع: $latitude, $longitude');
+      await _sendJsonRequest(
+        method: 'POST',
+        path: '/api/courier/location',
+        body: {
+          'latitude': latitude,
+          'longitude': longitude,
+          if (orderId != null) 'order_id': orderId,
+        },
+        explicitToken: token,
+      );
     } catch (e) {
       debugPrint('❌ خطأ في تحديث موقع المندوب: $e');
       rethrow;
-    }
-  }
-
-  // ===========================================================================
-  // 💬 11. إرسال كود التحقق (OTP) فعلياً من رقم الشغل (+967776857316) عبر الواتساب
-  // ===========================================================================
-  static Future<bool> sendRealWhatsAppOtp({
-    required String phone,
-    required String otpCode,
-  }) async {
-    try {
-      String cleanPhone = phone.replaceAll('+', '').replaceAll(' ', '');
-      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
-      if (!cleanPhone.startsWith('967')) cleanPhone = '967$cleanPhone';
-
-      final chatId = '$cleanPhone@c.us';
-      final messageText = 'مرحباً بك في FAST Delivery 🚀\nرمز التحقق الخاص بك هو: *$otpCode*\n\nيرجى عدم مشاركة الرمز مع أحد.';
-
-      final response = await http.post(
-        Uri.parse(_whatsappApiUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'chatId': chatId,
-          'message': messageText,
-        }),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ تم إرسال رسالة الواتساب بنجاح من رقم الشغل للرقم: $cleanPhone');
-        return true;
-      } else {
-        debugPrint('❌ فشل إرسال رسالة الواتساب عبر البوابة: ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      debugPrint('❌ خطأ شبكة أثناء إرسال الواتساب: $e');
-      return false;
     }
   }
 }
