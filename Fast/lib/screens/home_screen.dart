@@ -150,7 +150,8 @@ class _HomeScreenState extends State<HomeScreen>
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
         _phoneController.text = appState.userProfile?['phone'] ?? '';
-        _addressDescriptionController.text = appState.userProfile?['address'] ?? '';
+        _addressDescriptionController.text =
+            appState.userProfile?['address'] ?? '';
       }
       _previousUnreadCount = appState.unreadNotificationsCount;
 
@@ -2621,6 +2622,7 @@ class _HomeScreenState extends State<HomeScreen>
 
                       final bool isVariable =
                           product.category == 'الخضار والفواكه';
+                      final bool isFav = appState.isProductFavorite(product.id);
                       int qtyInCart =
                           appState.getProductQuantityInCart(product.id);
 
@@ -2642,29 +2644,77 @@ class _HomeScreenState extends State<HomeScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: product.imageUrl.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: product.imageUrl,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        placeholder: (context, url) => Center(
-                                            child: CircularProgressIndicator(
-                                                color: accent, strokeWidth: 2)),
-                                        errorWidget: (context, url, error) =>
-                                            Container(
-                                          color: accent.withOpacity(0.1),
-                                          child: Icon(Icons.fastfood,
-                                              color: accent, size: 32),
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: product.imageUrl.isNotEmpty
+                                          ? CachedNetworkImage(
+                                              imageUrl: product.imageUrl,
+                                              width: double.infinity,
+                                              fit: BoxFit.cover,
+                                              placeholder: (context, url) =>
+                                                  Center(
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                              color: accent,
+                                                              strokeWidth: 2)),
+                                              errorWidget: (context, url,
+                                                      error) =>
+                                                  Container(
+                                                color: accent.withOpacity(0.1),
+                                                child: Icon(Icons.fastfood,
+                                                    color: accent, size: 32),
+                                              ),
+                                            )
+                                          : Container(
+                                              width: double.infinity,
+                                              color: accent.withOpacity(0.15),
+                                              child: Icon(Icons.fastfood,
+                                                  color: accent, size: 32),
+                                            ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 6,
+                                    left: 6,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        appState.toggleFavorite(product.id);
+                                        ScaffoldMessenger.of(context)
+                                            .clearSnackBars();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(!isFav
+                                                ? 'تمت إضافة ${product.name} إلى المفضلة ❤️'
+                                                : 'تمت إزالة ${product.name} من المفضلة'),
+                                            duration: const Duration(
+                                                milliseconds: 800),
+                                          ),
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.55),
+                                          shape: BoxShape.circle,
                                         ),
-                                      )
-                                    : Container(
-                                        width: double.infinity,
-                                        color: accent.withOpacity(0.15),
-                                        child: Icon(Icons.fastfood,
-                                            color: accent, size: 32),
+                                        child: Icon(
+                                          isFav
+                                              ? Icons.favorite
+                                              : Icons.favorite_border,
+                                          color: isFav
+                                              ? Colors.redAccent
+                                              : Colors.white,
+                                          size: 18,
+                                        ),
                                       ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 8),
