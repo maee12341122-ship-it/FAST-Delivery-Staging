@@ -148,10 +148,10 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, String> _backendHeaders() {
-    final Map<String, String> headers = Map.castFrom({
+    final Map<String, String> headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-    });
+    };
     final token = _accessToken;
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -159,15 +159,14 @@ class AppState extends ChangeNotifier {
     return headers;
   }
 
-  Future _postBackend(
+  Future> _postBackend(
     String path,
-    Map body,
+    Map<String, dynamic> body,
   ) async {
-    final Map<String, String> headers = Map.castFrom(_backendHeaders());
     final response = await _httpClient
         .post(
           _buildBackendUri(path),
-          headers: headers,
+          headers: _backendHeaders(),
           body: jsonEncode(body),
         )
         .timeout(const Duration(milliseconds: 1500));
@@ -176,8 +175,9 @@ class AppState extends ChangeNotifier {
         response.body.isNotEmpty ? jsonDecode(response.body) : {};
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (decoded is Map) return Map.castFrom(decoded);
-      return Map.castFrom({'data': decoded});
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      return {'data': decoded};
     }
 
     final errorMsg = decoded is Map
@@ -187,14 +187,23 @@ class AppState extends ChangeNotifier {
     throw Exception(errorMsg);
   }
 
+  bool _isCourierSession(User? user) {
+    return user?.appMetadata['role']?.toString() == 'courier';
+  }
+
   void _initAuthListener() {
     _authSub = supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
-      isAdminLoggedIn = session != null;
-
       if (session != null) {
-        await _loadCourierSession();
+        if (_isCourierSession(session.user)) {
+          isAdminLoggedIn = false;
+          await _loadCourierSession();
+        } else {
+          isAdminLoggedIn = true;
+          currentCourier = null;
+        }
       } else {
+        isAdminLoggedIn = false;
         currentCourier = null;
       }
       notifyListeners();
@@ -221,8 +230,13 @@ class AppState extends ChangeNotifier {
   Future<void> _checkInitialSessions() async {
     final session = supabase.auth.currentSession;
     if (session != null) {
-      isAdminLoggedIn = true;
-      await _loadCourierSession();
+      if (_isCourierSession(session.user)) {
+        isAdminLoggedIn = false;
+        await _loadCourierSession();
+      } else {
+        isAdminLoggedIn = true;
+        currentCourier = null;
+      }
     }
   }
 
@@ -494,7 +508,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future fetchRestaurantRatingForOrder(dynamic orderId) async {
+  Future?> fetchRestaurantRatingForOrder(
+      dynamic orderId) async {
     try {
       final intOrderId = int.tryParse(orderId.toString());
       if (intOrderId == null) return null;
@@ -509,11 +524,11 @@ class AppState extends ChangeNotifier {
           .maybeSingle();
 
       if (response != null && response['rating'] != null) {
-        return Map.castFrom({
+        return {
           'restaurant_rating': response['rating'],
           'restaurant_review': response['comment'] ?? '',
           'target_id': response['target_id'],
-        });
+        };
       }
     } catch (e) {
       debugPrint('خطأ في جلب تقييم المطعم للطلب: $e');
@@ -529,8 +544,8 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  final List _favoriteProductIds = [];
-  List<String> get favoriteProductIds => List.castFrom(_favoriteProductIds);
+  final List<String> _favoriteProductIds = [];
+  List<String> get favoriteProductIds => List.unmodifiable(_favoriteProductIds);
 
   bool isProductFavorite(String productId) {
     return _favoriteProductIds.contains(productId);
@@ -546,13 +561,11 @@ class AppState extends ChangeNotifier {
   }
 
   List<ProductModel> get favoriteProducts {
-    final filtered =
-        products.where((p) => _favoriteProductIds.contains(p.id)).toList();
-    return List.castFrom(filtered);
+    return products.where((p) => _favoriteProductIds.contains(p.id)).toList();
   }
 
-  final List _userAddresses = [];
-  List<AddressModel> get userAddresses => List.castFrom(_userAddresses);
+  final List<AddressModel> _userAddresses = [];
+  List<AddressModel> get userAddresses => List.unmodifiable(_userAddresses);
 
   void addOrUpdateAddress(String formattedAddress) {
     if (userProfile != null) {
@@ -892,11 +905,7 @@ class AppState extends ChangeNotifier {
     String? targetChat,
     String? senderRole,
   }) async {
-    try {
-      return null;
-    } catch (e) {
-      return null;
-    }
+    return null;
   }
 
   Future<void> sendAutoNotification({
@@ -905,11 +914,7 @@ class AppState extends ChangeNotifier {
     required String title,
     String? message,
     String? body,
-  }) async {
-    try {} catch (e) {
-      debugPrint('خطأ إرسال الإشعار التلقائي: $e');
-    }
-  }
+  }) async {}
 
   int startHour = 8;
   int endHour = 24;
@@ -941,20 +946,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream getMessagesForOrder(dynamic orderId, String targetChat) {
+  Stream<List>> getMessagesForOrder(
+      dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('order_id', orderId)
         .eq('target_chat', targetChat)
         .order('created_at', ascending: true)
-        .map((rows) {
-          final mapped = rows.map((row) {
-            final Map<String, dynamic> typedRow = Map.castFrom(row);
-            return typedRow;
-          }).toList();
-          return List.castFrom(mapped);
-        });
+        .map((rows) => rows.map((row) => Map<String, dynamic>.from(row)).toList());
   }
 
   Future<void> sendChatMessage(
@@ -969,7 +969,7 @@ class AppState extends ChangeNotifier {
       'order_id': orderId,
       'sender_type': senderRole,
       'target_chat': targetChat,
-      'message_text': messageText,
+      'message_text': messageText.trim(),
     };
 
     try {
@@ -1142,16 +1142,19 @@ class AppState extends ChangeNotifier {
         email: email,
         password: password,
       );
-      if (response.user == null) {
+      if (response.user == null || _isCourierSession(response.user)) {
         await supabase.auth.signOut();
+        isAdminLoggedIn = false;
         return false;
       }
       isAdminLoggedIn = true;
+      currentCourier = null;
       await fetchCouriersFromSupabase();
       listenToOrdersRealtime();
       notifyListeners();
       return true;
     } catch (e) {
+      isAdminLoggedIn = false;
       return false;
     }
   }
@@ -1165,14 +1168,14 @@ class AppState extends ChangeNotifier {
   Map? _userProfileData;
   Map<String, dynamic>? get userProfile {
     if (_userProfileData == null) return null;
-    return Map.castFrom(_userProfileData!);
+    return Map<String, dynamic>.from(_userProfileData!);
   }
 
   set userProfile(dynamic value) {
     if (value == null) {
       _userProfileData = null;
     } else if (value is Map) {
-      _userProfileData = Map.from(value);
+      _userProfileData = Map<String, dynamic>.from(value);
     }
   }
 
@@ -1191,7 +1194,7 @@ class AppState extends ChangeNotifier {
     String? address,
   }) {
     if (profile is Map) {
-      userProfile = Map.from(profile);
+      userProfile = Map<String, dynamic>.from(profile);
     } else if (name != null || phone != null || address != null) {
       userProfile = {
         'name': name ?? userProfile?['name'] ?? '',
@@ -1211,7 +1214,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('userCity', (data['city'] ?? currentCity).toString());
   }
 
-  Future fetchCustomerRecordByPhone(String phone) async {
+  Future?> fetchCustomerRecordByPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) return null;
 
@@ -1236,7 +1239,7 @@ class AppState extends ChangeNotifier {
     await _persistUserSessionToPrefs(normalizedData);
     await fetchUserAddressesFromSupabase();
     notifyListeners();
-    return Map.castFrom(normalizedData);
+    return normalizedData;
   }
 
   Future<void> _loadUserSession() async {
@@ -1282,10 +1285,7 @@ class AppState extends ChangeNotifier {
           .eq('id', orderId)
           .maybeSingle();
       if (response != null) {
-        final row = Map.from(response);
-        orders.removeWhere((o) => o['id'].toString() == orderId);
-        orders.add(row);
-        _sortOrders();
+        _upsertOrderInList(response);
         notifyListeners();
       }
     } catch (e) {
@@ -1302,7 +1302,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future requestOtpForPhone(String phone) async {
+  Future> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) {
       throw Exception('الرجاء إدخال رقم هاتف صحيح.');
@@ -1320,23 +1320,23 @@ class AppState extends ChangeNotifier {
         debugPrint('خطأ في التحقق من العميل في قاعدة البيانات: $e');
       }
       notifyListeners();
-      return Map.castFrom({
+      return {
         'exists': existsInDb,
         'message': existsInDb
             ? 'تم العثور على حسابك وجلب بياناتك. رمز التحقق التجريبي هو $_testOtpCode'
             : 'رمز التحقق التجريبي هو $_testOtpCode',
-      });
+      };
     }
 
     try {
       final response = await _postBackend('/api/auth/otp/request', {
         'phone': cleanPhone,
       });
-      return Map.castFrom({
+      return {
         'exists': response['exists'] ?? false,
         'message':
             response['message']?.toString() ?? 'تم إرسال رمز التحقق بنجاح',
-      });
+      };
     } catch (e) {
       debugPrint('خطأ في طلب رمز التحقق');
       throw Exception(e.toString().replaceAll('Exception: ', ''));
@@ -1419,8 +1419,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateUser({String? name, String? address, String? phone}) async {
-    if (phone != null && phone.isNotEmpty && userProfile != null) {
-      userProfile!['phone'] = _normalizePhone(phone);
+    if (userProfile != null) {
+      if (phone != null && phone.trim().isNotEmpty) {
+        userProfile!['phone'] = _normalizePhone(phone);
+      }
+      if (name != null) {
+        userProfile!['name'] = name;
+      }
+      if (address != null) {
+        userProfile!['address'] = address;
+      }
     }
     await saveUserProfileDetails(
       name ?? userProfile?['name'] ?? '',
@@ -1474,14 +1482,14 @@ class AppState extends ChangeNotifier {
   Map? _currentCourierData;
   Map<String, dynamic>? get currentCourier {
     if (_currentCourierData == null) return null;
-    return Map.castFrom(_currentCourierData!);
+    return Map<String, dynamic>.from(_currentCourierData!);
   }
 
   set currentCourier(dynamic value) {
     if (value == null) {
       _currentCourierData = null;
     } else if (value is Map) {
-      _currentCourierData = Map.from(value);
+      _currentCourierData = Map<String, dynamic>.from(value);
     }
   }
 
@@ -1489,17 +1497,17 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
-    if (user == null || user.appMetadata['role']?.toString() != 'courier') {
+    if (!_isCourierSession(user)) {
       return;
     }
     try {
       final row = await supabase
           .from('couriers')
           .select()
-          .eq('auth_user_id', user.id)
+          .eq('auth_user_id', user!.id)
           .maybeSingle();
       if (row != null) {
-        currentCourier = Map.from(row);
+        currentCourier = Map<String, dynamic>.from(row);
         notifyListeners();
       }
     } catch (e) {
@@ -1618,7 +1626,7 @@ class AppState extends ChangeNotifier {
       }
 
       double totalSettledAmount = 0.0;
-      final orderIds = [];
+      final orderIds = <int>[];
       for (final row in eligibleOrders) {
         final idVal = int.tryParse(row['id'].toString());
         if (idVal != null) {
@@ -1676,8 +1684,7 @@ class AppState extends ChangeNotifier {
         password: password,
       );
 
-      if (auth.user == null ||
-          auth.user!.appMetadata['role']?.toString() != 'courier') {
+      if (auth.user == null || !_isCourierSession(auth.user)) {
         await supabase.auth.signOut();
         return false;
       }
@@ -1699,7 +1706,7 @@ class AppState extends ChangeNotifier {
           .eq('id', row['id']);
 
       isAdminLoggedIn = false;
-      currentCourier = Map.from(row);
+      currentCourier = Map<String, dynamic>.from(row);
       _currentCourierData!['is_logged_in'] = true;
 
       listenToOrdersRealtime();
@@ -1731,13 +1738,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  final List _cartItems = [];
-  List<CartItemModel> get cartItems => List.castFrom(_cartItems);
+  final List<CartItemModel> _cartItems = [];
+  List<CartItemModel> get cartItems => List.unmodifiable(_cartItems);
 
   int get totalCartItemsCount =>
-      _cartItems.fold(0, (sum, item) => sum + (item.quantity as int));
-  double get totalAmount => _cartItems.fold(
-      0.0, (sum, item) => sum + ((item.price as double) * (item.quantity as int)));
+      _cartItems.fold(0, (sum, item) => sum + item.quantity);
+  double get totalAmount =>
+      _cartItems.fold(0.0, (sum, item) => sum + (item.price * item.quantity));
 
   int getProductQuantityInCart(String productId) {
     final index = _cartItems.indexWhere((item) => item.id == productId);
@@ -1875,9 +1882,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  List _products = [];
-  List<ProductModel> get products => List.castFrom(_products);
-  set products(List value) {
+  List<ProductModel> _products = [];
+  List<ProductModel> get products => List.unmodifiable(_products);
+  set products(List<ProductModel> value) {
     _products = value;
   }
 
@@ -1911,8 +1918,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List orders = [];
-  List notifications = [];
+  List> orders = [];
+  List> notifications = [];
 
   int get unreadNotificationsCount => notifications.length;
 
@@ -1927,7 +1934,7 @@ class AppState extends ChangeNotifier {
     return clean;
   }
 
-  List get customerOrders {
+  List> get customerOrders {
     if (userProfile == null ||
         userProfile!['phone'] == null ||
         userProfile!['phone']!.isEmpty) {
@@ -1994,7 +2001,8 @@ class AppState extends ChangeNotifier {
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
-      orders = List.from(initialData);
+      orders =
+          initialData.map((row) => Map<String, dynamic>.from(row)).toList();
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
@@ -2112,7 +2120,7 @@ class AppState extends ChangeNotifier {
         };
       }).toList();
 
-      Map<dynamic, dynamic> order = {};
+      Map<String, dynamic> order = {};
       String trackingCode = (10000000 + Random().nextInt(90000000)).toString();
 
       try {
@@ -2130,7 +2138,7 @@ class AppState extends ChangeNotifier {
         ).timeout(const Duration(milliseconds: 1500));
 
         if (responseData['order'] is Map) {
-          order = Map.from(responseData['order']);
+          order = Map<String, dynamic>.from(responseData['order']);
           trackingCode =
               order['tracking_code']?.toString().trim().isNotEmpty == true
                   ? order['tracking_code'].toString()
@@ -2155,7 +2163,7 @@ class AppState extends ChangeNotifier {
             .maybeSingle();
 
         if (inserted != null) {
-          order = Map.from(inserted);
+          order = Map<String, dynamic>.from(inserted);
           trackingCode =
               order['tracking_code']?.toString().trim().isNotEmpty == true
                   ? order['tracking_code'].toString()
@@ -2223,7 +2231,7 @@ class AppState extends ChangeNotifier {
       final cleanCourierName =
           courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim();
 
-      Map<dynamic, dynamic> updatedOrder = {};
+      Map<String, dynamic> updatedOrder = {};
 
       try {
         final responseData = await ApiService.adminPricingOrder(
@@ -2234,7 +2242,7 @@ class AppState extends ChangeNotifier {
         ).timeout(const Duration(milliseconds: 1500));
 
         if (responseData['order'] is Map) {
-          updatedOrder = Map.from(responseData['order']);
+          updatedOrder = Map<String, dynamic>.from(responseData['order']);
         }
       } catch (_) {
         final existingIndex =
@@ -2266,7 +2274,7 @@ class AppState extends ChangeNotifier {
             .maybeSingle();
 
         if (dbRow != null) {
-          updatedOrder = Map.from(dbRow);
+          updatedOrder = Map<String, dynamic>.from(dbRow);
         } else {
           updatedOrder = {
             ...existingOrder,
