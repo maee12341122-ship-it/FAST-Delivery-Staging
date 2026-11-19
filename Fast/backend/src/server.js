@@ -7,13 +7,36 @@ import { router, errorHandler } from './routes.js';
 
 const app = express();
 app.disable('x-powered-by');
+
+if (config.nodeEnv === 'production') {
+  app.set('trust proxy', 1);
+}
+
 app.use(helmet());
-app.use(cors({ origin(origin, callback) {
-  if (!origin || config.corsOrigins.includes(origin)) return callback(null, true);
-  return callback(new Error('CORS origin not allowed'));
-} }));
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || config.corsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      const corsError = new Error('CORS origin not allowed');
+      corsError.status = 403;
+      return callback(corsError);
+    },
+  })
+);
+
 app.use(express.json({ limit: '1mb' }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  })
+);
 
 // ربط المسارات الأساسية
 app.use(router);
@@ -21,8 +44,13 @@ app.use(router);
 // معالجة المسارات غير الموجودة
 app.use((_req, res) => res.status(404).json({ error: 'المسار غير موجود.' }));
 
-// معالجة الأخطاء العامة
-app.use(errorHandler);
+// معالجة الأخطاء العامة (بما في ذلك أخطاء CORS)
+app.use((err, req, res, next) => {
+  if (err && err.message === 'CORS origin not allowed') {
+    return res.status(403).json({ error: 'المصدر غير مسموح به (CORS).' });
+  }
+  return errorHandler(err, req, res, next);
+});
 
 const server = app.listen(config.port, () => {
   console.log(`FAST Delivery API listening on port ${config.port} 🚀`);
