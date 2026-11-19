@@ -74,14 +74,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String formatLocationAddress(String? rawAddress) {
-    if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة 📍';
+    if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة';
     if (rawAddress.contains('(') && rawAddress.contains(',')) {
       if (rawAddress.contains('13.57') || rawAddress.contains('44.00')) {
-        return 'منطقة دي لوكس، تعز 📍';
+        return 'منطقة دي لوكس، تعز';
       } else if (rawAddress.contains('13.58')) {
-        return 'شارع التحرير، تعز 📍';
+        return 'شارع التحرير، تعز';
       } else {
-        return 'منطقة معتمدة، تعز 📍';
+        return 'منطقة معتمدة، تعز';
       }
     }
     return rawAddress;
@@ -200,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen>
                 Icon(Icons.shield_outlined, color: accent, size: 26),
                 const SizedBox(width: 8),
                 Text(
-                  'شروط وسياسة تطبيق FAST 🛡️',
+                  'شروط وسياسة تطبيق FAST',
                   style: TextStyle(
                       color: accent, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
@@ -222,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen>
                   shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات 🚀\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(
                           color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
@@ -231,21 +231,21 @@ class _HomeScreenState extends State<HomeScreen>
                     const SizedBox(height: 8),
                     _buildPrivacyPoint(
                       '1. مراجعة وتأكيد تفاصيل الطلب:',
-                      'يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك. ✅',
+                      'يرجى قراءة تفاصيل (الطلب والعنوان) بعناية والتأكيد عليهما؛ حيث نعتذر عن قبول أي تغيير بعد اعتماد الطلب، ويتحمل العميل مسؤولية ذلك.',
                       accent,
                       appState.isDarkMode,
                     ),
                     const SizedBox(height: 12),
                     _buildPrivacyPoint(
                       '2. سياسة الحسابات والإيداع المالي:',
-                      'لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع إرسال البيان. 🪪',
+                      'لو الحساب إيداع، الإيداع يتم بعد استلام الطلب مباشرة مع إرسال البيان.',
                       accent,
                       appState.isDarkMode,
                     ),
                     const SizedBox(height: 12),
                     _buildPrivacyPoint(
                       '3. التواصل والاتصال بالمندوب:',
-                      'لا تغلق تلفونك حتى تتم عملية التوصيل. 🏍️',
+                      'لا تغلق تلفونك حتى تتم عملية التوصيل.',
                       accent,
                       appState.isDarkMode,
                     ),
@@ -269,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen>
                     appState.setPrivacyPolicyAccepted(true);
                     Navigator.pop(context);
                   },
-                  child: const Text('أقر وأوافق، متابعة للتطبيق ✅',
+                  child: const Text('أقر وأوافق، متابعة للتطبيق',
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
@@ -424,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'مساحتك الإعلانية هنا 📢',
+                  'مساحتك الإعلانية هنا',
                   style: TextStyle(
                       color: textColor,
                       fontWeight: FontWeight.bold,
@@ -498,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'وصل لي (توصيل خاص مرن 🚀)',
+                    'وصل لي (توصيل خاص مرن)',
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.black87,
                       fontSize: 14,
@@ -653,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('تمت إضافة ${product.name} للسلة بنجاح ✅'),
+              content: Text('تمت إضافة ${product.name} للسلة بنجاح'),
               duration: const Duration(milliseconds: 800)),
         );
       }
@@ -844,10 +844,10 @@ class _HomeScreenState extends State<HomeScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                           content: Text(
-                              'تمت إضافة ${product.name} مع الإضافات للسلة بنجاح ✅')),
+                              'تمت إضافة ${product.name} مع الإضافات للسلة بنجاح')),
                     );
                   },
-                  child: const Text('أضف للسلة 🛒',
+                  child: const Text('أضف للسلة',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
@@ -873,7 +873,7 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Icon(Icons.headset_mic, color: accent),
               const SizedBox(width: 10),
-              Text('خدمة العملاء والتواصل 📞',
+              Text('خدمة العملاء والتواصل',
                   style: TextStyle(
                       color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
@@ -895,9 +895,9 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 onPressed: () => _launchWhatsApp(
                     message:
-                        'مرحباً، أستفسر عن خدمات التوصيل في تطبيق FAST 🛵'),
+                        'مرحباً، أستفسر عن خدمات التوصيل في تطبيق FAST'),
                 icon: const Icon(Icons.chat, color: Colors.white),
-                label: const Text('خدمة العملاء واتساب (776857316) 💬',
+                label: const Text('خدمة العملاء واتساب (776857316)',
                     style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 12),
@@ -911,7 +911,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 onPressed: _launchPhoneCall,
                 icon: Icon(Icons.phone, color: accent),
-                label: const Text('اتصل بخدمة العملاء (776857316) 📞',
+                label: const Text('اتصل بخدمة العملاء (776857316)',
                     style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
@@ -992,7 +992,7 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Icon(Icons.help_center, color: accent, size: 28),
               const SizedBox(width: 10),
-              Text('كيفية استخدام تطبيق FAST 🌟',
+              Text('كيفية استخدام تطبيق FAST',
                   style: TextStyle(
                       color: accent, fontSize: 16, fontWeight: FontWeight.bold)),
             ],
@@ -1003,29 +1003,29 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildInstructionStep(
-                  '1️⃣ تصفح المنتجات أو اطلب خدمة "وصل لي"',
+                  '1. تصفح المنتجات أو اطلب خدمة "وصل لي"',
                   'اختر قسمك المفضل أو استخدم خدمة "وصل لي" لتحديد مكان الاستلام والتوصيل وتفاصيل شحنتك الخاصة.',
                   textColor,
                   accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
-                  '2️⃣ تحديد الموقع وإرسال الطلب',
+                  '2. تحديد الموقع وإرسال الطلب',
                   'أضف منتجاتك للسلة أو أرسل تفاصيل التوصيل الخاص، حدد عنوانك بدقة، ثم اضغط على "تأكيد وإرسال".',
                   textColor,
                   accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
-                  '3️⃣ مراجعة التسعيرة من الإدارة',
+                  '3. مراجعة التسعيرة من الإدارة',
                   'ستقوم الإدارة بتحديد رسوم التوصيل وإرسالها لك. ستظهر لك نافذة فورية للموافقة على السعر أو رفضه.',
                   textColor,
                   accent,
                 ),
                 const Divider(color: Colors.white12, height: 16),
                 _buildInstructionStep(
-                  '4️⃣ تعيين المندوب والتوصيل الفوري',
-                  'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته حتى يصل باب منزلك ✅',
+                  '4. تعيين المندوب والتوصيل الفوري',
+                  'بعد موافقتك، سيتم تعيين مندوب لتوصيل طلبك. يمكنك تتبعه خطوة بخطوة ومراسلته حتى يصل باب منزلك',
                   textColor,
                   accent,
                 ),
@@ -1040,7 +1040,7 @@ class _HomeScreenState extends State<HomeScreen>
                     borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () => Navigator.pop(context),
-              child: Text('فهمت، شكراً 🚀',
+              child: Text('فهمت، شكراً',
                   style: TextStyle(
                       color: appState.isDarkMode ? Colors.black : Colors.white,
                       fontWeight: FontWeight.bold)),
@@ -1067,15 +1067,90 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _showRatingDialog(BuildContext context, AppState appState, String orderId,
-      String courierName, Color cardBg, Color textColor) {
+  Map<String, dynamic> _resolveRestaurantOrderInfo(
+      AppState appState, Map<dynamic, dynamic> order) {
+    final String itemsText =
+        (order['items_desc'] ?? order['items_description'] ?? '').toString();
+
+    String rawRestaurantName = (order['restaurant_name'] ??
+            order['restaurantName'] ??
+            order['store_name'] ??
+            '')
+        .toString()
+        .trim();
+
+    if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
+      for (final item in appState.cartItems) {
+        if (item.restaurantId.trim().isNotEmpty &&
+            itemsText.contains(item.name)) {
+          rawRestaurantName = item.restaurantId.trim();
+          break;
+        }
+      }
+    }
+
+    if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
+      for (final product in appState.products) {
+        if (product.category.trim() == 'المطاعم' &&
+            product.name.isNotEmpty &&
+            itemsText.contains(product.name)) {
+          rawRestaurantName = product.restaurantName.trim();
+          break;
+        }
+      }
+    }
+
+    bool belongsToRestaurantsCategory = false;
+
+    if (rawRestaurantName.isNotEmpty) {
+      final matchedStore = appState.restaurantsList.firstWhere(
+        (r) =>
+            (r['name'] ?? '').toString().trim().toLowerCase() ==
+            rawRestaurantName.toLowerCase(),
+        orElse: () => null,
+      );
+      if (matchedStore != null) {
+        final storeCat = (matchedStore['category'] ?? '').toString().trim();
+        if (storeCat == 'المطاعم') {
+          belongsToRestaurantsCategory = true;
+        }
+      }
+    }
+
+    if (!belongsToRestaurantsCategory && rawRestaurantName.isNotEmpty) {
+      belongsToRestaurantsCategory = appState.products.any((p) =>
+          p.category.trim() == 'المطاعم' &&
+          p.restaurantName.trim().toLowerCase() ==
+              rawRestaurantName.toLowerCase());
+    }
+
+    final bool isRestaurant =
+        belongsToRestaurantsCategory || appState.isRestaurantOrder(order);
+
+    final String resolvedName =
+        rawRestaurantName.isNotEmpty ? rawRestaurantName : 'المطعم';
+
+    return {
+      'isRestaurant': isRestaurant,
+      'restaurantName': resolvedName,
+    };
+  }
+
+  Future<void> _showRatingDialog(
+      BuildContext parentContext,
+      AppState appState,
+      String orderId,
+      String courierName,
+      Color cardBg,
+      Color textColor) async {
     double rating = 5.0;
+    bool isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
     final accent = _accent(appState);
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -1109,11 +1184,13 @@ class _HomeScreenState extends State<HomeScreen>
                         color: accent,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setDialogState(() {
-                          rating = (index + 1).toDouble();
-                        });
-                      },
+                      onPressed: isSubmitting
+                          ? null
+                          : () {
+                              setDialogState(() {
+                                rating = (index + 1).toDouble();
+                              });
+                            },
                     );
                   }),
                 ),
@@ -1135,47 +1212,92 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: accent),
-                onPressed: () async {
-                  await appState.submitCourierRating(
-                    orderId: orderId,
-                    courierName: courierName,
-                    rating: rating,
-                    reviewText: commentController.text.trim(),
-                  );
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content:
-                            Text('شكراً لك! تم إرسال تقييم المندوب بنجاح ⭐')),
-                  );
-                },
-                child: Text('إرسال التقييم',
-                    style: TextStyle(
-                        color: appState.isDarkMode ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold)),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await appState.submitCourierRating(
+                            orderId: orderId,
+                            courierName: courierName,
+                            rating: rating,
+                            reviewText: commentController.text.trim(),
+                          );
+                          if (mounted) setState(() {});
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'شكراً لك! تم إرسال تقييم المندوب بنجاح')),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(e
+                                    .toString()
+                                    .replaceAll('Exception: ', '')),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: appState.isDarkMode
+                              ? Colors.black
+                              : Colors.white,
+                        ),
+                      )
+                    : Text('إرسال التقييم',
+                        style: TextStyle(
+                            color: appState.isDarkMode
+                                ? Colors.black
+                                : Colors.white,
+                            fontWeight: FontWeight.bold)),
               ),
             ],
           ),
         ),
       ),
     );
+    commentController.dispose();
   }
 
-  void _showRestaurantRatingDialog(BuildContext context, AppState appState,
-      String orderId, String restaurantName, Color cardBg, Color textColor) {
+  Future<void> _showRestaurantRatingDialog(
+      BuildContext parentContext,
+      AppState appState,
+      String orderId,
+      String restaurantName,
+      Color cardBg,
+      Color textColor) async {
     double rating = 5.0;
+    bool isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
     final accent = _accent(appState);
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -1208,11 +1330,13 @@ class _HomeScreenState extends State<HomeScreen>
                         color: accent,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setDialogState(() {
-                          rating = (index + 1).toDouble();
-                        });
-                      },
+                      onPressed: isSubmitting
+                          ? null
+                          : () {
+                              setDialogState(() {
+                                rating = (index + 1).toDouble();
+                              });
+                            },
                     );
                   }),
                 ),
@@ -1234,35 +1358,74 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: accent),
-                onPressed: () async {
-                  await appState.submitRestaurantRating(
-                    orderId: orderId,
-                    rating: rating,
-                    reviewText: commentController.text.trim(),
-                  );
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'شكراً لك! تم إرسال تقييم المطعم بنجاح 🍽️⭐')),
-                  );
-                },
-                child: Text('إرسال التقييم',
-                    style: TextStyle(
-                        color: appState.isDarkMode ? Colors.black : Colors.white,
-                        fontWeight: FontWeight.bold)),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await appState.submitRestaurantRating(
+                            orderId: orderId,
+                            rating: rating,
+                            reviewText: commentController.text.trim(),
+                          );
+                          if (mounted) setState(() {});
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'شكراً لك! تم إرسال تقييم المطعم بنجاح')),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(e
+                                    .toString()
+                                    .replaceAll('Exception: ', '')),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: appState.isDarkMode
+                              ? Colors.black
+                              : Colors.white,
+                        ),
+                      )
+                    : Text('إرسال التقييم',
+                        style: TextStyle(
+                            color: appState.isDarkMode
+                                ? Colors.black
+                                : Colors.white,
+                            fontWeight: FontWeight.bold)),
               ),
             ],
           ),
         ),
       ),
     );
+    commentController.dispose();
   }
 
   void _showEnterPriceDialog(
@@ -1376,7 +1539,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                           content: Text(
-                              'تمت إضافة ${product.name} بسعر ${_formatPrice(enteredPrice)} ر.ي إلى السلة بنجاح ✅')),
+                              'تمت إضافة ${product.name} بسعر ${_formatPrice(enteredPrice)} ر.ي إلى السلة بنجاح')),
                     );
                   }
                 },
@@ -1417,7 +1580,7 @@ class _HomeScreenState extends State<HomeScreen>
               backgroundColor: cardBg,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              title: Text('بيانات التوصيل وطريقة الدفع 💳',
+              title: Text('بيانات التوصيل وطريقة الدفع',
                   style: TextStyle(color: accent, fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Form(
@@ -1495,7 +1658,7 @@ class _HomeScreenState extends State<HomeScreen>
                           },
                           icon: Icon(Icons.map, color: accent),
                           label: const Text(
-                              'تحديد الموقع عبر الخريطة والـ GPS 🗺️',
+                              'تحديد الموقع عبر الخريطة والـ GPS',
                               style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -1619,7 +1782,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                       content: Text(
-                                          'تم نسخ رقم حاسب الكريمي (2655872) بنجاح 📋✅')),
+                                          'تم نسخ رقم حاسب الكريمي (2655872) بنجاح')),
                                 );
                               },
                             ),
@@ -1647,7 +1810,7 @@ class _HomeScreenState extends State<HomeScreen>
                         items: const [
                           DropdownMenuItem(
                               value: 'cash',
-                              child: Text('💵 الدفع نقداً عند الاستلام فقط')),
+                              child: Text('الدفع نقداً عند الاستلام فقط')),
                         ],
                         onChanged: (val) {
                           setDialogState(() {
@@ -1804,7 +1967,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                             content: Text(
-                                'تم تأكيد الطلب وإرساله للمندوب بنجاح! ✅')),
+                                'تم تأكيد الطلب وإرساله للمندوب بنجاح!')),
                       );
                     },
                     child: const Text('موافقة وتأكيد الطلب',
@@ -1819,7 +1982,7 @@ class _HomeScreenState extends State<HomeScreen>
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text('تم رفض الطلب وإلغاؤه ❌')),
+                            content: Text('تم رفض الطلب وإلغاؤه')),
                       );
                     },
                     child: const Text('رفض وإلغاء',
@@ -1848,7 +2011,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icon(Icons.wifi_off, color: Colors.white, size: 16),
           SizedBox(width: 8),
           Text(
-            '⚠️ تم انقطاع الإنترنت',
+            'تم انقطاع الإنترنت',
             style: TextStyle(
                 color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
           ),
@@ -1881,7 +2044,7 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              '⚠️ الرجاء عدم إغلاق الإنترنت أو الخروج من التطبيق أثناء الطلب',
+              'الرجاء عدم إغلاق الإنترنت أو الخروج من التطبيق أثناء الطلب',
               style: TextStyle(
                 color: fg,
                 fontSize: 11.5,
@@ -2271,7 +2434,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                         content: Text(
-                            'يجب تسجيل الدخول برقم الهاتف للوصول إلى السلة 🛒')),
+                            'يجب تسجيل الدخول برقم الهاتف للوصول إلى السلة')),
                   );
                   return;
                 }
@@ -2383,7 +2546,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content:
-                                    Text('تمت إضافة الطلب الخاص للسلة 🚀')));
+                                    Text('تمت إضافة الطلب الخاص للسلة')));
                       }
                     },
                     child: Text('إضافة للسلة',
@@ -2505,7 +2668,7 @@ class _HomeScreenState extends State<HomeScreen>
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 6),
-                      child: Text('اختر متجراً (🏬)',
+                      child: Text('اختر متجراً',
                           style: TextStyle(
                               color: accent,
                               fontWeight: FontWeight.bold,
@@ -2599,7 +2762,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ? const Padding(
                     padding: EdgeInsets.all(24.0),
                     child: Center(
-                        child: Text('لا توجد منتجات مطابقة 🔍',
+                        child: Text('لا توجد منتجات مطابقة',
                             style:
                                 TextStyle(color: Colors.grey, fontSize: 13))),
                   )
@@ -2689,7 +2852,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             .showSnackBar(
                                           SnackBar(
                                             content: Text(!isFav
-                                                ? 'تمت إضافة ${product.name} إلى المفضلة ❤️'
+                                                ? 'تمت إضافة ${product.name} إلى المفضلة'
                                                 : 'تمت إزالة ${product.name} من المفضلة'),
                                             duration: const Duration(
                                                 milliseconds: 800),
@@ -2784,7 +2947,7 @@ class _HomeScreenState extends State<HomeScreen>
                                           onPressed: () =>
                                               _handleProductTapOrAdd(
                                                   context, appState, product),
-                                          child: Text('إضافة 🛒',
+                                          child: Text('إضافة',
                                               style: TextStyle(
                                                   color: appState.isDarkMode
                                                       ? Colors.black
@@ -2885,7 +3048,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   );
                 },
-                child: Text('تسجيل الدخول برقم الهاتف 📱',
+                child: Text('تسجيل الدخول برقم الهاتف',
                     style: TextStyle(
                         color: appState.isDarkMode ? Colors.black : Colors.white,
                         fontWeight: FontWeight.bold,
@@ -2902,8 +3065,8 @@ class _HomeScreenState extends State<HomeScreen>
         icon: Icons.shopping_cart_outlined,
         title: 'سلة المشتريات فارغة!',
         subtitle:
-            'لم تقم بإضافة أي وجبات أو منتجات إلى السلة بعد. تصفح الأقسام واطلب ما تحب 🍔🛒',
-        buttonText: 'تصفح الأقسام والوجبات 🚀',
+            'لم تقم بإضافة أي وجبات أو منتجات إلى السلة بعد. تصفح الأقسام واطلب ما تحب',
+        buttonText: 'تصفح الأقسام والوجبات',
         onButtonPressed: () {
           setState(() => _currentIndex = 0);
         },
@@ -3013,7 +3176,7 @@ class _HomeScreenState extends State<HomeScreen>
               _showCheckoutDialog(context, appState, cardBg, textColor);
             },
             child: Text(
-                'الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي) 🚀',
+                'الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي)',
                 style: TextStyle(
                     color: appState.isDarkMode ? Colors.black : Colors.white,
                     fontWeight: FontWeight.bold,
@@ -3027,25 +3190,25 @@ class _HomeScreenState extends State<HomeScreen>
   String _getArabicStatus(String status) {
     switch (status) {
       case 'waitingForPricing':
-        return '⏳ بانتظار تحديد السعر من الإدارة';
+        return 'بانتظار تحديد السعر من الإدارة';
       case 'pricingSentToCustomer':
       case 'pricing_sent_to_customer':
-        return '🔔 تم إرسال التسعيرة - بانتظار موافقتك';
+        return 'تم إرسال التسعيرة - بانتظار موافقتك';
       case 'waitingCourierApproval':
       case 'approvedByCustomer':
-        return '🛵 بانتظار قبول المندوب للطلب';
+        return 'بانتظار قبول المندوب للطلب';
       case 'acceptedByCourier':
-        return '✅ تم قبول الطلب من المندوب';
+        return 'تم قبول الطلب من المندوب';
       case 'onTheWay':
-        return '🟢 المندوب في الطريق إليك';
+        return 'المندوب في الطريق إليك';
       case 'arrivedToCustomer':
       case 'arrived':
-        return '📍 وصل المندوب إلى موقعك';
+        return 'وصل المندوب إلى موقعك';
       case 'delivered':
-        return '✅ تم تسليم الطلب بنجاح';
+        return 'تم تسليم الطلب بنجاح';
       case 'cancelled':
       case 'cancelledByCustomer':
-        return '❌ تم إلغاء الطلب';
+        return 'تم إلغاء الطلب';
       default:
         return status;
     }
@@ -3112,7 +3275,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                         content: Text(
-                            'تم نسخ رقم حاسب الكريمي (2655872) بنجاح 📋✅')),
+                            'تم نسخ رقم حاسب الكريمي (2655872) بنجاح')),
                   );
                 },
                 icon: const Icon(Icons.copy, size: 14),
@@ -3129,8 +3292,8 @@ class _HomeScreenState extends State<HomeScreen>
                   icon: Icons.receipt_long_outlined,
                   title: 'لا توجد طلبات سابقة!',
                   subtitle:
-                      'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز ⚡',
-                  buttonText: 'اطلب الآن 🛵',
+                      'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز',
+                  buttonText: 'اطلب الآن',
                   onButtonPressed: () {
                     setState(() => _currentIndex = 0);
                   },
@@ -3145,9 +3308,12 @@ class _HomeScreenState extends State<HomeScreen>
                     final String assignedCourierName =
                         order['assigned_courier'] ?? 'المندوب';
 
-                    bool isRestaurantOrder = appState.isRestaurantOrder(order);
-                    String detectedRestaurantName =
-                        order['restaurant_name'] ?? 'المطعم';
+                    final restaurantInfo =
+                        _resolveRestaurantOrderInfo(appState, order);
+                    final bool isRestaurantOrder =
+                        restaurantInfo['isRestaurant'] as bool;
+                    final String detectedRestaurantName =
+                        restaurantInfo['restaurantName'] as String;
 
                     final formattedAddress =
                         formatLocationAddress(order['address']);
@@ -3241,7 +3407,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         tooltip: 'مشاركة الفاتورة',
                                         onPressed: () {
                                           final invoiceText =
-                                              '⚡ فاتورة تطبيق FAST - تعز\n'
+                                              'فاتورة تطبيق FAST - تعز\n'
                                               'رقم الطلب: #${order['id']}\n'
                                               'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
                                               'العنوان: $formattedAddress\n'
@@ -3303,7 +3469,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                          '🔔 تم إرسال التسعيرة للطلب، يرجى الموافقة:',
+                                          'تم إرسال التسعيرة للطلب، يرجى الموافقة:',
                                           style: TextStyle(
                                               color: accent,
                                               fontWeight: FontWeight.bold,
@@ -3330,10 +3496,10 @@ class _HomeScreenState extends State<HomeScreen>
                                                     .showSnackBar(
                                                   const SnackBar(
                                                       content: Text(
-                                                          'تم تأكيد الطلب وإرساله للمندوب بنجاح! ✅')),
+                                                          'تم تأكيد الطلب وإرساله للمندوب بنجاح!')),
                                                 );
                                               },
-                                              child: const Text('موافقة ✅',
+                                              child: const Text('موافقة',
                                                   style: TextStyle(
                                                       fontWeight:
                                                           FontWeight.bold)),
@@ -3360,10 +3526,10 @@ class _HomeScreenState extends State<HomeScreen>
                                                     .showSnackBar(
                                                   const SnackBar(
                                                       content: Text(
-                                                          'تم رفض الطلب وإلغاؤه ❌')),
+                                                          'تم رفض الطلب وإلغاؤه')),
                                                 );
                                               },
-                                              child: const Text('إلغاء الطلب ❌',
+                                              child: const Text('إلغاء الطلب',
                                                   style: TextStyle(
                                                       fontWeight:
                                                           FontWeight.bold)),
@@ -3402,13 +3568,13 @@ class _HomeScreenState extends State<HomeScreen>
                                   children: [
                                     if (!isWaselLi) ...[
                                       Text(
-                                          '🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
+                                          'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
                                           style: TextStyle(
                                               color: textColor, fontSize: 13)),
                                       const SizedBox(height: 4),
                                     ],
                                     Text(
-                                        '🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
+                                        'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
                                         style: TextStyle(
                                             color: accent,
                                             fontSize: 13,
@@ -3419,7 +3585,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             : Colors.black12,
                                         height: 8),
                                     Text(
-                                        '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
+                                        'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
                                         style: TextStyle(
                                             color: appState.isDarkMode
                                                 ? Colors.greenAccent
@@ -3455,7 +3621,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   },
                                   icon: const Icon(Icons.star, size: 18),
                                   label: const Text(
-                                      'قيم المندوب وخدمة التوصيل ⭐',
+                                      'قيم المندوب وخدمة التوصيل',
                                       style: TextStyle(
                                           fontWeight: FontWeight.bold)),
                                 ),
@@ -3485,7 +3651,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     icon: const Icon(Icons.restaurant_menu,
                                         size: 18),
                                     label: Text(
-                                        'قيم مطعم ($detectedRestaurantName) وجودة الطعام 🍽️',
+                                        'قيم مطعم ($detectedRestaurantName) وجودة الطعام',
                                         style: const TextStyle(
                                             fontWeight: FontWeight.bold)),
                                   ),
@@ -3523,7 +3689,7 @@ class _HomeScreenState extends State<HomeScreen>
         const SizedBox(height: 20),
         if (isAdmin) ...[
           _buildProfileItem(Icons.admin_panel_settings,
-              'لوحة تحكم المشرف الإدارية ⚙️', cardBg, textColor, accent, () {
+              'لوحة تحكم المشرف الإدارية', cardBg, textColor, accent, () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (context) => AdminScreen()));
           }),
@@ -3532,7 +3698,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (isCourier) ...[
           _buildProfileItem(
               Icons.delivery_dining,
-              'لوحة طلبات المندوب وتوصيل الشحنات 🏍️',
+              'لوحة طلبات المندوب وتوصيل الشحنات',
               cardBg,
               textColor,
               accent, () {
@@ -3586,7 +3752,7 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         );
                       },
-                      child: Text('تسجيل الدخول برقم الهاتف 📱',
+                      child: Text('تسجيل الدخول برقم الهاتف',
                           style: TextStyle(
                               color: appState.isDarkMode
                                   ? Colors.black
@@ -3625,7 +3791,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16)),
                           const SizedBox(height: 4),
-                          Text('📞 ${profile['phone']} | 📍 تعز',
+                          Text('هاتف: ${profile['phone']} | تعز',
                               style: const TextStyle(
                                   color: Colors.grey, fontSize: 12)),
                           if (profile['address'] != null &&
@@ -3633,9 +3799,9 @@ class _HomeScreenState extends State<HomeScreen>
                             InkWell(
                               onTap: () => _launchWhatsApp(
                                   message:
-                                      'مرحباً، بخصوص عنواني المسجل في التطبيق: ${profile['address']} 📍'),
+                                      'مرحباً، بخصوص عنواني المسجل في التطبيق: ${profile['address']}'),
                               child: Text(
-                                '🏠 العنوان: ${formatLocationAddress(profile['address'])} (اضغط للتواصل 💬)',
+                                'العنوان: ${formatLocationAddress(profile['address'])} (اضغط للتواصل)',
                                 style: TextStyle(
                                     color: accent,
                                     fontSize: 12,
@@ -3672,7 +3838,7 @@ class _HomeScreenState extends State<HomeScreen>
           );
         }),
         _buildProfileItem(
-            Icons.location_on, 'إدارة عناويني المحفوظة 📍', cardBg, textColor, accent,
+            Icons.location_on, 'إدارة عناويني المحفوظة', cardBg, textColor, accent,
             () {
           Navigator.push(
             context,
@@ -3687,7 +3853,7 @@ class _HomeScreenState extends State<HomeScreen>
           );
         }),
         _buildProfileItem(
-            Icons.favorite, 'المنتجات المفضلة ❤️', cardBg, textColor, accent, () {
+            Icons.favorite, 'المنتجات المفضلة', cardBg, textColor, accent, () {
           Navigator.push(
             context,
             PageRouteBuilder(
@@ -3700,16 +3866,16 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           );
         }),
-        _buildProfileItem(Icons.headset_mic, 'خدمة العملاء وتواصل معنا 📞',
+        _buildProfileItem(Icons.headset_mic, 'خدمة العملاء وتواصل معنا',
             cardBg, textColor, accent, () {
           _showContactUsDialog(context, appState, cardBg, textColor);
         }),
         _buildProfileItem(Icons.help_center_outlined,
-            'كيفية استخدام التطبيق 📖', cardBg, textColor, accent, () {
+            'كيفية استخدام التطبيق', cardBg, textColor, accent, () {
           _showHowToUseDialog(context, appState, cardBg, textColor);
         }),
         _buildProfileItem(Icons.privacy_tip_outlined,
-            'سياسة الخصوصية والاستخدام 🛡️', cardBg, textColor, accent, () {
+            'سياسة الخصوصية والاستخدام', cardBg, textColor, accent, () {
           appState.setPrivacyPolicyAccepted(false);
           _checkAndShowPrivacyPolicyDialog(context, appState);
         }),
@@ -3725,7 +3891,7 @@ class _HomeScreenState extends State<HomeScreen>
             cardBg, textColor, accent, () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('تطبيق FAST مخصص لخدمة مدينة تعز بكل سرعة 🌟')),
+                content: Text('تطبيق FAST مخصص لخدمة مدينة تعز بكل سرعة')),
           );
         }),
         _buildProfileItem(Icons.share, 'مشاركة التطبيق مع الأصدقاء', cardBg,
