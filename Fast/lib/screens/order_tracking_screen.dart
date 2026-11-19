@@ -119,6 +119,25 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     if (order == null) return;
     final String address = order['address']?.toString() ?? '';
     try {
+      final latVal = double.tryParse(order['lat']?.toString() ?? '') ??
+          double.tryParse(order['latitude']?.toString() ?? '');
+      final lngVal = double.tryParse(order['lng']?.toString() ?? '') ??
+          double.tryParse(order['longitude']?.toString() ?? '');
+
+      if (latVal != null &&
+          lngVal != null &&
+          latVal >= -90 &&
+          latVal <= 90 &&
+          lngVal >= -180 &&
+          lngVal <= 180) {
+        if (mounted) {
+          setState(() {
+            _customerPosition = LatLng(latVal, lngVal);
+          });
+        }
+        return;
+      }
+
       if (address.contains('(') && address.contains(')')) {
         final coordsPart =
             address.substring(address.indexOf('(') + 1, address.indexOf(')'));
@@ -203,9 +222,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           .toList();
 
       Map<String, dynamic>? foundRow;
-      String activeChannelKey = resolvedKey.isNotEmpty
-          ? resolvedKey
-          : courierNameOrId.trim();
+      String activeChannelKey =
+          resolvedKey.isNotEmpty ? resolvedKey : courierNameOrId.trim();
 
       for (final key in keysToCheck) {
         final res = await Supabase.instance.client
@@ -213,7 +231,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             .select('courier_id, latitude, longitude, updated_at')
             .eq('courier_id', key)
             .maybeSingle();
-        if (res != null && res['latitude'] != null && res['longitude'] != null) {
+        if (res != null &&
+            res['latitude'] != null &&
+            res['longitude'] != null) {
           foundRow = Map<String, dynamic>.from(res);
           activeChannelKey = key;
           break;
@@ -223,9 +243,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       if (foundRow != null && mounted) {
         final lat = (foundRow['latitude'] as num).toDouble();
         final lng = (foundRow['longitude'] as num).toDouble();
+        final pos = LatLng(lat, lng);
         setState(() {
-          _courierPosition = LatLng(lat, lng);
+          _courierPosition = pos;
         });
+        _safeMoveMapTo(pos, 16.5);
+      }
+
+      if (_locationChannel != null) {
+        await Supabase.instance.client.removeChannel(_locationChannel!);
       }
 
       _locationChannel = Supabase.instance.client
@@ -620,9 +646,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         itemsDescText.contains('وصل لي') || itemsDescText.contains('طلب خاص');
 
     final double rawProductsPrice = double.tryParse(
-            order['products_total']?.toString() ??
-                order['total_price']?.toString() ??
+            order['total_price']?.toString() ??
                 order['items_price']?.toString() ??
+                order['products_total']?.toString() ??
                 order['products_price']?.toString() ??
                 '0') ??
         0.0;
@@ -679,6 +705,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // شريط مراحل الطلب
               Container(
                 padding:
                     const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
@@ -743,9 +770,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
+              // المشرف والمندوب: تتبع حي على الخريطة
               if (isManagerOrCourier) ...[
                 Container(
-                  height: 240,
+                  height: 250,
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(20),
@@ -753,57 +781,101 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         color: Colors.amber.withOpacity(0.4), width: 1.5),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: _courierPosition ?? _customerPosition,
-                      initialZoom: 16.5,
-                    ),
+                  child: Stack(
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.fast.taiz',
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _customerPosition,
-                            width: 45,
-                            height: 45,
-                            child: const Icon(Icons.location_pin,
-                                color: Colors.redAccent, size: 42),
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _courierPosition ?? _customerPosition,
+                          initialZoom: 16.0,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.fast.taiz',
+                            errorTileCallback: (tile, error, stackTrace) {},
                           ),
-                          if (_courierPosition != null)
-                            Marker(
-                              point: _courierPosition!,
-                              width: 50,
-                              height: 50,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.amber,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                        color: Colors.black.withOpacity(0.5),
-                                        blurRadius: 8)
-                                  ],
-                                ),
-                                child: const Icon(Icons.two_wheeler_rounded,
-                                    color: Colors.black, size: 26),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _customerPosition,
+                                width: 45,
+                                height: 45,
+                                child: const Icon(Icons.location_pin,
+                                    color: Colors.redAccent, size: 42),
                               ),
-                            ),
+                              if (_courierPosition != null)
+                                Marker(
+                                  point: _courierPosition!,
+                                  width: 50,
+                                  height: 50,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                            color: Colors.black.withOpacity(0.5),
+                                            blurRadius: 8)
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.two_wheeler_rounded,
+                                        color: Colors.black, size: 26),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
+                      ),
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: Colors.amber.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _courierPosition != null
+                                    ? Icons.gps_fixed
+                                    : Icons.gps_not_fixed,
+                                color: _courierPosition != null
+                                    ? Colors.greenAccent
+                                    : Colors.amber,
+                                size: 15,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _courierPosition != null
+                                    ? 'تتبع حي للمندوب ($courierName)'
+                                    : 'بانتظار إشارة موقع المندوب ($courierName)',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
               ] else ...[
+                // العميل لوحده: عرض حالة الطلب وعنوانه بدون تتبع حي لبقية الخريطة
                 Container(
                   width: double.infinity,
                   padding:
-                      const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                      const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(20),
@@ -818,49 +890,47 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           const Icon(Icons.check_circle,
                               color: Colors.greenAccent, size: 20),
                           const SizedBox(width: 8),
-                          Text(
-                            appState.getArabicStatus(rawStatus),
-                            style: const TextStyle(
-                                color: Colors.amber,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            height: 4,
-                            width: double.infinity,
-                            margin: const EdgeInsets.symmetric(horizontal: 40),
-                            color: Colors.amber.withOpacity(0.3),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.amber,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.amber.withOpacity(0.35),
-                                  blurRadius: 10,
-                                ),
-                              ],
+                          Flexible(
+                            child: Text(
+                              appState.getArabicStatus(rawStatus),
+                              style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15),
+                              textAlign: TextAlign.center,
                             ),
-                            child: const Icon(Icons.two_wheeler,
-                                color: Colors.black, size: 32),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.amber.withOpacity(0.35),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          rawStatus == 'delivered'
+                              ? Icons.verified
+                              : Icons.location_on,
+                          color: Colors.black,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       Text(
                         rawStatus == 'delivered'
                             ? 'تم تسليم طلبك بنجاح، شكراً لتعاملكم معنا'
-                            : 'جاري العمل على توصيل طلبك بأسرع وقت',
+                            : 'موقع التوصيل المحدد: ${order['address'] ?? 'تعز'}',
                         style: const TextStyle(
                             color: Colors.white70, fontSize: 12),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -994,7 +1064,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               const SizedBox(height: 16),
 
-              // قسم التقييم الثنائي عند التسليم
+              // قسم التقييم عند التسليم
               if (rawStatus == 'delivered') ...[
                 if (_isLoadingRatings)
                   const Center(
