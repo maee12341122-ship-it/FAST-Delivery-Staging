@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
-import '../services/notification_service.dart'; // 👈 استدعاء خدمة الإشعارات
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
-// استبدل المسار أدناه بشاشة لوحة تحكم المشرف لديك إن كانت مختلفة
-import 'admin_dashboard.dart'; 
+import 'admin_dashboard.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
@@ -20,9 +19,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  // 🎯 تعريف موجهات التركيز (FocusNodes) للانتقال السلس بين الحقول
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -34,43 +34,54 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 
   Future<void> _login() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
-    
-    final appState = context.read<AppState>();
-    
-    // استدعاء دالة تسجيل دخول المشرف المصححة المتوافقة مع AppState
-    bool success = await appState.loginAdminFromSupabase(
-      _usernameController.text.trim(), 
-      _passwordController.text.trim()
-    );
 
-    if (!success) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمشرف ❌')),
+    setState(() => _isLoading = true);
+
+    try {
+      final appState = context.read<AppState>();
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text.trim();
+
+      final bool success =
+          await appState.loginAdminFromSupabase(username, password);
+
+      if (!success) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمشرف ❌'),
+          ),
+        );
+        return;
+      }
+
+      final adminId = appState.supabase.auth.currentUser?.id ?? username;
+      await NotificationService.saveUserPlayerId(
+        adminId,
+        'admins',
+        identifierValue: username,
       );
-      return;
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const AdminDashboard(),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-
-    // جلب معرف المشرف بعد نجاح تسجيل الدخول
-    final adminId = appState.supabase.auth.currentUser?.id ?? 'admin_main';
-
-    // 🚀 حفظ معرف OneSignal Player ID الخاص بجهاز المشرف في جدول admins في Supabase
-    await NotificationService.saveUserPlayerId(adminId, 'admins');
-
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => const AdminDashboard(),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -79,8 +90,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             backgroundColor: const Color(0xFF1E1E1E),
             elevation: 2,
             title: const Text(
-              'دخول لوحة تحكم المشرف 🛡️', 
-              style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)
+              'دخول لوحة تحكم المشرف 🛡️',
+              style: TextStyle(
+                color: AppConstants.gold,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
           ),
           body: Padding(
@@ -97,24 +112,32 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                         decoration: BoxDecoration(
                           color: AppConstants.gold.withOpacity(0.1),
                           shape: BoxShape.circle,
-                          border: Border.all(color: AppConstants.gold.withOpacity(0.3)),
+                          border: Border.all(
+                            color: AppConstants.gold.withOpacity(0.3),
+                          ),
                         ),
-                        child: const Icon(Icons.admin_panel_settings, size: 60, color: AppConstants.gold),
+                        child: const Icon(
+                          Icons.admin_panel_settings,
+                          size: 60,
+                          color: AppConstants.gold,
+                        ),
                       ),
                       const SizedBox(height: 24),
                       const Text(
-                        'تسجيل دخول المشرف', 
-                        style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                        'تسجيل دخول المشرف',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'أدخل صلاحيات المشرف للتحكم الكامل بالنظام وإدارة الطلبات', 
-                        style: TextStyle(color: Colors.grey, fontSize: 13), 
-                        textAlign: TextAlign.center
+                        'أدخل صلاحيات المشرف للتحكم الكامل بالنظام وإدارة الطلبات',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 30),
-                      
-                      // حقل اسم المستخدم مع الانتقال السلس
                       TextFormField(
                         controller: _usernameController,
                         focusNode: _usernameFocus,
@@ -129,13 +152,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           border: OutlineInputBorder(),
                           filled: true,
                           fillColor: Color(0xFF1E1E1E),
-                          prefixIcon: Icon(Icons.person, color: AppConstants.gold),
+                          prefixIcon:
+                              Icon(Icons.person, color: AppConstants.gold),
                         ),
                         validator: Validators.requiredText,
                       ),
                       const SizedBox(height: 16),
-
-                      // حقل كلمة المرور مع تنفيذ تسجيل الدخول عند الضغط على "تم"
                       TextFormField(
                         controller: _passwordController,
                         focusNode: _passwordFocus,
@@ -154,7 +176,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                         validator: Validators.requiredText,
                       ),
                       const SizedBox(height: 24),
-
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -162,11 +183,28 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                             backgroundColor: AppConstants.gold,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          onPressed: _login,
-                          icon: const Icon(Icons.login, color: Colors.black),
-                          label: const Text('دخول لوحة التحكم الرئيسية 🚀', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          onPressed: _isLoading ? null : _login,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.login, color: Colors.black),
+                          label: const Text(
+                            'دخول لوحة التحكم الرئيسية 🚀',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
                       ),
                     ],
