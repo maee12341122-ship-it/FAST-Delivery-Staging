@@ -22,6 +22,7 @@ class _AdminScreenState extends State<AdminScreen>
   final Map<String, TextEditingController> _feeControllers = {};
   final Map<String, String> _selectedCouriersForOrder = {};
   final Set<String> _pricingOrderIds = {};
+  final Set<String> _settlingCourierKeys = {};
 
   @override
   void initState() {
@@ -480,6 +481,77 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
+  /// تسوية حساب المندوب بشكل آمن ومتوافق مع عمود orders_count في courier_settlements
+  Future<void> _settleCourierSafely({
+    required BuildContext context,
+    required AppState appState,
+    required String courierName,
+    required List unsettledOrders,
+    required double totalCourierEarnings,
+    required double adminCommission,
+    required double netCourierEarnings,
+  }) async {
+    final int ordersCount = unsettledOrders.length;
+    final orderIds = unsettledOrders
+        .map((o) => o['id'])
+        .where((id) => id != null)
+        .toList();
+
+    try {
+      // محاولة التسوية عبر AppState أولاً، وإذا فشل بسبب عمود orders_count ننفذ الإدراج والتحديث مباشرة
+      try {
+        await appState.settleCourierEarnings(courierName);
+      } catch (e) {
+        final msg = e.toString();
+        if (!msg.contains('orders_count') && !msg.contains('PGRST204')) {
+          rethrow;
+        }
+
+        final Map<String, dynamic> settlementPayload = {
+          'courier_name': courierName,
+          'total_delivery_fees': totalCourierEarnings,
+          'courier_net': netCourierEarnings,
+          'admin_commission': adminCommission,
+          'settled_orders_count': ordersCount,
+        };
+
+        await Supabase.instance.client
+            .from('courier_settlements')
+            .insert(settlementPayload);
+
+        if (orderIds.isNotEmpty) {
+          await Supabase.instance.client
+              .from('orders')
+              .update({'is_settled': true}).inFilter('id', orderIds);
+        }
+
+        await appState.fetchOrders();
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'تم تصفير حساب المندوب $courierName بنجاح ✅ (صافي العمولة لك: ${adminCommission.toStringAsFixed(0)} ر.ي)'),
+            backgroundColor: Colors.green[700],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildCouriersManagement(AppState appState) {
     return FutureBuilder<List<dynamic>>(
       future: Supabase.instance.client.from('couriers').select(),
@@ -503,6 +575,8 @@ class _AdminScreenState extends State<AdminScreen>
             final courierName = courier['name']?.toString().trim() ??
                 courier['full_name']?.toString().trim() ??
                 '';
+            final courierKey = courier['id']?.toString() ?? '$courierName-$index';
+            final isSettlingThis = _settlingCourierKeys.contains(courierKey);
 
             final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
@@ -522,6 +596,7 @@ class _AdminScreenState extends State<AdminScreen>
                       0.0;
             }
 
+            // عمولة التطبيق (20%) وصافي المندوب (80%)
             double adminCommission = totalCourierEarnings * 0.20;
             double netCourierEarnings = totalCourierEarnings - adminCommission;
 
@@ -574,76 +649,89 @@ class _AdminScreenState extends State<AdminScreen>
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.delete_sweep,
-                                  color: Colors.redAccent, size: 24),
+                              icon: isSettlingThis
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.redAccent),
+                                    )
+                                  : const Icon(Icons.delete_sweep,
+                                      color: Colors.redAccent, size: 24),
                               tooltip: 'تصفير الحساب والعمولات',
-                              onPressed: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (ctx) => Directionality(
-                                    textDirection: TextDirection.rtl,
-                                    child: AlertDialog(
-                                      backgroundColor: const Color(0xFF1E1E1E),
-                                      title: const Text(
-                                          'تصفير حساب المندوب ⚠️',
-                                          style: TextStyle(
-                                              color: Colors.amber,
-                                              fontSize: 16)),
-                                      content: Text(
-                                          'هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\nسيتم تصفير العداد للبدء من جديد.',
-                                          style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 13)),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx),
-                                          child: const Text('لا',
-                                              style:
-                                                  TextStyle(color: Colors.grey)),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.redAccent,
-                                              foregroundColor: Colors.white),
-                                          onPressed: () async {
-                                            Navigator.pop(ctx);
-                                            try {
-                                              await appState
-                                                  .settleCourierEarnings(
-                                                      courierName);
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                      content: Text(
-                                                          'تم تصفير حساب المندوب $courierName بنجاح ✅')),
-                                                );
-                                              }
-                                            } catch (e) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(e
-                                                        .toString()
-                                                        .replaceAll(
-                                                            'Exception: ',
-                                                            '')),
+                              onPressed: isSettlingThis
+                                  ? null
+                                  : () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx) => Directionality(
+                                          textDirection: TextDirection.rtl,
+                                          child: AlertDialog(
+                                            backgroundColor:
+                                                const Color(0xFF1E1E1E),
+                                            title: const Text(
+                                                'تصفير حساب المندوب ⚠️',
+                                                style: TextStyle(
+                                                    color: Colors.amber,
+                                                    fontSize: 16)),
+                                            content: Text(
+                                                'هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\n• صافي لك (20%): ${adminCommission.toStringAsFixed(0)} ر.ي\n• صافي المندوب (80%): ${netCourierEarnings.toStringAsFixed(0)} ر.ي',
+                                                style: const TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 13)),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx),
+                                                child: const Text('إلغاء',
+                                                    style: TextStyle(
+                                                        color: Colors.grey)),
+                                              ),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
                                                     backgroundColor:
-                                                        Colors.orange,
-                                                  ),
-                                                );
-                                              }
-                                            }
-                                          },
-                                          child:
-                                              const Text('نعم، تصفير الحساب'),
+                                                        Colors.redAccent,
+                                                    foregroundColor:
+                                                        Colors.white),
+                                                onPressed: () async {
+                                                  Navigator.pop(ctx);
+                                                  if (mounted) {
+                                                    setState(() =>
+                                                        _settlingCourierKeys
+                                                            .add(courierKey));
+                                                  }
+                                                  try {
+                                                    await _settleCourierSafely(
+                                                      context: context,
+                                                      appState: appState,
+                                                      courierName: courierName,
+                                                      unsettledOrders:
+                                                          courierUnsettledOrders,
+                                                      totalCourierEarnings:
+                                                          totalCourierEarnings,
+                                                      adminCommission:
+                                                          adminCommission,
+                                                      netCourierEarnings:
+                                                          netCourierEarnings,
+                                                    );
+                                                  } finally {
+                                                    if (mounted) {
+                                                      setState(() =>
+                                                          _settlingCourierKeys
+                                                              .remove(
+                                                                  courierKey));
+                                                    }
+                                                  }
+                                                },
+                                                child: const Text(
+                                                    'نعم، تصفير الحساب'),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                                      );
+                                    },
                             ),
                           ],
                         ),
@@ -666,6 +754,37 @@ class _AdminScreenState extends State<AdminScreen>
                             '${netCourierEarnings.toStringAsFixed(0)} ر.ي',
                             Colors.greenAccent),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: Colors.amber.withOpacity(0.35)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            '💰 الصافي لك بعد خصم العمولة (20%):',
+                            style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            '${adminCommission.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.amber,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
