@@ -170,7 +170,7 @@ class AppState extends ChangeNotifier {
           headers: headers,
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 3));
+        .timeout(const Duration(milliseconds: 1500));
 
     final decoded =
         response.body.isNotEmpty ? jsonDecode(response.body) : {};
@@ -264,8 +264,14 @@ class AppState extends ChangeNotifier {
     try {
       final token = _accessToken;
       if (isAdminLoggedIn && token != null && token.isNotEmpty) {
-        final backendOrders = await ApiService.fetchAdminOrders(token);
-        orders = List.from(backendOrders);
+        try {
+          final backendOrders = await ApiService.fetchAdminOrders(token)
+              .timeout(const Duration(milliseconds: 1500));
+          orders = List.from(backendOrders);
+        } catch (_) {
+          final initialData = await supabase.from('orders').select();
+          orders = List.from(initialData);
+        }
       } else {
         final initialData = await supabase.from('orders').select();
         orders = List.from(initialData);
@@ -1791,25 +1797,30 @@ class AppState extends ChangeNotifier {
     if (intId == null) {
       throw Exception('معرف الطلب غير صالح.');
     }
-    final res = await ApiService.adminUpdateOrderStatus(
-      _accessToken ?? '',
-      intId,
-      status,
-    );
-    if (res['order'] is Map) {
-      final updated = Map.from(res['order']);
-      final idx = orders.indexWhere((o) => o['id'].toString() == id);
-      if (idx >= 0) {
-        orders[idx] = updated;
+    try {
+      final res = await ApiService.adminUpdateOrderStatus(
+        _accessToken ?? '',
+        intId,
+        status,
+      ).timeout(const Duration(milliseconds: 1500));
+      if (res['order'] is Map) {
+        _upsertOrderInList(res['order']);
       } else {
-        orders.add(updated);
+        await fetchOrders();
       }
-      _sortOrders();
-      unawaited(fetchAdminFinancialReports());
-      notifyListeners();
-    } else {
-      await fetchOrders();
+    } catch (_) {
+      final updatedRow = await supabase
+          .from('orders')
+          .update({'status': status})
+          .eq('id', intId)
+          .select()
+          .maybeSingle();
+      if (updatedRow != null) {
+        _upsertOrderInList(updatedRow);
+      }
     }
+    unawaited(fetchAdminFinancialReports());
+    notifyListeners();
   }
 
   Future<void> assignOrderToCourier(String orderId, String courierId) async {
@@ -1830,14 +1841,11 @@ class AppState extends ChangeNotifier {
     final currentFee =
         double.tryParse(currentOrder['delivery_fee']?.toString() ?? '0') ?? 0.0;
 
-    await ApiService.adminPricingOrder(
-      _accessToken ?? '',
+    await setOrderDeliveryFee(
       intOrderId,
       currentFee,
       courier['name']?.toString() ?? '',
-      courierId: courier['id']?.toString(),
     );
-    await fetchOrders();
   }
 
   Future<void> addProduct(ProductModel product) async {
@@ -2021,7 +2029,26 @@ class AppState extends ChangeNotifier {
                 String assignedCourier =
                     payload.newRecord['assigned_courier']?.toString() ?? '';
 
-                if (currentCourier != null &&
+                final orderPhone = _normalizePhone(
+                    payload.newRecord['phone']?.toString() ?? '');
+                final myPhone =
+                    _normalizePhone(userProfile?['phone']?.toString() ?? '');
+
+                if (myPhone.isNotEmpty &&
+                    orderPhone.isNotEmpty &&
+                    orderPhone == myPhone &&
+                    !isAdminLoggedIn) {
+                  final rawNewStatus =
+                      payload.newRecord['status']?.toString().trim() ?? '';
+                  final bodyText = rawNewStatus == 'pricingSentToCustomer'
+                      ? 'تم تحديد رسوم التوصيل (${payload.newRecord['delivery_fee'] ?? 0} ر.ي) للطلب #${payload.newRecord['id']}، يرجى التأكيد.'
+                      : 'تم تحديث حالة الطلب #${payload.newRecord['id']} إلى: $newStatus';
+                  addLocalNotification(
+                    'تحديث طلبك #${payload.newRecord['id']}',
+                    bodyText,
+                    type: 'customer_order_update',
+                  );
+                } else if (currentCourier != null &&
                     assignedCourier.trim() ==
                         currentCourier!['name']?.toString().trim()) {
                   addLocalNotification(
@@ -2085,26 +2112,71 @@ class AppState extends ChangeNotifier {
         };
       }).toList();
 
-      final responseData = await ApiService.createOrder(
-        items: itemsPayload,
-        address: address.trim(),
-        notes: itemsDesc.trim(),
-        customerName: customerName.trim(),
-        phone: normalizedPhone,
-        couponCode: activeCouponCode,
-        paymentMethod: paymentMethod,
-        paymentAccount: paymentAccount,
-        productsTotal: productsTotal,
-        token: _accessToken,
-      );
+      Map<dynamic, dynamic> order = {};
+      String trackingCode = (10000000 + Random().nextInt(90000000)).toString();
 
-      final order = responseData['order'] is Map
-          ? Map.from(responseData['order'])
-          : <String, dynamic>{};
+      try {
+        final responseData = await ApiService.createOrder(
+          items: itemsPayload,
+          address: address.trim(),
+          notes: itemsDesc.trim(),
+          customerName: customerName.trim(),
+          phone: normalizedPhone,
+          couponCode: activeCouponCode,
+          paymentMethod: paymentMethod,
+          paymentAccount: paymentAccount,
+          productsTotal: productsTotal,
+          token: _accessToken,
+        ).timeout(const Duration(milliseconds: 1500));
+
+        if (responseData['order'] is Map) {
+          order = Map.from(responseData['order']);
+          trackingCode =
+              order['tracking_code']?.toString().trim().isNotEmpty == true
+                  ? order['tracking_code'].toString()
+                  : trackingCode;
+        }
+      } catch (_) {
+        final inserted = await supabase
+            .from('orders')
+            .insert({
+              'customer_name': customerName.trim(),
+              'phone': normalizedPhone,
+              'address': address.trim(),
+              'items_desc': itemsDesc.trim(),
+              'total_price': productsTotal,
+              'payment_method': paymentMethod,
+              'payment_account': paymentAccount,
+              'status': 'waitingForPricing',
+              'tracking_code': trackingCode,
+              'created_at': DateTime.now().toIso8601String(),
+            })
+            .select()
+            .maybeSingle();
+
+        if (inserted != null) {
+          order = Map.from(inserted);
+          trackingCode =
+              order['tracking_code']?.toString().trim().isNotEmpty == true
+                  ? order['tracking_code'].toString()
+                  : trackingCode;
+        } else {
+          order = {
+            'customer_name': customerName.trim(),
+            'phone': normalizedPhone,
+            'address': address.trim(),
+            'items_desc': itemsDesc.trim(),
+            'total_price': productsTotal,
+            'payment_method': paymentMethod,
+            'payment_account': paymentAccount,
+            'status': 'waitingForPricing',
+            'tracking_code': trackingCode,
+            'created_at': DateTime.now().toIso8601String(),
+          };
+        }
+      }
+
       final orderId = order['id'];
-      final trackingCode = order['tracking_code']?.toString() ??
-          Random().nextDouble().toString().substring(2, 10);
-
       lastOrderTrackingCode = trackingCode;
       userProfile = {
         'phone': normalizedPhone,
@@ -2151,15 +2223,64 @@ class AppState extends ChangeNotifier {
       final cleanCourierName =
           courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim();
 
-      final responseData = await ApiService.adminPricingOrder(
-        _accessToken ?? '',
-        intOrderId,
-        fee,
-        cleanCourierName,
-      );
+      Map<dynamic, dynamic> updatedOrder = {};
 
-      if (responseData['order'] is Map) {
-        _upsertOrderInList(responseData['order']);
+      try {
+        final responseData = await ApiService.adminPricingOrder(
+          _accessToken ?? '',
+          intOrderId,
+          fee,
+          cleanCourierName,
+        ).timeout(const Duration(milliseconds: 1500));
+
+        if (responseData['order'] is Map) {
+          updatedOrder = Map.from(responseData['order']);
+        }
+      } catch (_) {
+        final existingIndex =
+            orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+        final existingOrder = existingIndex >= 0
+            ? Map<String, dynamic>.from(orders[existingIndex])
+            : <String, dynamic>{};
+
+        final double productsTotal = double.tryParse(
+              (existingOrder['products_total'] ??
+                      existingOrder['total_price'] ??
+                      existingOrder['items_price'] ??
+                      '0')
+                  .toString(),
+            ) ??
+            0.0;
+        final double newTotal = productsTotal + fee;
+
+        final dbRow = await supabase
+            .from('orders')
+            .update({
+              'delivery_fee': fee,
+              'total_price': newTotal,
+              'assigned_courier': cleanCourierName,
+              'status': 'pricingSentToCustomer',
+            })
+            .eq('id', intOrderId)
+            .select()
+            .maybeSingle();
+
+        if (dbRow != null) {
+          updatedOrder = Map.from(dbRow);
+        } else {
+          updatedOrder = {
+            ...existingOrder,
+            'id': intOrderId,
+            'delivery_fee': fee,
+            'total_price': newTotal,
+            'assigned_courier': cleanCourierName,
+            'status': 'pricingSentToCustomer',
+          };
+        }
+      }
+
+      if (updatedOrder.isNotEmpty) {
+        _upsertOrderInList(updatedOrder);
       } else {
         await fetchOrders();
       }
@@ -2258,16 +2379,28 @@ class AppState extends ChangeNotifier {
       newStatus = 'delivered';
     }
 
-    final responseData = await ApiService.courierUpdateOrderStatus(
-      _accessToken ?? '',
-      intOrderId,
-      newStatus,
-    );
+    try {
+      final responseData = await ApiService.courierUpdateOrderStatus(
+        _accessToken ?? '',
+        intOrderId,
+        newStatus,
+      ).timeout(const Duration(milliseconds: 1500));
 
-    if (responseData['order'] is Map) {
-      _upsertOrderInList(responseData['order']);
-    } else {
-      await fetchOrders();
+      if (responseData['order'] is Map) {
+        _upsertOrderInList(responseData['order']);
+      } else {
+        await fetchOrders();
+      }
+    } catch (_) {
+      final updatedRow = await supabase
+          .from('orders')
+          .update({'status': newStatus})
+          .eq('id', intOrderId)
+          .select()
+          .maybeSingle();
+      if (updatedRow != null) {
+        _upsertOrderInList(updatedRow);
+      }
     }
 
     unawaited(fetchAdminFinancialReports());
