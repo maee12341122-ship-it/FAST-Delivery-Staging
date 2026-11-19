@@ -573,20 +573,18 @@ class AppState extends ChangeNotifier {
           .select()
           .eq('customer_phone', cleanPhone);
 
-      if (response != null) {
-        _userAddresses.clear();
-        for (var row in response) {
-          _userAddresses.add(AddressModel(
-            id: row['id'].toString(),
-            title: row['title']?.toString() ?? 'عنوان',
-            area: row['area']?.toString() ?? '',
-            details: row['details']?.toString() ?? '',
-            instructions: row['instructions']?.toString() ?? '',
-          ));
-        }
-        _saveUserAddressesFromPrefs();
-        notifyListeners();
+      _userAddresses.clear();
+      for (var row in response) {
+        _userAddresses.add(AddressModel(
+          id: row['id'].toString(),
+          title: row['title']?.toString() ?? 'عنوان',
+          area: row['area']?.toString() ?? '',
+          details: row['details']?.toString() ?? '',
+          instructions: row['instructions']?.toString() ?? '',
+        ));
       }
+      _saveUserAddressesFromPrefs();
+      notifyListeners();
     } catch (e) {
       _loadUserAddressesFromPrefs();
     }
