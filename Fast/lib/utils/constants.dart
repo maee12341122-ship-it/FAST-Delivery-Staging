@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppConstants {
   // اللون الذهبي الأساسي لتصميم التطبيق الفاخر 🌟
   static const Color gold = Color(0xFFFFD700);
-  
+
   // الألوان الثابتة للخلفيات
   static const Color darkBackground = Color(0xFF121212);
   static const Color surfaceColor = Color(0xFF1E1E1E);
@@ -21,10 +21,12 @@ class AppConstants {
 }
 
 // تصنيفات الأقسام والمنتجات لتجنب خطأ Undefined name
-enum ProductCategories {
-  restaurants,
-  groceries,
-  produce, // الخضار والفواكه
-  pharmacy,
-  others,
+class ProductCategories {
+  static const String restaurants = 'المطاعم';
+  static const String groceries = 'البقالات';
+  static const String vegetables = 'الخضار والفواكه';
+  static const String produce = 'الخضار والفواكه';
+  static const String pharmacy = 'الصيدلية الآمنة';
+  static const String gifts = 'هدايا واكسسوارات';
+  static const String others = 'أخرى';
 }
