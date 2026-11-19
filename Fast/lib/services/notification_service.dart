@@ -41,6 +41,10 @@ class NotificationService {
     return headers;
   }
 
+  static int _nextNotificationId() {
+    return DateTime.now().microsecondsSinceEpoch % 2147483647;
+  }
+
   /// 1. تهيئة الاستماع للإشعارات والنقر عليها والتنبيهات المحلية
   static Future<void> initialize() async {
     try {
@@ -283,7 +287,7 @@ class NotificationService {
           payload ?? _extractOrderIdFromText('$title $body');
 
       await _localNotificationsPlugin.show(
-        DateTime.now().millisecond,
+        _nextNotificationId(),
         title,
         body,
         platformChannelSpecifics,
