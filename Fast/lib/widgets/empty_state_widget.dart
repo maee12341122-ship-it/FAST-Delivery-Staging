@@ -8,13 +8,13 @@ class EmptyStateWidget extends StatelessWidget {
   final VoidCallback? onButtonPressed;
 
   const EmptyStateWidget({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
     this.buttonText,
     this.onButtonPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +29,10 @@ class EmptyStateWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.amber.withOpacity(0.1),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.amber.withOpacity(0.3), width: 1.5),
+                border: Border.all(
+                  color: Colors.amber.withOpacity(0.3),
+                  width: 1.5,
+                ),
               ),
               child: Icon(icon, size: 55, color: Colors.amber),
             ),
@@ -53,20 +56,30 @@ class EmptyStateWidget extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            if (buttonText != null && onButtonPressed != null) ...[
+            if (buttonText != null &&
+                buttonText!.trim().isNotEmpty &&
+                onButtonPressed != null) ...[
               const SizedBox(height: 24),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   elevation: 2,
                 ),
                 onPressed: onButtonPressed,
                 child: Text(
                   buttonText!,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ],
