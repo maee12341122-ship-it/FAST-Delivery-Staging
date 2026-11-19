@@ -28,28 +28,46 @@ class ProductModel {
       'id': id,
       'name': name,
       'description': description,
-      'restaurant_name': restaurantName, // مطابق تماماً لعمود جدول Supabase
+      'restaurant_name': restaurantName,
       'price': price,
       'category': category,
       'available': available,
-      'image_url': imageUrl,             // مطابق تماماً لعمود جدول Supabase
+      'image_url': imageUrl,
       'unit': unit,
-      'is_variable_price': isVariablePrice, // مطابق تماماً لعمود جدول Supabase
+      'is_variable_price': isVariablePrice,
     };
   }
 
+  static bool _parseBool(dynamic raw, {required bool fallback}) {
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    if (raw != null) {
+      final s = raw.toString().trim().toLowerCase();
+      if (s == 'true' || s == '1') return true;
+      if (s == 'false' || s == '0') return false;
+    }
+    return fallback;
+  }
+
   factory ProductModel.fromMap(Map<String, dynamic> map) {
+    final rawAvailable = map['available'];
+    final rawVariablePrice =
+        map['is_variable_price'] ?? map['isVariablePrice'];
+
     return ProductModel(
       id: map['id']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
       description: map['description']?.toString() ?? '',
-      restaurantName: map['restaurant_name']?.toString() ?? map['restaurantName']?.toString() ?? '',
+      restaurantName: map['restaurant_name']?.toString() ??
+          map['restaurantName']?.toString() ??
+          '',
       price: double.tryParse(map['price']?.toString() ?? '0.0') ?? 0.0,
       category: map['category']?.toString() ?? 'المطاعم',
-      available: map['available'] ?? true,
-      imageUrl: map['image_url']?.toString() ?? map['imageUrl']?.toString() ?? '',
+      available: _parseBool(rawAvailable, fallback: true),
+      imageUrl:
+          map['image_url']?.toString() ?? map['imageUrl']?.toString() ?? '',
       unit: map['unit']?.toString() ?? 'حبة',
-      isVariablePrice: map['is_variable_price'] ?? map['isVariablePrice'] ?? false,
+      isVariablePrice: _parseBool(rawVariablePrice, fallback: false),
     );
   }
 }
