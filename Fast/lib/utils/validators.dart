@@ -1,14 +1,22 @@
 class Validators {
-  static String? requiredText(String? value, {String message = 'هذا الحقل مطلوب'}) {
+  static String? requiredText(
+    String? value, {
+    String message = 'هذا الحقل مطلوب',
+  }) {
     if (value == null || value.trim().isEmpty) return message;
     return null;
   }
 
   static String normalizeYemeniPhone(String value) {
     var digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.startsWith('00967')) digits = digits.substring(5);
-    if (digits.startsWith('967')) digits = digits.substring(3);
-    if (digits.startsWith('0')) digits = digits.substring(1);
+    if (digits.startsWith('00967')) {
+      digits = digits.substring(5);
+    } else if (digits.startsWith('967') && digits.length > 9) {
+      digits = digits.substring(3);
+    }
+    while (digits.startsWith('0') && digits.length > 9) {
+      digits = digits.substring(1);
+    }
     return digits;
   }
 
@@ -18,7 +26,9 @@ class Validators {
   }
 
   static String? yemeniPhone(String? value) {
-    if (value == null || value.trim().isEmpty) return 'يرجى إدخال رقم الهاتف';
+    if (value == null || value.trim().isEmpty) {
+      return 'يرجى إدخال رقم الهاتف';
+    }
     if (!isValidYemeniPhone(value)) {
       return 'أدخل رقماً يمنياً صحيحاً مثل 77xxxxxxx أو +96777xxxxxxx';
     }
