@@ -63,7 +63,8 @@ class _CartScreenState extends State<CartScreen> {
         .map((item) => '${item.name} (${item.quantity})')
         .join(', ');
 
-    setDialogState(() => _isSubmitting = true);
+    _isSubmitting = true;
+    setDialogState(() {});
 
     try {
       await appState.createOrder(
@@ -81,7 +82,7 @@ class _CartScreenState extends State<CartScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم استلام طلبك. رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}',
+            'تم استلام طلبك بنجاح ✅ رمز المتابعة: ${appState.lastOrderTrackingCode ?? '—'}',
           ),
         ),
       );
@@ -92,8 +93,8 @@ class _CartScreenState extends State<CartScreen> {
         );
       }
     } finally {
+      _isSubmitting = false;
       if (mounted) {
-        _isSubmitting = false;
         try {
           setDialogState(() {});
         } catch (_) {}
@@ -105,165 +106,218 @@ class _CartScreenState extends State<CartScreen> {
     _isSubmitting = false;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text(
-              'بيانات التوصيل وطريقة الدفع 💳',
-              style: TextStyle(
-                  color: AppConstants.gold, fontWeight: FontWeight.bold),
-            ),
-            content: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: _nameController,
-                      focusNode: _nameFocus,
-                      textInputAction: TextInputAction.next,
-                      onSubmitted: (_) {
-                        FocusScope.of(context).requestFocus(_phoneFocus);
-                      },
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'الاسم الكامل',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF121212),
-                      ),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'يرجى إدخال الاسم'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phoneController,
-                      focusNode: _phoneFocus,
-                      keyboardType: TextInputType.phone,
-                      textInputAction: TextInputAction.next,
-                      onSubmitted: (_) {
-                        FocusScope.of(context).requestFocus(_addressFocus);
-                      },
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'رقم الهاتف',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF121212),
-                      ),
-                      validator: (v) => v == null || v.trim().length < 9
-                          ? 'يرجى إدخال رقم صحيح'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _addressController,
-                      focusNode: _addressFocus,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) =>
-                          _submitOrder(context, appState, ctx, setDialogState),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'العنوان التفصيلي (تعز)',
-                        labelStyle: TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF121212),
-                      ),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'يرجى إدخال العنوان'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'اختر طريقة الدفع:',
-                      style: TextStyle(
-                          color: AppConstants.gold,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _selectedPaymentMethod,
-                      dropdownColor: const Color(0xFF1E1E1E),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Color(0xFF121212),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'cash',
-                            child: Text('💵 الدفع نقداً عند الاستلام فقط')),
-                      ],
-                      onChanged: (val) {
-                        setDialogState(() {
-                          _selectedPaymentMethod = val ?? 'cash';
-                        });
-                      },
-                    ),
-                    if (false && _selectedPaymentMethod != 'cash') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _accountNumberController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText:
-                              'رقم الحساب المحول منه ($_selectedPaymentMethod)',
-                          labelStyle: const TextStyle(color: Colors.amberAccent),
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: const Color(0xFF121212),
+        builder: (context, setDialogState) => PopScope(
+          canPop: !_isSubmitting,
+          child: GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Text(
+                'بيانات التوصيل وطريقة الدفع 💳',
+                style: TextStyle(
+                    color: AppConstants.gold, fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_isSubmitting)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppConstants.gold.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: AppConstants.gold.withOpacity(0.5)),
+                          ),
+                          child: const Row(
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: AppConstants.gold,
+                                  strokeWidth: 2.2,
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'جاري إرسال طلبك وتأكيده الآن، يرجى الانتظار لحظات...',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        validator: (v) => _selectedPaymentMethod != 'cash' &&
-                                (v == null || v.trim().isEmpty)
-                            ? 'يرجى إدخال رقم الحساب'
+                      TextFormField(
+                        controller: _nameController,
+                        focusNode: _nameFocus,
+                        enabled: !_isSubmitting,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) {
+                          FocusScope.of(context).requestFocus(_phoneFocus);
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'الاسم الكامل',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF121212),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'يرجى إدخال الاسم'
                             : null,
                       ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _phoneController,
+                        focusNode: _phoneFocus,
+                        enabled: !_isSubmitting,
+                        keyboardType: TextInputType.phone,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) {
+                          FocusScope.of(context).requestFocus(_addressFocus);
+                        },
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'رقم الهاتف',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF121212),
+                        ),
+                        validator: (v) => v == null || v.trim().length < 9
+                            ? 'يرجى إدخال رقم صحيح'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _addressController,
+                        focusNode: _addressFocus,
+                        enabled: !_isSubmitting,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) =>
+                            _submitOrder(context, appState, ctx, setDialogState),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'العنوان التفصيلي (تعز)',
+                          labelStyle: TextStyle(color: Colors.grey),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF121212),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'يرجى إدخال العنوان'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'اختر طريقة الدفع:',
+                        style: TextStyle(
+                            color: AppConstants.gold,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _selectedPaymentMethod,
+                        dropdownColor: const Color(0xFF1E1E1E),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Color(0xFF121212),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'cash',
+                              child: Text('💵 الدفع نقداً عند الاستلام فقط')),
+                        ],
+                        onChanged: _isSubmitting
+                            ? null
+                            : (val) {
+                                setDialogState(() {
+                                  _selectedPaymentMethod = val ?? 'cash';
+                                });
+                              },
+                      ),
+                      if (false && _selectedPaymentMethod != 'cash') ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _accountNumberController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText:
+                                'رقم الحساب المحول منه ($_selectedPaymentMethod)',
+                            labelStyle:
+                                const TextStyle(color: Colors.amberAccent),
+                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: const Color(0xFF121212),
+                          ),
+                          validator: (v) => _selectedPaymentMethod != 'cash' &&
+                                  (v == null || v.trim().isEmpty)
+                              ? 'يرجى إدخال رقم الحساب'
+                              : null,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
+                  child:
+                      const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppConstants.gold,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _isSubmitting
+                      ? null
+                      : () =>
+                          _submitOrder(context, appState, ctx, setDialogState),
+                  child: _isSubmitting
+                      ? const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  color: Colors.black, strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('جاري الإرسال...',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      : const Text('تأكيد وإرسال',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: _isSubmitting ? null : () => Navigator.pop(ctx),
-                child:
-                    const Text('إغلاق', style: TextStyle(color: Colors.grey)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppConstants.gold,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: _isSubmitting
-                    ? null
-                    : () =>
-                        _submitOrder(context, appState, ctx, setDialogState),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.black, strokeWidth: 2),
-                      )
-                    : const Text('تأكيد وإرسال',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
           ),
         ),
       ),
