@@ -1,16 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 👈 لحفظ واسترجاع جلسة المندوب محلياً
-import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_state.dart';
 import 'chat_screen.dart';
 import 'order_tracking_screen.dart';
-import 'home_screen.dart'; // 👈 مسار صحيح ومباشر داخل مجلد screens
+import 'home_screen.dart';
 
 class CourierScreen extends StatefulWidget {
   const CourierScreen({Key? key}) : super(key: key);
@@ -38,11 +37,15 @@ class _CourierScreenState extends State<CourierScreen> {
 
       // إذا كانت الجلسة موجودة في الذاكرة
       if (appState.currentCourier != null) {
-        final String courierId = (appState.currentCourier!['id'] ?? appState.currentCourier!['name'] ?? '').toString().trim();
+        final String courierId = (appState.currentCourier!['id'] ??
+                appState.currentCourier!['name'] ??
+                '')
+            .toString()
+            .trim();
         if (courierId.isNotEmpty) {
           _startLiveLocationUpdates(courierId);
         }
-        setState(() => _isLoadingSession = false);
+        if (mounted) setState(() => _isLoadingSession = false);
         return;
       }
 
@@ -51,16 +54,20 @@ class _CourierScreenState extends State<CourierScreen> {
       final String? savedCourierJson = prefs.getString('saved_courier_session');
 
       if (savedCourierJson != null && savedCourierJson.isNotEmpty) {
-        final Map<String, dynamic> courierData = jsonDecode(savedCourierJson);
+        final Map<String, dynamic> courierData =
+            Map<String, dynamic>.from(jsonDecode(savedCourierJson) as Map);
         appState.currentCourier = courierData;
-        final String courierId = courierData['id'].toString();
-        _startLiveLocationUpdates(courierId);
-        setState(() => _isLoadingSession = false);
+        final String courierId =
+            (courierData['id'] ?? courierData['name'] ?? '').toString().trim();
+        if (courierId.isNotEmpty) {
+          _startLiveLocationUpdates(courierId);
+        }
+        if (mounted) setState(() => _isLoadingSession = false);
         return;
       }
 
       // التحقق عبر رقم الهاتف المسجل في الملف الشخصي
-      final currentPhone = appState.userProfile?['phone'] ?? '';
+      final currentPhone = appState.userProfile?['phone']?.toString() ?? '';
       if (currentPhone.isEmpty) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
         return;
@@ -78,19 +85,22 @@ class _CourierScreenState extends State<CourierScreen> {
           .maybeSingle();
 
       if (courierRes == null) {
-        _kickOutUnauthorizedUser('عذراً، لا تمتلك صلاحيات مندوب توصيل للوصول إلى هذه اللوحة 🚫');
+        _kickOutUnauthorizedUser(
+            'عذراً، لا تمتلك صلاحيات مندوب توصيل للوصول إلى هذه اللوحة 🚫');
       } else {
         appState.currentCourier = courierRes;
-        // حفظ الجلسة محلياً لضمان عدم اختفائها عند إعادة التشغيل
         await prefs.setString('saved_courier_session', jsonEncode(courierRes));
-        
-        final String courierId = courierRes['id'].toString();
-        _startLiveLocationUpdates(courierId);
-        setState(() => _isLoadingSession = false);
+
+        final String courierId =
+            (courierRes['id'] ?? courierRes['name'] ?? '').toString().trim();
+        if (courierId.isNotEmpty) {
+          _startLiveLocationUpdates(courierId);
+        }
+        if (mounted) setState(() => _isLoadingSession = false);
       }
     } catch (e) {
       debugPrint('❌ خطأ في التحقق الأمني للمندوب: $e');
-      setState(() => _isLoadingSession = false);
+      if (mounted) setState(() => _isLoadingSession = false);
     }
   }
 
@@ -98,7 +108,7 @@ class _CourierScreenState extends State<CourierScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => HomeScreen()), // بدون const
+      MaterialPageRoute(builder: (context) => HomeScreen()),
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -123,21 +133,23 @@ class _CourierScreenState extends State<CourierScreen> {
     }
     if (permission == LocationPermission.deniedForever) return;
 
-    _locationSubscription?.cancel();
+    await _locationSubscription?.cancel();
 
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 5,
     );
 
-    _locationSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
+    _locationSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) async {
       try {
         await Supabase.instance.client.from('courier_locations').upsert({
           'courier_id': courierId,
           'latitude': position.latitude,
           'longitude': position.longitude,
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'courier_id');
       } catch (e) {
         debugPrint('⚠️ خطأ في رفع الموقع اللحظي: $e');
       }
@@ -145,8 +157,10 @@ class _CourierScreenState extends State<CourierScreen> {
   }
 
   Future<void> _openMap(String address) async {
-    final query = Uri.encodeComponent(address.isNotEmpty ? address : 'Taiz, Yemen');
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$query');
+    final query = Uri.encodeComponent(
+        address.trim().isNotEmpty ? address.trim() : 'Taiz, Yemen');
+    final googleMapsUrl =
+        Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$query');
 
     if (await canLaunchUrl(googleMapsUrl)) {
       await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
@@ -159,17 +173,20 @@ class _CourierScreenState extends State<CourierScreen> {
     }
   }
 
-  void _handleCourierNotificationTap(BuildContext context, Map<String, dynamic> notification) {
+  void _handleCourierNotificationTap(
+      BuildContext context, Map<String, dynamic> notification) {
     final String? orderId = notification['order_id']?.toString() ??
         notification['related_id']?.toString() ??
         notification['additionalData']?['order_id']?.toString() ??
-        _extractOrderIdFromText((notification['title'] ?? '') + ' ' + (notification['body'] ?? notification['message'] ?? ''));
+        _extractOrderIdFromText(
+            '${notification['title'] ?? ''} ${notification['body'] ?? notification['message'] ?? ''}');
 
     if (orderId != null && orderId.isNotEmpty) {
       Navigator.push(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => OrderTrackingScreen(orderIdParam: orderId),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              OrderTrackingScreen(orderIdParam: orderId),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -177,7 +194,8 @@ class _CourierScreenState extends State<CourierScreen> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
+        const SnackBar(
+            content: Text('هذا الإشعار غير مرتبط برقم طلب معين 📭')),
       );
     }
   }
@@ -206,7 +224,8 @@ class _CourierScreenState extends State<CourierScreen> {
           SizedBox(width: 8),
           Text(
             'تنبيه: انقطع الاتصال بالإنترنت! يرجى التحقق من الشبكة ⚠️',
-            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -220,11 +239,17 @@ class _CourierScreenState extends State<CourierScreen> {
 
     final pendingOrdersCount = courier != null
         ? appState.orders.where((o) {
-      final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
-      final courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
-      final String orderStatus = o['status'] ?? '';
-      return (assigned == courierName) && (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer');
-    }).length
+            final assigned = (o['assigned_courier'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            final courierName =
+                (courier['name'] ?? '').toString().trim().toLowerCase();
+            final String orderStatus = o['status']?.toString() ?? '';
+            return (assigned == courierName) &&
+                (orderStatus == 'waitingCourierApproval' ||
+                    orderStatus == 'approvedByCustomer');
+          }).length
         : 0;
 
     return GestureDetector(
@@ -237,8 +262,13 @@ class _CourierScreenState extends State<CourierScreen> {
             backgroundColor: const Color(0xFF1E1E1E),
             elevation: 2,
             title: Text(
-              courier == null ? 'لوحة المندوب' : 'لوحة المندوب: ${courier['name']}',
-              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
+              courier == null
+                  ? 'لوحة المندوب'
+                  : 'لوحة المندوب: ${courier['name']}',
+              style: const TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16),
             ),
             actions: [
               if (courier != null) ...[
@@ -246,7 +276,8 @@ class _CourierScreenState extends State<CourierScreen> {
                   alignment: Alignment.center,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.notifications_active, color: Colors.amber, size: 24),
+                      icon: const Icon(Icons.notifications_active,
+                          color: Colors.amber, size: 24),
                       tooltip: 'سجل الإشعارات الفورية',
                       onPressed: () {
                         showDialog(
@@ -257,40 +288,66 @@ class _CourierScreenState extends State<CourierScreen> {
                               backgroundColor: const Color(0xFF1E1E1E),
                               title: const Row(
                                 children: [
-                                  Icon(Icons.notifications, color: Colors.amber),
+                                  Icon(Icons.notifications,
+                                      color: Colors.amber),
                                   SizedBox(width: 8),
-                                  Text('إشعارات المندوب 🛎️', style: TextStyle(color: Colors.amber, fontSize: 16)),
+                                  Text('إشعارات المندوب 🛎️',
+                                      style: TextStyle(
+                                          color: Colors.amber, fontSize: 16)),
                                 ],
                               ),
                               content: SizedBox(
                                 width: double.maxFinite,
                                 height: 350,
                                 child: appState.notifications.isEmpty
-                                    ? const Center(child: Text('لا توجد إشعارات جديدة حالياً 📭', style: TextStyle(color: Colors.grey)))
+                                    ? const Center(
+                                        child: Text(
+                                            'لا توجد إشعارات جديدة حالياً 📭',
+                                            style:
+                                                TextStyle(color: Colors.grey)))
                                     : ListView.builder(
-                                  itemCount: appState.notifications.length,
-                                  itemBuilder: (_, idx) {
-                                    final notif = appState.notifications[idx];
-                                    return Card(
-                                      color: const Color(0xFF121212),
-                                      margin: const EdgeInsets.symmetric(vertical: 4),
-                                      child: ListTile(
-                                        title: Text(notif['title'] ?? '', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-                                        subtitle: Text(notif['body'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
-                                        onTap: () {
-                                          Navigator.pop(ctx);
-                                          _handleCourierNotificationTap(context, notif);
+                                        itemCount: appState.notifications.length,
+                                        itemBuilder: (_, idx) {
+                                          final notif =
+                                              appState.notifications[idx];
+                                          return Card(
+                                            color: const Color(0xFF121212),
+                                            margin: const EdgeInsets.symmetric(
+                                                vertical: 4),
+                                            child: ListTile(
+                                              title: Text(
+                                                  notif['title']?.toString() ??
+                                                      '',
+                                                  style: const TextStyle(
+                                                      color: Colors.amber,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 13)),
+                                              subtitle: Text(
+                                                  notif['body']?.toString() ??
+                                                      '',
+                                                  style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 12)),
+                                              trailing: const Icon(
+                                                  Icons.arrow_forward_ios,
+                                                  color: Colors.amber,
+                                                  size: 14),
+                                              onTap: () {
+                                                Navigator.pop(ctx);
+                                                _handleCourierNotificationTap(
+                                                    context, notif);
+                                              },
+                                            ),
+                                          );
                                         },
                                       ),
-                                    );
-                                  },
-                                ),
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx),
-                                  child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                                  child: const Text('إغلاق',
+                                      style: TextStyle(color: Colors.grey)),
                                 ),
                               ],
                             ),
@@ -308,10 +365,14 @@ class _CourierScreenState extends State<CourierScreen> {
                             color: Colors.red,
                             shape: BoxShape.circle,
                           ),
-                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                          constraints:
+                              const BoxConstraints(minWidth: 18, minHeight: 18),
                           child: Text(
                             '$pendingOrdersCount',
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -322,12 +383,11 @@ class _CourierScreenState extends State<CourierScreen> {
                   icon: const Icon(Icons.logout, color: Colors.redAccent),
                   tooltip: 'تسجيل الخروج',
                   onPressed: () async {
-                    _locationSubscription?.cancel();
-                    // مسح الجلسة المحفوظة عند تسجيل الخروج
+                    await _locationSubscription?.cancel();
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('saved_courier_session');
                     appState.logoutCourier();
-                    Navigator.pop(context);
+                    if (context.mounted) Navigator.pop(context);
                   },
                 ),
               ],
@@ -342,7 +402,10 @@ class _CourierScreenState extends State<CourierScreen> {
                         child: CircularProgressIndicator(color: Colors.amber),
                       )
                     : (courier == null
-                        ? const Center(child: Text('عذراً، يرجى تسجيل الدخول مجدداً ⚠️', style: TextStyle(color: Colors.grey)))
+                        ? const Center(
+                            child: Text(
+                                'عذراً، يرجى تسجيل الدخول مجدداً ⚠️',
+                                style: TextStyle(color: Colors.grey)))
                         : _buildCourierOrdersListWithTabs(appState, courier)),
               ),
             ],
@@ -352,38 +415,44 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  Widget _buildCourierOrdersListWithTabs(AppState appState, Map<String, dynamic> courier) {
-    final String courierName = (courier['name'] ?? '').toString().trim().toLowerCase();
+  Widget _buildCourierOrdersListWithTabs(
+      AppState appState, Map<String, dynamic> courier) {
+    final String courierName =
+        (courier['name'] ?? '').toString().trim().toLowerCase();
     final String courierId = (courier['id'] ?? '').toString().trim();
 
     final myOrders = appState.orders.where((o) {
-      final assigned = (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
-      return assigned == courierName || assigned == courierId || assigned.contains(courierName);
+      final assigned =
+          (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
+      return assigned == courierName ||
+          assigned == courierId ||
+          (courierName.isNotEmpty && assigned.contains(courierName));
     }).toList();
 
-    // 🛡️ الطلبات غير المسوية فقط لتتصفر الأرباح فور تصفير المشرف لها
-    final unsettledCompletedOrders = myOrders.where((o) {
-      final bool isDelivered = o['status']?.toString().trim() == 'delivered';
-      final bool isSettled = o['is_settled'] == true;
-      return isDelivered && !isSettled;
-    }).toList();
-
-    final activeOrders = myOrders.where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled' && o['status'] != 'cancelledByCustomer').toList();
-    
-    // إخفاء الطلبات المصفرة من قائمة المكتملة لتبدأ دورة جديدة بصفحة نظيفة للمندوب
     final completedOrders = myOrders.where((o) {
       final bool isDelivered = o['status']?.toString().trim() == 'delivered';
       final bool isSettled = o['is_settled'] == true;
       return isDelivered && !isSettled;
     }).toList();
 
-    final cancelledOrders = myOrders.where((o) => o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer').toList();
+    final activeOrders = myOrders
+        .where((o) =>
+            o['status'] != 'delivered' &&
+            o['status'] != 'cancelled' &&
+            o['status'] != 'cancelledByCustomer')
+        .toList();
+
+    final cancelledOrders = myOrders
+        .where((o) =>
+            o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer')
+        .toList();
 
     double totalEarnings = 0.0;
     int completedCount = 0;
-    for (var order in unsettledCompletedOrders) {
+    for (var order in completedOrders) {
       completedCount++;
-      totalEarnings += double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+      totalEarnings +=
+          double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
     }
 
     double adminCommission = totalEarnings * 0.20;
@@ -411,28 +480,40 @@ class _CourierScreenState extends State<CourierScreen> {
                       const CircleAvatar(
                         backgroundColor: Colors.amber,
                         radius: 18,
-                        child: Icon(Icons.delivery_dining, color: Colors.black, size: 20),
+                        child: Icon(Icons.delivery_dining,
+                            color: Colors.black, size: 20),
                       ),
                       const SizedBox(width: 10),
-                      Text('الكابتن: ${courier['name']}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                      Text('الكابتن: ${courier['name']}',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15)),
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10)),
-                    child: Text('إجمالي الطلبات: ${myOrders.length}', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text('إجمالي الطلبات: ${myOrders.length}',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 10),
-
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.green.withOpacity(0.4), width: 1.5),
+                border: Border.all(
+                    color: Colors.green.withOpacity(0.4), width: 1.5),
               ),
               child: Column(
                 children: [
@@ -441,17 +522,29 @@ class _CourierScreenState extends State<CourierScreen> {
                     children: [
                       Column(
                         children: [
-                          const Text('الطلبات المكتملة ✅', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          const Text('الطلبات المكتملة ✅',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 11)),
                           const SizedBox(height: 4),
-                          Text('$completedCount', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text('$completedCount',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                       Container(width: 1, height: 30, color: Colors.white24),
                       Column(
                         children: [
-                          const Text('إجمالي التوصيل 💰', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          const Text('إجمالي التوصيل 💰',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 11)),
                           const SizedBox(height: 4),
-                          Text('${totalEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text('${totalEarnings.toStringAsFixed(0)} ر.ي',
+                              style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -460,15 +553,22 @@ class _CourierScreenState extends State<CourierScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('عمولة الإدارة (20%): ${adminCommission.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-                      Text('صافيك (80%): ${courierNetEarnings.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(
+                          'عمولة الإدارة (20%): ${adminCommission.toStringAsFixed(0)} ر.ي',
+                          style: const TextStyle(
+                              color: Colors.redAccent, fontSize: 12)),
+                      Text(
+                          'صافيك (80%): ${courierNetEarnings.toStringAsFixed(0)} ر.ي',
+                          style: const TextStyle(
+                              color: Colors.greenAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13)),
                     ],
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 15),
-
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
@@ -486,13 +586,15 @@ class _CourierScreenState extends State<CourierScreen> {
               ),
             ),
             const SizedBox(height: 10),
-
             Expanded(
               child: TabBarView(
                 children: [
-                  _buildOrdersListView(appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
-                  _buildOrdersListView(appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
-                  _buildOrdersListView(appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
+                  _buildOrdersListView(
+                      appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
+                  _buildOrdersListView(
+                      appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
+                  _buildOrdersListView(
+                      appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
                 ],
               ),
             ),
@@ -502,9 +604,12 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  Widget _buildOrdersListView(AppState appState, List ordersList, String emptyMessage) {
+  Widget _buildOrdersListView(
+      AppState appState, List ordersList, String emptyMessage) {
     if (ordersList.isEmpty) {
-      return Center(child: Text(emptyMessage, style: const TextStyle(color: Colors.grey, fontSize: 14)));
+      return Center(
+          child: Text(emptyMessage,
+              style: const TextStyle(color: Colors.grey, fontSize: 14)));
     }
 
     return ListView.builder(
@@ -512,11 +617,13 @@ class _CourierScreenState extends State<CourierScreen> {
       itemBuilder: (context, index) {
         final order = ordersList[index];
         final orderId = order['id'].toString();
-        final String customerAddress = order['address'] ?? '';
-        final String orderStatus = order['status'] ?? '';
+        final String customerAddress = order['address']?.toString() ?? '';
+        final String orderStatus = order['status']?.toString() ?? '';
 
-        final double productsPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
-        final double deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double productsPrice =
+            double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
+        final double deliveryFee =
+            double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
         final double grandTotal = productsPrice + deliveryFee;
 
         return Card(
@@ -533,7 +640,8 @@ class _CourierScreenState extends State<CourierScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                  builder: (context) =>
+                      OrderTrackingScreen(orderIdParam: orderId),
                 ),
               );
             },
@@ -545,26 +653,35 @@ class _CourierScreenState extends State<CourierScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('طلب #$orderId', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('طلب #$orderId',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16)),
                       Row(
                         children: [
                           IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.amber.withOpacity(0.2)),
-                            icon: const Icon(Icons.map, color: Colors.amber, size: 20),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.amber.withOpacity(0.2)),
+                            icon: const Icon(Icons.map,
+                                color: Colors.amber, size: 20),
                             tooltip: 'تتبع الطلب',
                             onPressed: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                                  builder: (context) =>
+                                      OrderTrackingScreen(orderIdParam: orderId),
                                 ),
                               );
                             },
                           ),
                           const SizedBox(width: 4),
                           IconButton(
-                            style: IconButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
-                            icon: const Icon(Icons.chat, color: Colors.amber, size: 20),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.blueGrey[800]),
+                            icon: const Icon(Icons.chat,
+                                color: Colors.amber, size: 20),
                             onPressed: () {
                               Navigator.push(
                                 context,
@@ -583,39 +700,43 @@ class _CourierScreenState extends State<CourierScreen> {
                     ],
                   ),
                   const Divider(color: Colors.white12, height: 16),
-
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.amber,
                       foregroundColor: Colors.black,
                       minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                       elevation: 1,
                     ),
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+                          builder: (context) =>
+                              OrderTrackingScreen(orderIdParam: orderId),
                         ),
                       );
                     },
-                    icon: const Icon(Icons.map_rounded, color: Colors.black, size: 18),
+                    icon: const Icon(Icons.map_rounded,
+                        color: Colors.black, size: 18),
                     label: const Text(
                       '🗺️ اضغط هنا لتتبع خط سير الطلب 🚀',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ),
                   const SizedBox(height: 10),
-
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
+                      const Icon(Icons.location_on,
+                          size: 16, color: Colors.redAccent),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'العنوان: $customerAddress',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 13),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -629,12 +750,16 @@ class _CourierScreenState extends State<CourierScreen> {
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.amber),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                       icon: const Icon(Icons.map, color: Colors.amber, size: 16),
                       label: const Text(
                         'فتح اتجاهات الملاحة في خرائط جوجل 🗺️',
-                        style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                       onPressed: () => _openMap(customerAddress),
@@ -643,42 +768,69 @@ class _CourierScreenState extends State<CourierScreen> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.shopping_bag, size: 16, color: Colors.amberAccent),
+                      const Icon(Icons.shopping_bag,
+                          size: 16, color: Colors.amberAccent),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}', style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                      Expanded(
+                          child: Text(
+                              'المنتجات: ${order['items_description'] ?? order['items_desc'] ?? ''}',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 13))),
                     ],
                   ),
                   const SizedBox(height: 8),
-
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text(
+                            '🛒 سعر المنتجات: ${productsPrice.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 4),
-                        Text('🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text(
+                            '🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.amber,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold)),
                         const Divider(color: Colors.white12, height: 8),
-                        Text('💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(
+                            '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
+                            style: const TextStyle(
+                                color: Colors.greenAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 6),
-                  Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-
+                  Text('📌 الحالة: ${appState.getArabicStatus(orderStatus)}',
+                      style: const TextStyle(
+                          color: Colors.cyanAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-
                   if (orderStatus == 'pricingSentToCustomer') ...[
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8)),
                       child: const Center(
-                        child: Text('⏳ بانتظار موافقة العميل على السعر...', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                        child: Text('⏳ بانتظار موافقة العميل على السعر...',
+                            style: TextStyle(
+                                color: Colors.orangeAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ),
-                  ] else if (orderStatus == 'waitingCourierApproval' || orderStatus == 'approvedByCustomer') ...[
+                  ] else if (orderStatus == 'waitingCourierApproval' ||
+                      orderStatus == 'approvedByCustomer') ...[
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -686,13 +838,23 @@ class _CourierScreenState extends State<CourierScreen> {
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () {
-                          appState.updateOrderStatus(orderId, 'onTheWay');
+                        onPressed: () async {
+                          try {
+                            await appState.updateOrderStatus(
+                                orderId, 'onTheWay');
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
                         },
                         icon: const Icon(Icons.check_circle),
-                        label: const Text('قبول الطلب والبدء 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('قبول الطلب والبدء 🚀',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ] else if (orderStatus == 'onTheWay') ...[
@@ -703,13 +865,23 @@ class _CourierScreenState extends State<CourierScreen> {
                           backgroundColor: Colors.amber,
                           foregroundColor: Colors.black,
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () {
-                          appState.updateOrderStatus(orderId, 'arrived');
+                        onPressed: () async {
+                          try {
+                            await appState.updateOrderStatus(
+                                orderId, 'arrived');
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
                         },
                         icon: const Icon(Icons.location_pin),
-                        label: const Text('وصلت إلى الموقع 📍', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('وصلت إلى الموقع 📍',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ] else if (orderStatus == 'arrived') ...[
@@ -720,13 +892,23 @@ class _CourierScreenState extends State<CourierScreen> {
                           backgroundColor: Colors.blueAccent,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () {
-                          appState.updateOrderStatus(orderId, 'delivered');
+                        onPressed: () async {
+                          try {
+                            await appState.updateOrderStatus(
+                                orderId, 'delivered');
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
                         },
                         icon: const Icon(Icons.done_all),
-                        label: const Text('تم التسليم بنجاح ✅', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('تم التسليم بنجاح ✅',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
