@@ -22,7 +22,7 @@ import '../services/api_service.dart';
 
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonMapNullable = Map<String, dynamic>?;
-typedef JsonList = List<Map<String, dynamic>>;
+typedef JsonList = List>;
 
 class LocalStorageService {
   static Database? _database;
@@ -118,11 +118,13 @@ class AppState extends ChangeNotifier {
   final http.Client _httpClient = http.Client();
 
   StreamSubscription<AuthState>? _authSub;
-  StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
+  StreamSubscription<List>>? _settingsSub;
   RealtimeChannel? _ordersChannel;
 
   static const bool _useTestOtpBypass = true;
   static const String _testOtpCode = '1234';
+
+  bool _isCreatingOrder = false;
 
   AppState() {
     _initializeApplicationState();
@@ -239,20 +241,23 @@ class AppState extends ChangeNotifier {
         isAdminLoggedIn = true;
         currentCourier = null;
       }
+    } else {
+      isAdminLoggedIn = false;
+      currentCourier = null;
     }
   }
 
-  List<Map<String, dynamic>> restaurantsList = [];
-  List<Map<String, dynamic>> categoriesList = [];
+  List> restaurantsList = [];
+  List> categoriesList = [];
   String? selectedCategory;
 
   Future<void> fetchRestaurantsAndCategories() async {
     try {
       final restRes = await supabase.from('restaurants').select();
-      restaurantsList = List<Map<String, dynamic>>.from(restRes);
+      restaurantsList = List>.from(restRes);
 
       final catRes = await supabase.from('categories').select();
-      categoriesList = List<Map<String, dynamic>>.from(catRes);
+      categoriesList = List>.from(catRes);
 
       notifyListeners();
     } catch (e) {
@@ -282,14 +287,14 @@ class AppState extends ChangeNotifier {
         try {
           final backendOrders = await ApiService.fetchAdminOrders(token)
               .timeout(const Duration(milliseconds: 1500));
-          orders = List<Map<String, dynamic>>.from(backendOrders);
+          orders = List>.from(backendOrders);
         } catch (_) {
           final initialData = await supabase.from('orders').select();
-          orders = List<Map<String, dynamic>>.from(initialData);
+          orders = List>.from(initialData);
         }
       } else {
         final initialData = await supabase.from('orders').select();
-        orders = List<Map<String, dynamic>>.from(initialData);
+        orders = List>.from(initialData);
       }
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
@@ -390,10 +395,25 @@ class AppState extends ChangeNotifier {
   int pendingOrdersCount = 0;
   int cancelledOrdersCount = 0;
 
+  double _extractOrderProductsTotal(Map order) {
+    final candidates = [
+      order['products_total'],
+      order['total_price'],
+      order['items_price'],
+      order['products_price'],
+    ];
+    for (final val in candidates) {
+      if (val != null) {
+        final parsed = double.tryParse(val.toString());
+        if (parsed != null) return parsed;
+      }
+    }
+    return 0.0;
+  }
+
   Future<void> fetchAdminFinancialReports() async {
     try {
-      final response =
-          await supabase.from('orders').select('total_price, status');
+      final response = await supabase.from('orders').select();
 
       var revenue = 0.0;
       var completed = 0;
@@ -402,7 +422,7 @@ class AppState extends ChangeNotifier {
 
       for (var order in response) {
         final status = order['status']?.toString().trim();
-        final price = double.tryParse(order['total_price'].toString()) ?? 0.0;
+        final price = _extractOrderProductsTotal(order);
 
         if (status == 'delivered') {
           revenue += price;
@@ -457,7 +477,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Map<String, dynamic>> productModifiers = [];
+  List> productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
   Future<void> fetchProductModifiers(String productId) async {
@@ -467,7 +487,7 @@ class AppState extends ChangeNotifier {
           .select()
           .eq('product_id', productId);
 
-      productModifiers = List<Map<String, dynamic>>.from(response);
+      productModifiers = List>.from(response);
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب إضافات المنتج: $e');
@@ -704,18 +724,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  String _requireCustomerPhoneForRating(int orderId) {
-    final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+  Future<String> _resolveCustomerPhoneForRating(int orderId) async {
+    var phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
     if (phone.isEmpty) {
-      throw Exception('يجب تسجيل الدخول برقم الهاتف لإضافة تقييم.');
+      final prefs = await SharedPreferences.getInstance();
+      phone = _normalizePhone(prefs.getString('userPhone') ?? '');
     }
-    final orderIndex =
-        orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-    if (orderIndex != -1) {
-      final orderPhone =
-          _normalizePhone(orders[orderIndex]['phone']?.toString() ?? '');
-      if (orderPhone.isNotEmpty && orderPhone != phone) {
-        throw Exception('يمكن لصاحب الطلب فقط تقييم هذا الطلب.');
+    if (phone.isEmpty) {
+      final orderIndex =
+          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      if (orderIndex != -1) {
+        phone = _normalizePhone(orders[orderIndex]['phone']?.toString() ?? '');
       }
     }
     return phone;
@@ -728,44 +747,52 @@ class AppState extends ChangeNotifier {
     required String reviewText,
   }) async {
     try {
-      final intOrderId = int.tryParse(orderId);
+      final intOrderId = int.tryParse(orderId.trim());
       if (intOrderId == null) {
         throw Exception('رقم الطلب غير صالح.');
       }
-      final customerPhone = _requireCustomerPhoneForRating(intOrderId);
+      final customerPhone = await _resolveCustomerPhoneForRating(intOrderId);
 
       var targetId = courierName.trim();
-      final orderIndex =
-          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      final orderIndex = orders
+          .indexWhere((o) => o['id'].toString() == intOrderId.toString());
       if (orderIndex != -1 &&
           orders[orderIndex]['courier_id'] != null &&
           orders[orderIndex]['courier_id'].toString().trim().isNotEmpty) {
         targetId = orders[orderIndex]['courier_id'].toString().trim();
       }
+      if (targetId.isEmpty) {
+        targetId = 'courier';
+      }
 
-      final existing = await supabase
+      var query = supabase
           .from('ratings_and_reviews')
           .select('id')
           .eq('order_id', intOrderId)
-          .eq('customer_phone', customerPhone)
-          .eq('target_type', 'courier')
-          .maybeSingle();
+          .eq('target_type', 'courier');
 
-      if (existing != null) {
-        await supabase.from('ratings_and_reviews').update({
-          'target_id': targetId,
-          'rating': rating,
-          'comment': reviewText.trim(),
-        }).eq('id', existing['id']);
+      if (customerPhone.isNotEmpty) {
+        query = query.eq('customer_phone', customerPhone);
+      }
+
+      final existing = await query.maybeSingle();
+
+      final payload = <String, dynamic>{
+        'order_id': intOrderId,
+        'target_type': 'courier',
+        'target_id': targetId,
+        'rating': rating,
+        'comment': reviewText.trim(),
+        if (customerPhone.isNotEmpty) 'customer_phone': customerPhone,
+      };
+
+      if (existing != null && existing['id'] != null) {
+        await supabase
+            .from('ratings_and_reviews')
+            .update(payload)
+            .eq('id', existing['id']);
       } else {
-        await supabase.from('ratings_and_reviews').insert({
-          'order_id': intOrderId,
-          'customer_phone': customerPhone,
-          'target_type': 'courier',
-          'target_id': targetId,
-          'rating': rating,
-          'comment': reviewText.trim(),
-        });
+        await supabase.from('ratings_and_reviews').insert(payload);
       }
 
       notifyListeners();
@@ -782,15 +809,15 @@ class AppState extends ChangeNotifier {
     String? restaurantName,
   }) async {
     try {
-      final intOrderId = int.tryParse(orderId);
+      final intOrderId = int.tryParse(orderId.trim());
       if (intOrderId == null) {
         throw Exception('رقم الطلب غير صالح.');
       }
-      final customerPhone = _requireCustomerPhoneForRating(intOrderId);
+      final customerPhone = await _resolveCustomerPhoneForRating(intOrderId);
 
       var targetId = (restaurantName ?? '').trim();
-      final orderIndex =
-          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      final orderIndex = orders
+          .indexWhere((o) => o['id'].toString() == intOrderId.toString());
       if (orderIndex != -1) {
         final restId =
             orders[orderIndex]['restaurant_id']?.toString().trim() ?? '';
@@ -806,29 +833,34 @@ class AppState extends ChangeNotifier {
         targetId = 'restaurant';
       }
 
-      final existing = await supabase
+      var query = supabase
           .from('ratings_and_reviews')
           .select('id')
           .eq('order_id', intOrderId)
-          .eq('customer_phone', customerPhone)
-          .eq('target_type', 'restaurant')
-          .maybeSingle();
+          .eq('target_type', 'restaurant');
 
-      if (existing != null) {
-        await supabase.from('ratings_and_reviews').update({
-          'target_id': targetId,
-          'rating': rating,
-          'comment': reviewText.trim(),
-        }).eq('id', existing['id']);
+      if (customerPhone.isNotEmpty) {
+        query = query.eq('customer_phone', customerPhone);
+      }
+
+      final existing = await query.maybeSingle();
+
+      final payload = <String, dynamic>{
+        'order_id': intOrderId,
+        'target_type': 'restaurant',
+        'target_id': targetId,
+        'rating': rating,
+        'comment': reviewText.trim(),
+        if (customerPhone.isNotEmpty) 'customer_phone': customerPhone,
+      };
+
+      if (existing != null && existing['id'] != null) {
+        await supabase
+            .from('ratings_and_reviews')
+            .update(payload)
+            .eq('id', existing['id']);
       } else {
-        await supabase.from('ratings_and_reviews').insert({
-          'order_id': intOrderId,
-          'customer_phone': customerPhone,
-          'target_type': 'restaurant',
-          'target_id': targetId,
-          'rating': rating,
-          'comment': reviewText.trim(),
-        });
+        await supabase.from('ratings_and_reviews').insert(payload);
       }
 
       await fetchRestaurantAverages();
@@ -1500,7 +1532,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List<Map<String, dynamic>> couriers = [];
+  List> couriers = [];
 
   Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
@@ -1525,7 +1557,7 @@ class AppState extends ChangeNotifier {
   Future<void> fetchCouriersFromSupabase() async {
     try {
       final response = await supabase.from('couriers').select();
-      couriers = List<Map<String, dynamic>>.from(response);
+      couriers = List>.from(response);
       await _loadCourierSession();
       notifyListeners();
     } catch (e) {
@@ -1627,7 +1659,7 @@ class AppState extends ChangeNotifier {
           .eq('status', 'delivered')
           .or('is_settled.is.null,is_settled.eq.false');
 
-      final eligibleOrders = List<Map<String, dynamic>>.from(unsettledRows);
+      final eligibleOrders = List>.from(unsettledRows);
       if (eligibleOrders.isEmpty) {
         throw Exception('لا توجد طلبات مكتملة وغير مسوّاة لهذا المندوب.');
       }
@@ -1926,8 +1958,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List<Map<String, dynamic>> orders = [];
-  List<Map<String, dynamic>> notifications = [];
+  List> orders = [];
+  List> notifications = [];
 
   int get unreadNotificationsCount => notifications.length;
 
@@ -1942,7 +1974,7 @@ class AppState extends ChangeNotifier {
     return clean;
   }
 
-  List<Map<String, dynamic>> get customerOrders {
+  List> get customerOrders {
     if (userProfile == null ||
         userProfile!['phone'] == null ||
         userProfile!['phone']!.isEmpty) {
@@ -2009,7 +2041,7 @@ class AppState extends ChangeNotifier {
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
-      orders = List<Map<String, dynamic>>.from(initialData);
+      orders = List>.from(initialData);
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
@@ -2112,14 +2144,18 @@ class AppState extends ChangeNotifier {
     required String paymentMethod,
     required String paymentAccount,
   }) async {
-    if (!isStoreOpen) {
-      throw Exception(
-          'عذراً، التطبيق مغلق حالياً (أوقات الدوام من $startHour:00 إلى $endHour:00). لا يمكن استقبال طلبات جديدة.');
-    }
-
-    final normalizedPhone = _normalizePhone(phone);
+    if (_isCreatingOrder) return;
+    _isCreatingOrder = true;
 
     try {
+      if (!isStoreOpen) {
+        throw Exception(
+            'عذراً، التطبيق مغلق حالياً (أوقات الدوام من $startHour:00 إلى $endHour:00). لا يمكن استقبال طلبات جديدة.');
+      }
+
+      final normalizedPhone = _normalizePhone(phone);
+      final double cleanProductsTotal = productsTotal > 0 ? productsTotal : 0.0;
+
       final itemsPayload = _cartItems.map((cartItem) {
         return {
           'product_id': cartItem.id,
@@ -2140,7 +2176,7 @@ class AppState extends ChangeNotifier {
           couponCode: activeCouponCode,
           paymentMethod: paymentMethod,
           paymentAccount: paymentAccount,
-          productsTotal: productsTotal,
+          productsTotal: cleanProductsTotal,
           token: _accessToken,
         ).timeout(const Duration(milliseconds: 1500));
 
@@ -2159,7 +2195,8 @@ class AppState extends ChangeNotifier {
               'phone': normalizedPhone,
               'address': address.trim(),
               'items_desc': itemsDesc.trim(),
-              'total_price': productsTotal,
+              'total_price': cleanProductsTotal,
+              'products_total': cleanProductsTotal,
               'payment_method': paymentMethod,
               'payment_account': paymentAccount,
               'status': 'waitingForPricing',
@@ -2181,7 +2218,8 @@ class AppState extends ChangeNotifier {
             'phone': normalizedPhone,
             'address': address.trim(),
             'items_desc': itemsDesc.trim(),
-            'total_price': productsTotal,
+            'total_price': cleanProductsTotal,
+            'products_total': cleanProductsTotal,
             'payment_method': paymentMethod,
             'payment_account': paymentAccount,
             'status': 'waitingForPricing',
@@ -2190,6 +2228,13 @@ class AppState extends ChangeNotifier {
           };
         }
       }
+
+      order['total_price'] =
+          double.tryParse(order['total_price']?.toString() ?? '') ??
+              cleanProductsTotal;
+      order['products_total'] =
+          double.tryParse(order['products_total']?.toString() ?? '') ??
+              cleanProductsTotal;
 
       final orderId = order['id'];
       lastOrderTrackingCode = trackingCode;
@@ -2221,6 +2266,8 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('خطأ أثناء إرسال الطلب: $e');
       throw Exception('تعذر إرسال الطلب: $e');
+    } finally {
+      _isCreatingOrder = false;
     }
   }
 
@@ -2240,6 +2287,15 @@ class AppState extends ChangeNotifier {
 
       JsonMap updatedOrder = {};
 
+      final existingIndex =
+          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
+      final existingOrder = existingIndex >= 0
+          ? Map<String, dynamic>.from(orders[existingIndex])
+          : <String, dynamic>{};
+
+      final productsTotal = _extractOrderProductsTotal(existingOrder);
+      final newTotal = productsTotal + fee;
+
       try {
         final responseData = await ApiService.adminPricingOrder(
           _accessToken ?? '',
@@ -2252,27 +2308,12 @@ class AppState extends ChangeNotifier {
           updatedOrder = Map<String, dynamic>.from(responseData['order']);
         }
       } catch (_) {
-        final existingIndex =
-            orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-        final existingOrder = existingIndex >= 0
-            ? Map<String, dynamic>.from(orders[existingIndex])
-            : <String, dynamic>{};
-
-        final productsTotal = double.tryParse(
-              (existingOrder['products_total'] ??
-                      existingOrder['total_price'] ??
-                      existingOrder['items_price'] ??
-                      '0')
-                  .toString(),
-            ) ??
-            0.0;
-        final newTotal = productsTotal + fee;
-
         final dbRow = await supabase
             .from('orders')
             .update({
               'delivery_fee': fee,
               'total_price': newTotal,
+              'products_total': productsTotal,
               'assigned_courier': cleanCourierName,
               'status': 'pricingSentToCustomer',
             })
@@ -2288,11 +2329,19 @@ class AppState extends ChangeNotifier {
             'id': intOrderId,
             'delivery_fee': fee,
             'total_price': newTotal,
+            'products_total': productsTotal,
             'assigned_courier': cleanCourierName,
             'status': 'pricingSentToCustomer',
           };
         }
       }
+
+      updatedOrder['products_total'] =
+          double.tryParse(updatedOrder['products_total']?.toString() ?? '') ??
+              productsTotal;
+      updatedOrder['total_price'] =
+          double.tryParse(updatedOrder['total_price']?.toString() ?? '') ??
+              newTotal;
 
       if (updatedOrder.isNotEmpty) {
         _upsertOrderInList(updatedOrder);
