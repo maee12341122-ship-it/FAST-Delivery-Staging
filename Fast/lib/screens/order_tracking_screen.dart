@@ -50,9 +50,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       _subscribeToOrderUpdates(targetId);
       _fetchOrderRatings(targetId);
 
+      final isAdminOrCourier = context.read<AppState>().isAdminLoggedIn ||
+          context.read<AppState>().currentCourier != null;
       final initialCourier =
           sourceOrder?['assigned_courier']?.toString().trim() ?? '';
-      if (initialCourier.isNotEmpty) {
+      if (isAdminOrCourier && initialCourier.isNotEmpty) {
         _fetchAndListenCourierLocation(initialCourier);
       }
     }
@@ -65,7 +67,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       try {
         _mapController.move(point, zoom);
       } catch (e) {
-        debugPrint('⚠️ تعذر تحريك الخريطة حالياً: $e');
+        debugPrint('تعذر تحريك الخريطة حالياً: $e');
       }
     });
   }
@@ -108,7 +110,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         });
       }
     } catch (e) {
-      debugPrint('⚠️ خطأ في جلب التقييمات: $e');
+      debugPrint('خطأ في جلب التقييمات: $e');
       if (mounted) setState(() => _isLoadingRatings = false);
     }
   }
@@ -139,7 +141,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ استخدام موقع تعز الافتراضي: $e');
+      debugPrint('استخدام موقع تعز الافتراضي: $e');
     }
   }
 
@@ -160,9 +162,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               unawaited(context.read<AppState>().fetchOrders());
               setState(() {});
               _extractCustomerCoordinates(payload.newRecord);
+              final isAdminOrCourier =
+                  context.read<AppState>().isAdminLoggedIn ||
+                      context.read<AppState>().currentCourier != null;
               final courierName =
                   payload.newRecord['assigned_courier']?.toString().trim();
-              if (courierName != null &&
+              if (isAdminOrCourier &&
+                  courierName != null &&
                   courierName.isNotEmpty &&
                   _locationChannel == null) {
                 _fetchAndListenCourierLocation(courierName);
@@ -251,7 +257,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           )
           .subscribe();
     } catch (e) {
-      debugPrint('⚠️ خطأ في متابعة موقع المندوب: $e');
+      debugPrint('خطأ في متابعة موقع المندوب: $e');
     }
   }
 
@@ -273,7 +279,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(approve
-                ? 'تم تأكيد السعر وإرسال الطلب للمندوب ✅'
+                ? 'تم تأكيد السعر وإرسال الطلب للمندوب'
                 : 'تم إلغاء الطلب بنجاح'),
             backgroundColor: approve ? Colors.green[700] : Colors.red[700],
           ),
@@ -295,21 +301,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
   }
 
-  void _showRestaurantRatingDialog(
-      BuildContext context, AppState appState, String orderId) {
+  Future<void> _showRestaurantRatingDialog(
+      BuildContext parentContext, AppState appState, String orderId) async {
     double rating = 5.0;
+    bool isSubmitting = false;
     final TextEditingController reviewController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('تقييم المطعم وجودة الوجبة 🍽️⭐',
+            title: const Text('تقييم المطعم وجودة الوجبة',
                 style: TextStyle(color: Colors.amber, fontSize: 16)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -326,11 +333,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         color: Colors.amber,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setDialogState(() {
-                          rating = (index + 1).toDouble();
-                        });
-                      },
+                      onPressed: isSubmitting
+                          ? null
+                          : () {
+                              setDialogState(() {
+                                rating = (index + 1).toDouble();
+                              });
+                            },
                     );
                   }),
                 ),
@@ -349,53 +358,87 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                onPressed: () async {
-                  await appState.submitRestaurantRating(
-                    orderId: orderId,
-                    rating: rating,
-                    reviewText: reviewController.text.trim(),
-                  );
-                  await _fetchOrderRatings(orderId);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'شكراً لك! تم إرسال تقييم المطعم بنجاح ⭐')),
-                    );
-                  }
-                },
-                child: const Text('إرسال التقييم',
-                    style: TextStyle(
-                        color: Colors.black, fontWeight: FontWeight.bold)),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await appState.submitRestaurantRating(
+                            orderId: orderId,
+                            rating: rating,
+                            reviewText: reviewController.text.trim(),
+                          );
+                          await _fetchOrderRatings(orderId);
+                          if (mounted) setState(() {});
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'شكراً لك! تم إرسال تقييم المطعم بنجاح'),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(e
+                                    .toString()
+                                    .replaceAll('Exception: ', '')),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text('إرسال التقييم',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
         ),
       ),
     );
+    reviewController.dispose();
   }
 
-  void _showCourierRatingDialog(BuildContext context, AppState appState,
-      String orderId, String courierName) {
+  Future<void> _showCourierRatingDialog(BuildContext parentContext,
+      AppState appState, String orderId, String courierName) async {
     double rating = 5.0;
+    bool isSubmitting = false;
     final TextEditingController reviewController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
+    await showDialog(
+      context: parentContext,
+      builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('تقييم أداء المندوب وسرعة التوصيل 🛵⭐',
+            title: const Text('تقييم أداء المندوب وسرعة التوصيل',
                 style: TextStyle(color: Colors.amber, fontSize: 16)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -412,11 +455,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         color: Colors.amber,
                         size: 32,
                       ),
-                      onPressed: () {
-                        setDialogState(() {
-                          rating = (index + 1).toDouble();
-                        });
-                      },
+                      onPressed: isSubmitting
+                          ? null
+                          : () {
+                              setDialogState(() {
+                                rating = (index + 1).toDouble();
+                              });
+                            },
                     );
                   }),
                 ),
@@ -435,38 +480,71 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                onPressed: () async {
-                  await appState.submitCourierRating(
-                    orderId: orderId,
-                    courierName:
-                        courierName.isEmpty ? 'مندوب عام' : courierName,
-                    rating: rating,
-                    reviewText: reviewController.text.trim(),
-                  );
-                  await _fetchOrderRatings(orderId);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'شكراً لك! تم إرسال تقييم المندوب بنجاح ⭐')),
-                    );
-                  }
-                },
-                child: const Text('إرسال التقييم',
-                    style: TextStyle(
-                        color: Colors.black, fontWeight: FontWeight.bold)),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await appState.submitCourierRating(
+                            orderId: orderId,
+                            courierName:
+                                courierName.isEmpty ? 'مندوب عام' : courierName,
+                            rating: rating,
+                            reviewText: reviewController.text.trim(),
+                          );
+                          await _fetchOrderRatings(orderId);
+                          if (mounted) setState(() {});
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'شكراً لك! تم إرسال تقييم المندوب بنجاح'),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                          }
+                          if (parentContext.mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(e
+                                    .toString()
+                                    .replaceAll('Exception: ', '')),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text('إرسال التقييم',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
         ),
       ),
     );
+    reviewController.dispose();
   }
 
   @override
@@ -503,7 +581,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             iconTheme: const IconThemeData(color: Colors.amber),
           ),
           body: const Center(
-            child: Text('عذراً، لم يتم العثور على تفاصيل هذا الطلب ❌',
+            child: Text('عذراً، لم يتم العثور على تفاصيل هذا الطلب',
                 style: TextStyle(color: Colors.grey)),
           ),
         ),
@@ -589,7 +667,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
           elevation: 0,
-          title: Text('تتبع الطلب #$targetId 📦',
+          title: Text('تتبع الطلب #$targetId',
               style: const TextStyle(
                   color: Colors.amber,
                   fontWeight: FontWeight.bold,
@@ -760,21 +838,27 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             color: Colors.amber.withOpacity(0.3),
                           ),
                           Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: const BoxDecoration(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
                               color: Colors.amber,
                               shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withOpacity(0.35),
+                                  blurRadius: 10,
+                                ),
+                              ],
                             ),
                             child: const Icon(Icons.two_wheeler,
-                                color: Colors.black, size: 28),
+                                color: Colors.black, size: 32),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       Text(
                         rawStatus == 'delivered'
-                            ? 'بالهناء والشفاء، شكراً لتعاملكم معنا ⭐'
-                            : 'جاري العمل على توصيل طلبك بأسرع وقت 🚀',
+                            ? 'تم تسليم طلبك بنجاح، شكراً لتعاملكم معنا'
+                            : 'جاري العمل على توصيل طلبك بأسرع وقت',
                         style: const TextStyle(
                             color: Colors.white70, fontSize: 12),
                       ),
@@ -795,18 +879,18 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('تفاصيل الطلب والأسعار 🧾',
+                    const Text('تفاصيل الطلب والأسعار',
                         style: TextStyle(
                             color: Colors.amber,
                             fontWeight: FontWeight.bold,
                             fontSize: 14)),
                     const Divider(color: Colors.white12, height: 16),
                     Text(
-                        '🛒 المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}',
+                        'المنتجات: ${order['items_description'] ?? order['items_desc'] ?? 'غير متوفرة'}',
                         style: const TextStyle(
                             color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 8),
-                    Text('📍 العنوان: ${order['address'] ?? 'غير محدد'}',
+                    Text('العنوان: ${order['address'] ?? 'غير محدد'}',
                         style:
                             const TextStyle(color: Colors.grey, fontSize: 12)),
                     const SizedBox(height: 12),
@@ -821,20 +905,20 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         children: [
                           if (!isWaselLi) ...[
                             Text(
-                                '🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
+                                'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 13)),
                             const SizedBox(height: 4),
                           ],
                           Text(
-                              '🏍️ رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
+                              'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
                               style: const TextStyle(
                                   color: Colors.amber,
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold)),
                           const Divider(color: Colors.white12, height: 8),
                           Text(
-                              '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
+                              'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
                               style: const TextStyle(
                                   color: Colors.greenAccent,
                                   fontWeight: FontWeight.bold,
@@ -872,7 +956,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               label: Text(
                                 _isSubmittingOrderAction
                                     ? 'جاري التأكيد...'
-                                    : 'تأكيد السعر والموافقة ✅',
+                                    : 'تأكيد السعر والموافقة',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 12),
                               ),
@@ -896,7 +980,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                       approve: false),
                               icon: const Icon(Icons.cancel, size: 18),
                               label: const Text(
-                                'إلغاء الطلب ❌',
+                                'إلغاء الطلب',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 12),
                               ),
@@ -942,8 +1026,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               size: 18),
                           label: Text(
                               _restaurantRatingData != null
-                                  ? 'تم تقييم المطعم ⭐'
-                                  : 'تقييم المطعم 🍽️',
+                                  ? 'تم تقييم المطعم'
+                                  : 'تقييم المطعم',
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 12)),
                           onPressed: _restaurantRatingData != null
@@ -973,8 +1057,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               size: 18),
                           label: Text(
                               _courierRatingData != null
-                                  ? 'تم تقييم المندوب ⭐'
-                                  : 'تقييم المندوب 🛵',
+                                  ? 'تم تقييم المندوب'
+                                  : 'تقييم المندوب',
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 12)),
                           onPressed: _courierRatingData != null
@@ -997,14 +1081,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('⭐ تقييمات العميل لهذا الطلب:',
+                        const Text('تقييمات العميل لهذا الطلب:',
                             style: TextStyle(
                                 color: Colors.amber,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14)),
                         const SizedBox(height: 10),
                         Text(
-                            '🍽️ تقييم المطعم: ${restaurantRatingVal != null ? "$restaurantRatingVal / 5" : "لم يُقيم بعد"}',
+                            'تقييم المطعم: ${restaurantRatingVal != null ? "$restaurantRatingVal / 5" : "لم يُقيم بعد"}',
                             style: const TextStyle(
                                 color: Colors.white, fontSize: 13)),
                         if (restaurantReviewVal.isNotEmpty)
@@ -1013,7 +1097,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   color: Colors.white70, fontSize: 12)),
                         const Divider(color: Colors.white12),
                         Text(
-                            '🛵 تقييم المندوب: ${courierRatingVal != null ? "$courierRatingVal / 5" : "لم يُقيم بعد"}',
+                            'تقييم المندوب: ${courierRatingVal != null ? "$courierRatingVal / 5" : "لم يُقيم بعد"}',
                             style: const TextStyle(
                                 color: Colors.white, fontSize: 13)),
                         if (courierReviewVal.isNotEmpty)
