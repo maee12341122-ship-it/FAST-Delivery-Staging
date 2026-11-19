@@ -22,7 +22,7 @@ import '../services/api_service.dart';
 
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonMapNullable = Map<String, dynamic>?;
-typedef JsonList = List>;
+typedef JsonList = List<Map<String, dynamic>>;
 
 class LocalStorageService {
   static Database? _database;
@@ -118,7 +118,7 @@ class AppState extends ChangeNotifier {
   final http.Client _httpClient = http.Client();
 
   StreamSubscription<AuthState>? _authSub;
-  StreamSubscription<List>>? _settingsSub;
+  StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
   RealtimeChannel? _ordersChannel;
 
   static const bool _useTestOtpBypass = true;
@@ -247,17 +247,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List> restaurantsList = [];
-  List> categoriesList = [];
+  List<Map<String, dynamic>> restaurantsList = [];
+  List<Map<String, dynamic>> categoriesList = [];
   String? selectedCategory;
 
   Future<void> fetchRestaurantsAndCategories() async {
     try {
       final restRes = await supabase.from('restaurants').select();
-      restaurantsList = List>.from(restRes);
+      restaurantsList = List<Map<String, dynamic>>.from(restRes);
 
       final catRes = await supabase.from('categories').select();
-      categoriesList = List>.from(catRes);
+      categoriesList = List<Map<String, dynamic>>.from(catRes);
 
       notifyListeners();
     } catch (e) {
@@ -287,14 +287,14 @@ class AppState extends ChangeNotifier {
         try {
           final backendOrders = await ApiService.fetchAdminOrders(token)
               .timeout(const Duration(milliseconds: 1500));
-          orders = List>.from(backendOrders);
+          orders = List<Map<String, dynamic>>.from(backendOrders);
         } catch (_) {
           final initialData = await supabase.from('orders').select();
-          orders = List>.from(initialData);
+          orders = List<Map<String, dynamic>>.from(initialData);
         }
       } else {
         final initialData = await supabase.from('orders').select();
-        orders = List>.from(initialData);
+        orders = List<Map<String, dynamic>>.from(initialData);
       }
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
@@ -477,7 +477,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  List> productModifiers = [];
+  List<Map<String, dynamic>> productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
   Future<void> fetchProductModifiers(String productId) async {
@@ -487,7 +487,7 @@ class AppState extends ChangeNotifier {
           .select()
           .eq('product_id', productId);
 
-      productModifiers = List>.from(response);
+      productModifiers = List<Map<String, dynamic>>.from(response);
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب إضافات المنتج: $e');
@@ -985,7 +985,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream<JsonList> getMessagesForOrder(dynamic orderId, String targetChat) {
+  Stream<JsonList<Map<String, dynamic>> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
@@ -1532,7 +1532,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List> couriers = [];
+  List<Map<String, dynamic>> couriers = [];
 
   Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
@@ -1557,7 +1557,7 @@ class AppState extends ChangeNotifier {
   Future<void> fetchCouriersFromSupabase() async {
     try {
       final response = await supabase.from('couriers').select();
-      couriers = List>.from(response);
+      couriers = List<Map<String, dynamic>>.from(response);
       await _loadCourierSession();
       notifyListeners();
     } catch (e) {
@@ -1659,7 +1659,7 @@ class AppState extends ChangeNotifier {
           .eq('status', 'delivered')
           .or('is_settled.is.null,is_settled.eq.false');
 
-      final eligibleOrders = List>.from(unsettledRows);
+      final eligibleOrders = List<Map<String, dynamic>>.from(unsettledRows);
       if (eligibleOrders.isEmpty) {
         throw Exception('لا توجد طلبات مكتملة وغير مسوّاة لهذا المندوب.');
       }
@@ -1958,8 +1958,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List> orders = [];
-  List> notifications = [];
+  List<Map<String, dynamic>> orders = [];
+  List<Map<String, dynamic>> notifications = [];
 
   int get unreadNotificationsCount => notifications.length;
 
@@ -1974,7 +1974,7 @@ class AppState extends ChangeNotifier {
     return clean;
   }
 
-  List> get customerOrders {
+  List<Map<String, dynamic>> get customerOrders {
     if (userProfile == null ||
         userProfile!['phone'] == null ||
         userProfile!['phone']!.isEmpty) {
@@ -2041,7 +2041,7 @@ class AppState extends ChangeNotifier {
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
-      orders = List>.from(initialData);
+      orders = List<Map<String, dynamic>>.from(initialData);
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
