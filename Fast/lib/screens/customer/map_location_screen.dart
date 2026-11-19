@@ -16,12 +16,14 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   // إحداثيات مركز مدينة تعز الافتراضية
   static const LatLng _taizCenter = LatLng(13.5795, 44.0209);
   final MapController _mapController = MapController();
-  
+
   // الإحداثيات الحالية التي يشير إليها منتصف الخريطة بدقة فائقة
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
   String? _error;
-  
+  bool _isServiceDisabled = false;
+  bool _isPermissionDeniedForever = false;
+
   // حقل إدخال العنوان التفصيلي يدوياً وموجه التركيز
   final TextEditingController _customAddressController = TextEditingController();
   final FocusNode _addressFocus = FocusNode();
@@ -52,6 +54,63 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     } else {
       return 'تعز - منطقة معتمدة 📍';
     }
+  }
+
+  // نافذة تطلب من المستخدم تشغيل الموقع بشكل مباشر
+  Future<void> _showEnableLocationDialog({required bool openAppSettingsMode}) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppConstants.gold.withOpacity(0.5)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.location_off_rounded, color: AppConstants.gold, size: 26),
+              SizedBox(width: 8),
+              Text(
+                'تشغيل الموقع مطلوب 📍',
+                style: TextStyle(color: AppConstants.gold, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Text(
+            openAppSettingsMode
+                ? 'تم رفض إذن الموقع سابقاً. يرجى تشغيل الموقع والسماح بالوصول من إعدادات الهاتف لتحديد موقعك بدقة.'
+                : 'خدمة الموقع متوقفة حالياً. يرجى تشغيل الموقع لتحديد موقعك بدقة على الخريطة.',
+            style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.gold,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                if (openAppSettingsMode) {
+                  await Geolocator.openAppSettings();
+                } else {
+                  await Geolocator.openLocationSettings();
+                }
+              },
+              icon: const Icon(Icons.settings_rounded, size: 18),
+              label: const Text('تشغيل الموقع', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // دالة تحقق واشتراط إدخال العنوان والموقع قبل العودة
@@ -92,23 +151,43 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     setState(() {
       _gettingLocation = true;
       _error = null;
+      _isServiceDisabled = false;
+      _isPermissionDeniedForever = false;
     });
+
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw 'خدمة الموقع (GPS) مغلقة، يرجى تفعيلها من إعدادات الهاتف.';
+        if (!mounted) return;
+        setState(() {
+          _isServiceDisabled = true;
+          _error = 'يرجى تشغيل الموقع (GPS) للمتابعة.';
+        });
+        await _showEnableLocationDialog(openAppSettingsMode: false);
+        return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          throw 'تم رفض صلاحية الوصول إلى الموقع.';
+          if (!mounted) return;
+          setState(() {
+            _error = 'يرجى السماح بتشغيل الموقع لتحديد عنوانك بدقة.';
+          });
+          await _showEnableLocationDialog(openAppSettingsMode: false);
+          return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        throw 'صلاحية الموقع مرفوضة بشكل دائم من الإعدادات.';
+        if (!mounted) return;
+        setState(() {
+          _isPermissionDeniedForever = true;
+          _error = 'إذن الموقع مغلق من الإعدادات. اضغط "تشغيل الموقع" لتفعيله.';
+        });
+        await _showEnableLocationDialog(openAppSettingsMode: true);
+        return;
       }
 
       Position position = await Geolocator.getCurrentPosition(
@@ -118,11 +197,12 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
       final point = LatLng(position.latitude, position.longitude);
       if (!mounted) return;
-      
+
       setState(() {
         _selectedPoint = point;
+        _error = null;
       });
-      
+
       _mapController.move(point, 17.5);
     } catch (error) {
       if (mounted) {
@@ -154,8 +234,8 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           appBar: AppBar(
             backgroundColor: cardColor,
             title: const Text(
-              'تحديد موقع التوصيل بدقة فائقة 📍', 
-              style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold)
+              'تحديد موقع التوصيل بدقة فائقة 📍',
+              style: TextStyle(color: AppConstants.gold, fontSize: 15, fontWeight: FontWeight.bold),
             ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
@@ -217,9 +297,9 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                         onPressed: _gettingLocation ? null : _useGps,
                         icon: _gettingLocation
                             ? const SizedBox(
-                                width: 16, 
-                                height: 16, 
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold)
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppConstants.gold),
                               )
                             : const Icon(Icons.my_location),
                         label: const Text('جلب موقعي الحالي بدقة GPS القصوى 🛰️', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -228,13 +308,47 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   ],
                 ),
               ),
+
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12), textAlign: TextAlign.center),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_disabled, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        if (_isServiceDisabled || _isPermissionDeniedForever)
+                          TextButton(
+                            onPressed: () async {
+                              if (_isPermissionDeniedForever) {
+                                await Geolocator.openAppSettings();
+                              } else {
+                                await Geolocator.openLocationSettings();
+                              }
+                            },
+                            child: const Text(
+                              'تشغيل الموقع',
+                              style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-              
-              const SizedBox(height: 8),
+
+              const SizedBox(height: 6),
 
               // الخريطة الاحترافية مع الخادم البديل السريع
               Expanded(
