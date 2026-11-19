@@ -33,7 +33,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   String selectedCategory = 'الكل';
-  String? selectedRestaurantName; 
+  String? selectedRestaurantName;
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
 
@@ -61,6 +61,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _previousUnreadCount = 0;
   bool _showPopupBadge = false;
   String _latestNotificationText = 'إشعار جديد!';
+
+  String _formatPrice(double value) {
+    if (value % 1 == 0) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(1);
+  }
 
   String formatLocationAddress(String? rawAddress) {
     if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة 📍';
@@ -286,15 +293,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final banners = snapshot.data!;
 
         return SizedBox(
-          height: 95,
+          height: 98,
           child: PageView.builder(
-            controller: PageController(viewportFraction: 0.9),
+            controller: PageController(viewportFraction: 0.92),
             itemCount: banners.length,
             itemBuilder: (context, index) {
               final banner = banners[index];
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Colors.amber.shade800, Colors.amber.shade600, Colors.orangeAccent],
@@ -310,13 +317,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(banner['title'] ?? '', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
-                          const SizedBox(height: 2),
-                          Text(banner['subtitle'] ?? '', style: const TextStyle(color: Colors.black87, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(banner['title'] ?? '', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 3),
+                          Text(banner['subtitle'] ?? '', style: const TextStyle(color: Colors.black87, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
-                    const Icon(Icons.local_offer, color: Colors.black54, size: 30),
+                    const Icon(Icons.local_offer, color: Colors.black87, size: 28),
                   ],
                 ),
               );
@@ -329,23 +336,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildAdBannerWidget(Color cardBg, Color textColor) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.withOpacity(0.3), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.35), width: 1),
       ),
       child: Row(
         children: [
-          const Icon(Icons.campaign_rounded, color: Colors.amber, size: 22),
-          const SizedBox(width: 8),
+          const Icon(Icons.campaign_rounded, color: Colors.amber, size: 26),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('مساحتك الإعلانية هنا 📢', style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 11)),
-                Text('أعلن معنا واوصل لآلاف العملاء في تعز!', style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 9)),
+                Text(
+                  'مساحتك الإعلانية هنا 📢',
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'أعلن معنا واوصل لآلاف العملاء في تعز!',
+                  style: TextStyle(color: textColor.withOpacity(0.75), fontSize: 11),
+                ),
               ],
             ),
           ),
@@ -353,12 +367,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber,
               foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               minimumSize: Size.zero,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => _launchWhatsAppForAd(),
-            child: const Text('احجز', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            child: const Text('احجز', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -379,31 +393,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         );
       },
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        padding: const EdgeInsets.all(10),
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [Color(0xFF332700), Color(0xFF1E1E1E)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.amber, width: 1.2),
         ),
         child: Row(
           children: [
-            const Icon(Icons.delivery_dining, color: Colors.amber, size: 24),
-            const SizedBox(width: 10),
+            const Icon(Icons.delivery_dining, color: Colors.amber, size: 28),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
-                  Text('وصل لي (توصيل خاص مرن 🚀)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  Text('من أين، إلى أين، وبأفضل الأسعار', style: TextStyle(color: Colors.grey, fontSize: 10)),
+                  Text(
+                    'وصل لي (توصيل خاص مرن 🚀)',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'من أين، إلى أين، وبأفضل الأسعار',
+                    style: TextStyle(color: Colors.grey, fontSize: 11.5),
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 12),
+            const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 15),
           ],
         ),
       ),
@@ -423,10 +444,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     ];
 
     return Container(
-      height: 75,
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      height: 86,
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         itemCount: categoriesList.length,
         itemBuilder: (context, index) {
           final catItem = categoriesList[index];
@@ -443,14 +465,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               });
             },
             child: Container(
-              width: 62,
+              width: 74,
               margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.amber.withOpacity(0.3) : cardBg,
-                borderRadius: BorderRadius.circular(10),
+                color: isSelected ? Colors.amber.withOpacity(0.25) : cardBg,
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.2),
+                  color: isSelected ? Colors.amber : Colors.grey.withOpacity(0.25),
                   width: isSelected ? 1.5 : 1,
                 ),
               ),
@@ -461,21 +483,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: catItem['image'] as String,
-                      width: 32,
-                      height: 32,
+                      width: 38,
+                      height: 38,
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(
                     catItem['title'] as String,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isSelected ? Colors.amber.shade900 : textColor,
+                      color: isSelected ? Colors.amber : textColor,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                      fontSize: 9.5,
+                      fontSize: 10.5,
                     ),
                   ),
                 ],
@@ -595,7 +617,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 style: TextStyle(color: appState.isDarkMode ? Colors.white70 : Colors.black87, fontSize: 14),
                               ),
                               subtitle: modPrice > 0
-                                  ? Text('+$modPrice ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
+                                  ? Text('+${_formatPrice(modPrice)} ر.ي', style: const TextStyle(color: Colors.amber, fontSize: 12))
                                   : null,
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -619,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         children: [
                           const Text('السعر الإجمالي:', style: TextStyle(color: Colors.grey, fontSize: 13)),
                           Text(
-                            '${product.price + additionalTotalPrice} ر.ي',
+                            '${_formatPrice(product.price + additionalTotalPrice)} ر.ي',
                             style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ],
@@ -1097,7 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     Navigator.pop(context);
                     HapticFeedback.lightImpact();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تمت إضافة ${product.name} بسعر $enteredPrice ر.ي إلى السلة بنجاح ✅')),
+                      SnackBar(content: Text('تمت إضافة ${product.name} بسعر ${_formatPrice(enteredPrice)} ر.ي إلى السلة بنجاح ✅')),
                     );
                   }
                 },
@@ -1242,7 +1264,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('تم تطبيق الكوبون: ${appState.activeCouponCode} (خصم: ${appState.couponDiscountAmount} ر.ي)', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text('تم تطبيق الكوبون: ${appState.activeCouponCode} (خصم: ${_formatPrice(appState.couponDiscountAmount)} ر.ي)', style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                             TextButton(
                               onPressed: () {
                                 appState.removeCoupon();
@@ -1532,27 +1554,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
 
-          // 1. إذا كان المستخدم داخل متجر/مطعم محدد ⬅️ ارجع لقائمة المتاجر
           if (_currentIndex == 0 && selectedRestaurantName != null) {
             setState(() {
               selectedRestaurantName = null;
             });
-          }
-          // 2. إذا كان المستخدم في قسم فرعي غير "الكل" أو "طلبات أخرى" ⬅️ ارجع لقسم "الكل"
-          else if (_currentIndex == 0 && selectedCategory != 'الكل') {
+          } else if (_currentIndex == 0 && selectedCategory != 'الكل') {
             setState(() {
               selectedCategory = 'الكل';
               selectedRestaurantName = null;
             });
-          }
-          // 3. إذا كان المستخدم في أي تبويب آخر غير الرئيسية (السلة، طلباتي، حسابي) ⬅️ ارجع للرئيسية
-          else if (_currentIndex != 0) {
+          } else if (_currentIndex != 0) {
             setState(() {
               _currentIndex = 0;
             });
-          }
-          // 4. إذا كان في الشاشة الرئيسية بالكامل ⬅️ اظهر نافذة تأكيد الخروج
-          else {
+          } else {
             showExitConfirmationDialog(context, cardBg, textColor);
           }
         },
@@ -1566,14 +1581,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               title: Row(
                 children: [
                   const SizedBox(
-                    width: 35,
-                    height: 35,
+                    width: 36,
+                    height: 36,
                     child: FittedBox(
                       child: FastAppLogo(),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
+                  const Text(
                     'FAST – تعز',
                     style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
@@ -1767,8 +1782,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
                                         ),
                                         Text(
-                                          '${appState.totalAmount} ر.ي',
-                                          style: const TextStyle(color: Colors.black87, fontSize: 11, fontWeight: FontWeight.w600),
+                                          '${_formatPrice(appState.totalAmount)} ر.ي',
+                                          style: const TextStyle(color: Colors.black87, fontSize: 11.5, fontWeight: FontWeight.w600),
                                         ),
                                       ],
                                     ),
@@ -1858,25 +1873,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
     if (selectedCategory == 'طلبات أخرى') {
       return Padding(
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsets.all(12.0),
         child: ListView(
           children: [
             _buildCategoriesHorizontalList(appState, textColor, cardBg),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('طلب خاص أو خدمة أخرى', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 8),
-                  TextField(controller: _customItemNameController, style: TextStyle(color: textColor), decoration: const InputDecoration(labelText: 'تفاصيل الطلب', isDense: true)),
-                  const SizedBox(height: 6),
-                  TextField(controller: _customItemPriceController, keyboardType: TextInputType.number, style: TextStyle(color: textColor), decoration: const InputDecoration(labelText: 'السعر التقديري (ر.ي)', isDense: true)),
+                  const Text('طلب خاص أو خدمة أخرى', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 10),
+                  TextField(
+                    controller: _customItemNameController,
+                    style: TextStyle(color: textColor),
+                    decoration: const InputDecoration(labelText: 'تفاصيل الطلب', isDense: true),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _customItemPriceController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: textColor),
+                    decoration: const InputDecoration(labelText: 'السعر التقديري (ر.ي)', isDense: true),
+                  ),
+                  const SizedBox(height: 12),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 38)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, minimumSize: const Size(double.infinity, 42)),
                     onPressed: () {
                       if (_customItemNameController.text.isNotEmpty && _customItemPriceController.text.isNotEmpty) {
                         final price = double.tryParse(_customItemPriceController.text) ?? 1000.0;
@@ -1906,7 +1934,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final matchesCategory = selectedCategory == 'الكل' || p.category.trim().toLowerCase() == selectedCategory.trim().toLowerCase();
         final matchesRestaurant = p.restaurantName.trim() == selectedRestaurantName!.trim();
         final matchesSearch = searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
-        return matchesRestaurant && matchesSearch;
+        return matchesCategory && matchesRestaurant && matchesSearch;
       }).toList();
     } else if (!isCategoryWithShops || selectedCategory == 'الكل') {
       filteredProducts = appState.products.where((p) {
@@ -1924,7 +1952,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         children: [
           _buildDynamicPromoBanners(),
           _buildCustomDeliveryBanner(context, appState.userProfile?['id'] ?? 'guest'),
@@ -1932,14 +1960,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
           if (_isSearching)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: TextField(
                 controller: _searchController,
                 autofocus: true,
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
                   hintText: 'ابحث عن منتج أو مطعم...',
-                  prefixIcon: const Icon(Icons.search, color: Colors.amber, size: 18),
+                  prefixIcon: const Icon(Icons.search, color: Colors.amber, size: 20),
                   filled: true,
                   fillColor: cardBg,
                   isDense: true,
@@ -1969,22 +1997,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 if (categoryStores.isEmpty) {
                   return const Padding(
-                    padding: EdgeInsets.all(15.0),
-                    child: Center(child: Text('لا توجد متاجر متاحة حالياً', style: TextStyle(color: Colors.grey, fontSize: 11))),
+                    padding: EdgeInsets.all(18.0),
+                    child: Center(child: Text('لا توجد متاجر متاحة حالياً', style: TextStyle(color: Colors.grey, fontSize: 12))),
                   );
                 }
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Text('اختر متجراً (🏬)', style: TextStyle(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 12)),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Text('اختر متجراً (🏬)', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                     SizedBox(
-                      height: 90,
+                      height: 98,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                         itemCount: categoryStores.length,
                         itemBuilder: (context, index) {
                           final store = categoryStores[index];
@@ -1997,29 +2026,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               setState(() => selectedRestaurantName = storeName);
                             },
                             child: Container(
-                              width: 100,
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              padding: const EdgeInsets.all(6),
+                              width: 112,
+                              margin: const EdgeInsets.symmetric(horizontal: 5),
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: cardBg,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.amber.withOpacity(0.35)),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   CircleAvatar(
-                                    radius: 20,
+                                    radius: 22,
                                     backgroundColor: Colors.amber.withOpacity(0.2),
                                     backgroundImage: logoUrl.isNotEmpty ? CachedNetworkImageProvider(logoUrl) : null,
-                                    child: logoUrl.isEmpty ? const Icon(Icons.store, color: Colors.amber, size: 18) : null,
+                                    child: logoUrl.isEmpty ? const Icon(Icons.store, color: Colors.amber, size: 20) : null,
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 6),
                                   Text(
                                     storeName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 10),
+                                    style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 11.5),
                                   ),
                                 ],
                               ),
@@ -2035,14 +2064,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ] else ...[
             if (isCategoryWithShops && selectedRestaurantName != null) ...[
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('منتجات: $selectedRestaurantName', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text('منتجات: $selectedRestaurantName', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
                     TextButton(
                       onPressed: () => setState(() => selectedRestaurantName = null),
-                      child: const Text('تغيير المتجر', style: TextStyle(color: Colors.amber, fontSize: 10)),
+                      child: const Text('تغيير المتجر', style: TextStyle(color: Colors.amber, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -2051,17 +2080,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
             filteredProducts.isEmpty
                 ? const Padding(
-                    padding: EdgeInsets.all(20.0),
-                    child: Center(child: Text('لا توجد منتجات مطابقة 🔍', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                    padding: EdgeInsets.all(24.0),
+                    child: Center(child: Text('لا توجد منتجات مطابقة 🔍', style: TextStyle(color: Colors.grey, fontSize: 13))),
                   )
                 : GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.72,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
+                      childAspectRatio: 0.75,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
                     ),
                     itemCount: filteredProducts.length,
                     itemBuilder: (context, index) {
@@ -2072,11 +2102,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       int qtyInCart = appState.getProductQuantityInCart(product.id);
 
                       return Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: cardBg,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                          border: Border.all(color: Colors.amber.withOpacity(0.35)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.15),
@@ -2099,40 +2129,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)),
                                         errorWidget: (context, url, error) => Container(
                                           color: Colors.amber.withOpacity(0.1),
-                                          child: const Icon(Icons.fastfood, color: Colors.amber, size: 30),
+                                          child: const Icon(Icons.fastfood, color: Colors.amber, size: 32),
                                         ),
                                       )
                                     : Container(
                                         width: double.infinity,
                                         color: Colors.amber.withOpacity(0.15),
-                                        child: const Icon(Icons.fastfood, color: Colors.amber, size: 30),
+                                        child: const Icon(Icons.fastfood, color: Colors.amber, size: 32),
                                       ),
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 8),
                             Text(
                               product.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12.5),
+                              style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13.5),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               product.restaurantName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.grey, fontSize: 10),
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              isVariable ? 'يدوي' : '${product.price} ر.ي',
-                              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12),
+                              isVariable ? 'يدوي' : '${_formatPrice(product.price)} ر.ي',
+                              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 8),
                             isVariable
                                 ? SizedBox(
                                     width: double.infinity,
-                                    height: 30,
+                                    height: 34,
                                     child: ElevatedButton(
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.amber,
@@ -2140,13 +2170,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
                                       onPressed: () => _showEnterPriceDialog(context, appState, product),
-                                      child: const Text('حدد السعر', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                      child: const Text('حدد السعر', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
                                     ),
                                   )
                                 : (qtyInCart == 0
                                     ? SizedBox(
                                         width: double.infinity,
-                                        height: 30,
+                                        height: 34,
                                         child: ElevatedButton(
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Colors.amber,
@@ -2154,18 +2184,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                           ),
                                           onPressed: () => _handleProductTapOrAdd(context, appState, product),
-                                          child: const Text('إضافة 🛒', style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                          child: const Text('إضافة 🛒', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
                                         ),
                                       )
                                     : Container(
-                                        height: 30,
+                                        height: 34,
                                         decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(8)),
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                                           children: [
-                                            InkWell(onTap: () => appState.updateQuantity(product.id, -1), child: const Icon(Icons.remove, size: 14, color: Colors.black)),
-                                            Text('$qtyInCart', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
-                                            InkWell(onTap: () => appState.updateQuantity(product.id, 1), child: const Icon(Icons.add, size: 14, color: Colors.black)),
+                                            InkWell(onTap: () => appState.updateQuantity(product.id, -1), child: const Icon(Icons.remove, size: 16, color: Colors.black)),
+                                            Text('$qtyInCart', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                                            InkWell(onTap: () => appState.updateQuantity(product.id, 1), child: const Icon(Icons.add, size: 16, color: Colors.black)),
                                           ],
                                         ),
                                       )),
@@ -2175,7 +2205,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     },
                   ),
           ],
-          const SizedBox(height: 40),
+          const SizedBox(height: 48),
         ],
       ),
     );
@@ -2258,7 +2288,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             children: [
                               Text(item.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 4),
-                              Text('السعر: ${item.price} ر.ي | الإجمالي: ${item.price * item.quantity} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                              Text('السعر: ${_formatPrice(item.price)} ر.ي | الإجمالي: ${_formatPrice(item.price * item.quantity)} ر.ي', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -2297,7 +2327,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('إجمالي السلة المجمعة:', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-              Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('${_formatPrice(appState.totalAmount)} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
           const SizedBox(height: 15),
@@ -2310,7 +2340,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             onPressed: () {
               _showCheckoutDialog(context, appState, cardBg, textColor);
             },
-            child: Text('الانتقال لتأكيد الطلب المجمع (${appState.totalAmount} ر.ي) 🚀', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+            child: Text('الانتقال لتأكيد الطلب المجمع (${_formatPrice(appState.totalAmount)} ر.ي) 🚀', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
           ),
         ],
       ),
@@ -2438,8 +2468,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             order['total']?.toString() ?? '0'
                     ) ?? 0.0;
 
-                    final double grandTotal = isWaselLi 
-                        ? deliveryFee 
+                    final double grandTotal = isWaselLi
+                        ? deliveryFee
                         : (dbTotalAmount > 0 ? dbTotalAmount : (finalProductsPrice + deliveryFee));
 
                     return Card(
