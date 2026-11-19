@@ -1107,7 +1107,7 @@ class _HomeScreenState extends State<HomeScreen>
         (r) =>
             (r['name'] ?? '').toString().trim().toLowerCase() ==
             rawRestaurantName.toLowerCase(),
-        orElse: () => null,
+        orElse: () => <String, dynamic>{},
       );
       if (matchedStore != null) {
         final storeCat = (matchedStore['category'] ?? '').toString().trim();
