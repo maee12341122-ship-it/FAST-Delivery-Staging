@@ -985,7 +985,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream<JsonList<Map<String, dynamic>> getMessagesForOrder(dynamic orderId, String targetChat) {
+  Stream<JsonList> getMessagesForOrder(dynamic orderId, String targetChat) {
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
