@@ -23,6 +23,8 @@ class ApiService {
   static final http.Client _httpClient = http.Client();
 
   static const Duration _requestTimeout = Duration(seconds: 20);
+  static const Duration _orderTimeout = Duration(seconds: 3);
+  static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
   static const String baseUrl = String.fromEnvironment(
@@ -88,37 +90,39 @@ class ApiService {
     Map<String, String>? queryParams,
     Map<String, dynamic>? body,
     String? explicitToken,
+    Duration? timeoutOverride,
   }) async {
     final uri = _buildUri(path, queryParams);
     final headers = _headers(explicitToken: explicitToken);
+    final timeout = timeoutOverride ?? _requestTimeout;
 
     try {
       http.Response response;
       switch (method.toUpperCase()) {
         case 'GET':
           response =
-              await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
+              await _httpClient.get(uri, headers: headers).timeout(timeout);
           break;
         case 'POST':
           response = await _httpClient
               .post(uri,
                   headers: headers,
                   body: jsonEncode(body ?? <String, dynamic>{}))
-              .timeout(_requestTimeout);
+              .timeout(timeout);
           break;
         case 'PATCH':
           response = await _httpClient
               .patch(uri,
                   headers: headers,
                   body: jsonEncode(body ?? <String, dynamic>{}))
-              .timeout(_requestTimeout);
+              .timeout(timeout);
           break;
         case 'PUT':
           response = await _httpClient
               .put(uri,
                   headers: headers,
                   body: jsonEncode(body ?? <String, dynamic>{}))
-              .timeout(_requestTimeout);
+              .timeout(timeout);
           break;
         default:
           throw ApiException('طريقة طلب غير مدعومة: $method');
@@ -215,7 +219,7 @@ class ApiService {
     }
   }
 
-  // 3. تمرير الطلب عبر Node.js Backend، وإذا تعذر الوصول له يتم تمريره مباشرة إلى Supabase
+  // 3. تمرير الطلب خلال 3 ثوانٍ كحد أقصى للـ Backend ثم التمرير السريع إلى Supabase
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -228,67 +232,57 @@ class ApiService {
     double? productsTotal,
     String? token,
   }) async {
-    final sanitizedItems = items.map((item) {
-      final rawProductId = item['product_id'] ?? item['id'];
-      final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-      return {
-        'product_id': rawProductId?.toString() ?? '',
-        'quantity': qty > 0 ? qty : 1,
-      };
-    }).toList();
-
-    final payload = <String, dynamic>{
-      'items': sanitizedItems,
-      'address': address.trim(),
-      'notes': notes.trim(),
-      if (customerName != null && customerName.trim().isNotEmpty)
-        'customer_name': customerName.trim(),
-      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-      if (couponCode != null && couponCode.trim().isNotEmpty)
-        'coupon_code': couponCode.trim(),
-      if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
-        'payment_method': paymentMethod.trim(),
-      if (paymentAccount != null && paymentAccount.trim().isNotEmpty)
-        'payment_account': paymentAccount.trim(),
-    };
+    if (_isCreatingOrder) {
+      throw ApiException('جاري إرسال الطلب بالفعل، يرجى الانتظار.');
+    }
+    _isCreatingOrder = true;
 
     try {
-      final data = await _sendJsonRequest(
-        method: 'POST',
-        path: '/api/orders',
-        body: payload,
-        explicitToken: token,
-      );
+      final sanitizedItems = items.map((item) {
+        final rawProductId = item['product_id'] ?? item['id'];
+        final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+        return {
+          'product_id': rawProductId?.toString() ?? '',
+          'quantity': qty > 0 ? qty : 1,
+        };
+      }).toList();
 
-      if (data is Map<String, dynamic>) {
-        return data;
+      final payload = <String, dynamic>{
+        'items': sanitizedItems,
+        'address': address.trim(),
+        'notes': notes.trim(),
+        if (customerName != null && customerName.trim().isNotEmpty)
+          'customer_name': customerName.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (couponCode != null && couponCode.trim().isNotEmpty)
+          'coupon_code': couponCode.trim(),
+        if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
+          'payment_method': paymentMethod.trim(),
+        if (paymentAccount != null && paymentAccount.trim().isNotEmpty)
+          'payment_account': paymentAccount.trim(),
+      };
+
+      try {
+        final data = await _sendJsonRequest(
+          method: 'POST',
+          path: '/api/orders',
+          body: payload,
+          explicitToken: token,
+          timeoutOverride: _orderTimeout,
+        );
+
+        if (data is Map<String, dynamic>) {
+          return data;
+        }
+      } catch (e) {
+        debugPrint(
+            '⚠️ تجاوز مهلة 3 ثوانٍ أو تعذر الوصول للـ Backend، التمرير إلى Supabase: $e');
       }
-    } catch (e) {
-      debugPrint(
-          '⚠️ تعذر الإرسال عبر Backend، سيتم تمرير الطلب مباشرة إلى Supabase: $e');
-    }
 
-    final trackingCode = Random().nextDouble().toString().substring(2, 10);
-    final inserted = await _supabase
-        .from('orders')
-        .insert({
-          'customer_name': (customerName ?? '').trim(),
-          'phone': (phone ?? '').trim(),
-          'address': address.trim(),
-          'items_desc': notes.trim(),
-          'total_price': productsTotal ?? 0.0,
-          'payment_method': (paymentMethod ?? 'cash').trim(),
-          'payment_account': (paymentAccount ?? 'نقدي').trim(),
-          'status': 'waitingForPricing',
-          'tracking_code': trackingCode,
-          'created_at': DateTime.now().toIso8601String(),
-        })
-        .select()
-        .maybeSingle();
-
-    final orderMap = inserted != null
-        ? Map<String, dynamic>.from(inserted)
-        : <String, dynamic>{
+      final trackingCode = Random().nextDouble().toString().substring(2, 10);
+      final inserted = await _supabase
+          .from('orders')
+          .insert({
             'customer_name': (customerName ?? '').trim(),
             'phone': (phone ?? '').trim(),
             'address': address.trim(),
@@ -298,12 +292,32 @@ class ApiService {
             'payment_account': (paymentAccount ?? 'نقدي').trim(),
             'status': 'waitingForPricing',
             'tracking_code': trackingCode,
-          };
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .maybeSingle();
 
-    return {
-      'success': true,
-      'order': orderMap,
-    };
+      final orderMap = inserted != null
+          ? Map<String, dynamic>.from(inserted)
+          : <String, dynamic>{
+              'customer_name': (customerName ?? '').trim(),
+              'phone': (phone ?? '').trim(),
+              'address': address.trim(),
+              'items_desc': notes.trim(),
+              'total_price': productsTotal ?? 0.0,
+              'payment_method': (paymentMethod ?? 'cash').trim(),
+              'payment_account': (paymentAccount ?? 'نقدي').trim(),
+              'status': 'waitingForPricing',
+              'tracking_code': trackingCode,
+            };
+
+      return {
+        'success': true,
+        'order': orderMap,
+      };
+    } finally {
+      _isCreatingOrder = false;
+    }
   }
 
   // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
