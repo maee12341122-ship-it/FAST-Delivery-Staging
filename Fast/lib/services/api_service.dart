@@ -282,6 +282,34 @@ class ApiService {
           );
 
           if (data is Map<String, dynamic>) {
+            if (data['order'] is Map) {
+              final backendOrder = Map<String, dynamic>.from(data['order']);
+              final cleanTotal = (productsTotal != null && productsTotal > 0)
+                  ? productsTotal
+                  : 0.0;
+              final bTotal = double.tryParse(
+                      backendOrder['total_price']?.toString() ?? '') ??
+                  0.0;
+              if (bTotal <= 0 && cleanTotal > 0) {
+                backendOrder['total_price'] = cleanTotal;
+                backendOrder['products_total'] = cleanTotal;
+                try {
+                  if (backendOrder['id'] != null) {
+                    await _supabase
+                        .from('orders')
+                        .update({
+                          'total_price': cleanTotal,
+                          'products_total': cleanTotal,
+                        })
+                        .eq('id', backendOrder['id']);
+                  }
+                } catch (_) {}
+              }
+              return {
+                ...data,
+                'order': backendOrder,
+              };
+            }
             return data;
           }
         } catch (e) {
