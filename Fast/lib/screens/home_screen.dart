@@ -1110,11 +1110,9 @@ class _HomeScreenState extends State<HomeScreen>
             rawRestaurantName.toLowerCase(),
         orElse: () => <String, dynamic>{},
       );
-      if (matchedStore != null) {
-        final storeCat = (matchedStore['category'] ?? '').toString().trim();
-        if (storeCat == 'المطاعم') {
-          belongsToRestaurantsCategory = true;
-        }
+      final storeCat = (matchedStore['category'] ?? '').toString().trim();
+      if (storeCat == 'المطاعم') {
+        belongsToRestaurantsCategory = true;
       }
     }
 
@@ -3359,11 +3357,6 @@ class _HomeScreenState extends State<HomeScreen>
                     final formattedAddress =
                         formatLocationAddress(order['address']);
 
-                    final String itemsDesc =
-                        (order['items_description'] ?? order['items_desc'] ?? '')
-                            .toString();
-                    final bool isWaselLi = itemsDesc.contains('وصل لي');
-
                     final double deliveryFee = double.tryParse(
                             order['delivery_fee']?.toString() ?? '0') ??
                         0.0;
@@ -3379,15 +3372,10 @@ class _HomeScreenState extends State<HomeScreen>
                             order['total_price']?.toString() ?? '0') ??
                         0.0;
 
-                    final double rawProductsPrice = explicitProductsPrice ??
+                    final double finalProductsPrice = explicitProductsPrice ??
                         ((deliveryFee > 0 && totalPriceField >= deliveryFee)
                             ? (totalPriceField - deliveryFee)
                             : totalPriceField);
-
-                    final double finalProductsPrice =
-                        (isWaselLi && rawProductsPrice <= 0)
-                            ? 0.0
-                            : rawProductsPrice;
 
                     final double dbTotalAmount = double.tryParse(
                             order['total_amount']?.toString() ??
@@ -3614,14 +3602,11 @@ class _HomeScreenState extends State<HomeScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (!isWaselLi ||
-                                        finalProductsPrice > 0) ...[
-                                      Text(
-                                          'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
-                                          style: TextStyle(
-                                              color: textColor, fontSize: 13)),
-                                      const SizedBox(height: 4),
-                                    ],
+                                    Text(
+                                        'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
+                                        style: TextStyle(
+                                            color: textColor, fontSize: 13)),
+                                    const SizedBox(height: 4),
                                     Text(
                                         'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي',
                                         style: TextStyle(
