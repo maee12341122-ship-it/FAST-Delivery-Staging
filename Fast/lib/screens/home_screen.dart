@@ -3362,23 +3362,32 @@ class _HomeScreenState extends State<HomeScreen>
                     final String itemsDesc =
                         (order['items_description'] ?? order['items_desc'] ?? '')
                             .toString();
-                    final bool isWaselLi = itemsDesc.contains('وصل لي') ||
-                        itemsDesc.contains('طلب خاص');
-
-                    final double rawProductsPrice = double.tryParse(
-                            order['total_price']?.toString() ??
-                                order['items_price']?.toString() ??
-                                order['products_total']?.toString() ??
-                                order['products_price']?.toString() ??
-                                '0') ??
-                        0.0;
-
-                    final double finalProductsPrice =
-                        isWaselLi ? 0.0 : rawProductsPrice;
+                    final bool isWaselLi = itemsDesc.contains('وصل لي');
 
                     final double deliveryFee = double.tryParse(
                             order['delivery_fee']?.toString() ?? '0') ??
                         0.0;
+
+                    final double? explicitProductsPrice = double.tryParse(
+                        (order['products_total'] ??
+                                    order['products_price'] ??
+                                    order['items_price'] ??
+                                    '')
+                                .toString());
+
+                    final double totalPriceField = double.tryParse(
+                            order['total_price']?.toString() ?? '0') ??
+                        0.0;
+
+                    final double rawProductsPrice = explicitProductsPrice ??
+                        ((deliveryFee > 0 && totalPriceField >= deliveryFee)
+                            ? (totalPriceField - deliveryFee)
+                            : totalPriceField);
+
+                    final double finalProductsPrice =
+                        (isWaselLi && rawProductsPrice <= 0)
+                            ? 0.0
+                            : rawProductsPrice;
 
                     final double dbTotalAmount = double.tryParse(
                             order['total_amount']?.toString() ??
@@ -3386,11 +3395,9 @@ class _HomeScreenState extends State<HomeScreen>
                                 '0') ??
                         0.0;
 
-                    final double grandTotal = isWaselLi
-                        ? deliveryFee
-                        : (dbTotalAmount > 0
-                            ? dbTotalAmount
-                            : (finalProductsPrice + deliveryFee));
+                    final double grandTotal = dbTotalAmount > 0
+                        ? dbTotalAmount
+                        : (finalProductsPrice + deliveryFee);
 
                     return Card(
                       color: cardBg,
@@ -3607,7 +3614,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (!isWaselLi) ...[
+                                    if (!isWaselLi ||
+                                        finalProductsPrice > 0) ...[
                                       Text(
                                           'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
                                           style: TextStyle(
