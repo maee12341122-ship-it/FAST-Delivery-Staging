@@ -44,6 +44,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   // عداد النقرات المخفية للوصول لإدارة النظام سراّ
   int _secretTapCount = 0;
 
+  // رمز OTP التجريبي التلقائي
+  static const String _trialOtpCode = '1234';
+
   @override
   void initState() {
     super.initState();
@@ -202,8 +205,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
       }
 
-      // استدعاء دالة توليد وإرسال الرمز الحقيقية من الـ AppState
-      await appState.requestOtpForPhone(_formattedPhone);
+      // وضع رمز OTP التجريبي تلقائياً 1234
+      _otpController.text = _trialOtpCode;
 
       if (mounted) {
         setState(() {
@@ -212,7 +215,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم توليد وإرسال رمز التحقق بنجاح 💬'),
+            content: Text('تم تعبئة رمز التحقق التجريبي 1234 تلقائياً 💬'),
             duration: Duration(seconds: 4),
           ),
         );
@@ -244,7 +247,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      bool isValid = await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
+      bool isValid = otpCode == _trialOtpCode;
 
       if (isValid) {
         if (mounted) {
