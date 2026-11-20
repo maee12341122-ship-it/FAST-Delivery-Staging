@@ -37,29 +37,32 @@ if (!username || !password || password.length < 12) {
       (u) => (u.email || '').toLowerCase() === email
     );
 
+    let authUserId = null;
+
     if (existingUser) {
-      const { error: updateError } = await supabase.auth.admin.updateUserById(
-        existingUser.id,
-        {
+      const { data: updatedData, error: updateError } =
+        await supabase.auth.admin.updateUserById(existingUser.id, {
           password,
           app_metadata: { role: 'admin' },
           user_metadata: {
             ...(existingUser.user_metadata || {}),
             name,
           },
-        }
-      );
+        });
       if (updateError) throw updateError;
+      authUserId = updatedData?.user?.id || existingUser.id;
       console.log('🔄 تم تحديث حساب المشرف القائم في Supabase Auth بنجاح.');
     } else {
-      const { error: createError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        app_metadata: { role: 'admin' },
-        user_metadata: { name },
-      });
+      const { data: createdData, error: createError } =
+        await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          app_metadata: { role: 'admin' },
+          user_metadata: { name },
+        });
       if (createError) throw createError;
+      authUserId = createdData?.user?.id || null;
       console.log('✨ تم إنشاء حساب المشرف الجديد في Supabase Auth بنجاح.');
     }
 
@@ -142,6 +145,9 @@ if (!username || !password || password.length < 12) {
       }
     }
 
+    if (authUserId) {
+      console.log('🔐 تم ربط صلاحية المشرف (role: admin) بحساب Auth بنجاح.');
+    }
     console.log(
       '🎉 تم إعداد حساب المشرف بالكامل. لا تطبع كلمة المرور ولا تحفظها داخل ملفات المشروع.'
     );
