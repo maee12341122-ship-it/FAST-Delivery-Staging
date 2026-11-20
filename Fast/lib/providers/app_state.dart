@@ -119,11 +119,11 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
+  StreamSubscription<List<Map<String, dynamic>>>? _storeSettingsSub;
   RealtimeChannel? _ordersChannel;
 
-  // وضع الرمز التجريبي مؤقتاً لحين تفعيل موافقة ميتا واتساب
-  static const bool _useTestOtpBypass = true;
-  static const String _testOtpCode = '1234';
+  // وضع OTP التجريبي المؤقت عبر Node.js Backend (يُستبدل لاحقاً بـ WhatsApp/Meta دون تغيير الواجهة أو المصادقة)
+  static const bool _useSandboxOtpProvider = true;
 
   bool _isCreatingOrder = false;
 
@@ -136,6 +136,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     unawaited(_authSub?.cancel());
     unawaited(_settingsSub?.cancel());
+    unawaited(_storeSettingsSub?.cancel());
     if (_ordersChannel != null) {
       unawaited(supabase.removeChannel(_ordersChannel!));
     }
@@ -167,15 +168,16 @@ class AppState extends ChangeNotifier {
 
   Future<JsonMap> _postBackend(
     String path,
-    JsonMap body,
-  ) async {
+    JsonMap body, {
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
     final response = await _httpClient
         .post(
           _buildBackendUri(path),
           headers: _backendHeaders(),
           body: jsonEncode(body),
         )
-        .timeout(const Duration(milliseconds: 1500));
+        .timeout(timeout);
 
     final decoded = response.body.isNotEmpty
         ? jsonDecode(response.body)
@@ -191,6 +193,39 @@ class AppState extends ChangeNotifier {
             .toString()
         : 'تعذر إتمام العملية';
     throw Exception(errorMsg);
+  }
+
+  // التحقق الحقيقي من المشرف عبر Backend أو جدول admins الفعلي (بدون الاعتماد على user_metadata.role)
+  Future<JsonMapNullable> _verifyAdminFromBackendOrSchema(User? user) async {
+    if (user == null) return null;
+    final token = _accessToken;
+    if (token != null && token.isNotEmpty) {
+      try {
+        final res = await _postBackend('/api/auth/admin/verify', {});
+        if (res['is_admin'] == true || res['valid'] == true) {
+          return res['admin'] is Map
+              ? Map<String, dynamic>.from(res['admin'] as Map)
+              : <String, dynamic>{'verified': true};
+        }
+        return null;
+      } catch (_) {
+        // إذا لم يكن مسار التحقق مفعلاً بعد أو فشل الاتصال، نتحقق من جدول admins بالأعمدة الفعلية فقط
+      }
+    }
+
+    try {
+      final phone = _normalizePhone(user.phone ?? '');
+      if (phone.isEmpty) return null;
+      final row = await supabase
+          .from('admins')
+          .select()
+          .eq('phone', phone)
+          .maybeSingle();
+      if (row != null) {
+        return Map<String, dynamic>.from(row);
+      }
+    } catch (_) {}
+    return null;
   }
 
   bool _isCourierSession(User? user) {
@@ -259,31 +294,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _syncAdminProfileFromAuth(User? user) async {
+  Future<void> _syncAdminProfileFromAuth(
+    User? user, {
+    JsonMap? verifiedAdminRow,
+  }) async {
     if (user == null) return;
     var adminPhone = '';
-    var adminName = user.userMetadata?['name']?.toString() ?? 'المشرف';
+    var adminName = 'المشرف';
 
-    try {
-      final adminRow = await supabase
-          .from('admins')
-          .select()
-          .or('auth_user_id.eq.${user.id},email.eq.${user.email ?? ''}')
-          .maybeSingle();
-      if (adminRow != null) {
-        adminPhone = _normalizePhone(adminRow['phone']?.toString() ?? '');
-        if ((adminRow['name']?.toString() ?? '').trim().isNotEmpty) {
-          adminName = adminRow['name'].toString().trim();
-        }
+    final row = verifiedAdminRow ?? await _verifyAdminFromBackendOrSchema(user);
+    if (row != null) {
+      adminPhone = _normalizePhone(row['phone']?.toString() ?? '');
+      if ((row['name']?.toString() ?? '').trim().isNotEmpty) {
+        adminName = row['name'].toString().trim();
       }
-    } catch (_) {}
+    }
 
     if (adminPhone.isEmpty) {
       adminPhone = _normalizePhone(
-        user.phone ??
-            user.userMetadata?['phone']?.toString() ??
-            userProfile?['phone']?.toString() ??
-            '',
+        user.phone ?? userProfile?['phone']?.toString() ?? '',
       );
     }
 
@@ -303,9 +332,17 @@ class AppState extends ChangeNotifier {
           isAdminLoggedIn = false;
           await _loadCourierSession();
         } else {
-          isAdminLoggedIn = true;
-          currentCourier = null;
-          await _syncAdminProfileFromAuth(session.user);
+          final adminRow = await _verifyAdminFromBackendOrSchema(session.user);
+          if (adminRow != null) {
+            isAdminLoggedIn = true;
+            currentCourier = null;
+            await _syncAdminProfileFromAuth(
+              session.user,
+              verifiedAdminRow: adminRow,
+            );
+          } else {
+            isAdminLoggedIn = false;
+          }
         }
       } else {
         isAdminLoggedIn = false;
@@ -339,9 +376,17 @@ class AppState extends ChangeNotifier {
         isAdminLoggedIn = false;
         await _loadCourierSession();
       } else {
-        isAdminLoggedIn = true;
-        currentCourier = null;
-        await _syncAdminProfileFromAuth(session.user);
+        final adminRow = await _verifyAdminFromBackendOrSchema(session.user);
+        if (adminRow != null) {
+          isAdminLoggedIn = true;
+          currentCourier = null;
+          await _syncAdminProfileFromAuth(
+            session.user,
+            verifiedAdminRow: adminRow,
+          );
+        } else {
+          isAdminLoggedIn = false;
+        }
       }
     } else {
       isAdminLoggedIn = false;
@@ -388,7 +433,7 @@ class AppState extends ChangeNotifier {
       if (isAdminLoggedIn && token != null && token.isNotEmpty) {
         try {
           final backendOrders = await ApiService.fetchAdminOrders(token)
-              .timeout(const Duration(milliseconds: 1500));
+              .timeout(const Duration(seconds: 12));
           orders = List<Map<String, dynamic>>.from(backendOrders);
         } catch (_) {
           final initialData = await supabase.from('orders').select();
@@ -1084,17 +1129,42 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  // إرسال الإشعارات عبر مسار Node.js Backend المحمي (POST /api/notifications/send)
   Future<void> sendAutoNotification({
     String? playerId,
     String? targetPlayerId,
     required String title,
     String? message,
     String? body,
-  }) async {}
+    dynamic orderId,
+    String? eventType,
+  }) async {
+    final content = (body ?? message ?? '').trim();
+    if (title.trim().isEmpty && content.isEmpty) return;
+
+    try {
+      await _postBackend('/api/notifications/send', {
+        'title': title.trim(),
+        'body': content,
+        if (orderId != null) 'order_id': orderId,
+        if (eventType != null && eventType.trim().isNotEmpty)
+          'event_type': eventType.trim(),
+        if (playerId != null && playerId.trim().isNotEmpty)
+          'player_id': playerId.trim(),
+        if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
+          'target_player_id': targetPlayerId.trim(),
+      });
+    } catch (e) {
+      debugPrint('تعذر إرسال الإشعار عبر Backend: $e');
+    }
+  }
 
   int startHour = 8;
   int endHour = 24;
   int deliveryFee = 500;
+  String storeName = 'Fast Delivery';
+  bool storeIsOpenFlag = true;
+  String storeTimezone = 'Asia/Aden';
 
   int get workStartHour => startHour;
   int get workEndHour => endHour;
@@ -1171,7 +1241,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     unawaited(Share.share(
-      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل
+https://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     ));
   }
@@ -1229,16 +1300,59 @@ class AppState extends ChangeNotifier {
     return locationReady;
   }
 
+  int _parseHourFromTimeValue(dynamic value, int fallbackHour) {
+    if (value == null) return fallbackHour;
+    if (value is int) return value;
+    final str = value.toString().trim();
+    final directInt = int.tryParse(str);
+    if (directInt != null) return directInt;
+    final parts = str.split(':');
+    if (parts.isNotEmpty) {
+      final parsed = int.tryParse(parts.first);
+      if (parsed != null) return parsed;
+    }
+    return fallbackHour;
+  }
+
+  void _applyStoreSettingsRow(Map<String, dynamic> row) {
+    if (row['store_name'] != null &&
+        row['store_name'].toString().trim().isNotEmpty) {
+      storeName = row['store_name'].toString().trim();
+    }
+    startHour = _parseHourFromTimeValue(row['open_time'], startHour);
+    endHour = _parseHourFromTimeValue(row['close_time'], endHour);
+    if (row['is_open'] is bool) {
+      storeIsOpenFlag = row['is_open'] as bool;
+    } else if (row['is_open'] != null) {
+      final s = row['is_open'].toString().toLowerCase().trim();
+      storeIsOpenFlag = s == 'true' || s == '1' || s == 'open';
+    }
+    if (row['timezone'] != null &&
+        row['timezone'].toString().trim().isNotEmpty) {
+      storeTimezone = row['timezone'].toString().trim();
+    }
+  }
+
   Future<void> fetchStoreSettings() async {
     try {
-      final response = await supabase.from('settings').select().maybeSingle();
-      if (response != null) {
-        startHour = int.tryParse(response['start_hour'].toString()) ?? 8;
-        endHour = int.tryParse(response['end_hour'].toString()) ?? 24;
+      // قراءة رسوم التوصيل من جدول settings
+      final feeResponse = await supabase.from('settings').select().maybeSingle();
+      if (feeResponse != null && feeResponse['delivery_fee'] != null) {
         deliveryFee =
-            int.tryParse(response['delivery_fee']?.toString() ?? '500') ?? 500;
-        notifyListeners();
+            int.tryParse(feeResponse['delivery_fee'].toString()) ?? deliveryFee;
       }
+
+      // قراءة إعدادات المتجر وساعات العمل وحالة الفتح من جدول store_settings
+      final storeResponse =
+          await supabase.from('store_settings').select().limit(1).maybeSingle();
+      if (storeResponse != null) {
+        _applyStoreSettingsRow(Map<String, dynamic>.from(storeResponse));
+      } else if (feeResponse != null) {
+        startHour = _parseHourFromTimeValue(feeResponse['start_hour'], 8);
+        endHour = _parseHourFromTimeValue(feeResponse['end_hour'], 24);
+      }
+
+      notifyListeners();
     } catch (e) {
       debugPrint('خطأ في الإعدادات: $e');
     }
@@ -1247,20 +1361,77 @@ class AppState extends ChangeNotifier {
   void listenToStoreSettingsRealtime() {
     try {
       unawaited(_settingsSub?.cancel());
+      unawaited(_storeSettingsSub?.cancel());
+
       _settingsSub =
           supabase.from('settings').stream(primaryKey: ['id']).listen((data) {
-        if (data.isNotEmpty) {
-          startHour = int.tryParse(data.first['start_hour'].toString()) ?? 8;
-          endHour = int.tryParse(data.first['end_hour'].toString()) ?? 24;
+        if (data.isNotEmpty && data.first['delivery_fee'] != null) {
           deliveryFee =
-              int.tryParse(data.first['delivery_fee']?.toString() ?? '500') ??
-                  500;
+              int.tryParse(data.first['delivery_fee'].toString()) ?? deliveryFee;
+          notifyListeners();
+        }
+      });
+
+      _storeSettingsSub = supabase
+          .from('store_settings')
+          .stream(primaryKey: ['id']).listen((data) {
+        if (data.isNotEmpty) {
+          _applyStoreSettingsRow(Map<String, dynamic>.from(data.first));
           notifyListeners();
         }
       });
     } catch (e) {
-      debugPrint('خطأ: $e');
+      debugPrint('خطأ في الاستماع للإعدادات: $e');
     }
+  }
+
+  String _formatHourForStoreSettings(int hour) {
+    final normalized = ((hour % 24) + 24) % 24;
+    final hh = normalized.toString().padLeft(2, '0');
+    return '$hh:00:00';
+  }
+
+  Future<void> _persistStoreSettingsToBackendOrSchema({
+    required int start,
+    required int end,
+    int? fee,
+    String? name,
+    bool? isOpen,
+  }) async {
+    final targetFee = fee ?? deliveryFee;
+    final targetName = (name ?? storeName).trim();
+    final targetOpen = isOpen ?? storeIsOpenFlag;
+
+    try {
+      await _postBackend('/api/admin/settings/store', {
+        'store_name': targetName,
+        'open_time': _formatHourForStoreSettings(start),
+        'close_time': _formatHourForStoreSettings(end),
+        'is_open': targetOpen,
+        'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
+        'delivery_fee': targetFee,
+      });
+      return;
+    } catch (_) {
+      // Fallback إلى تحديث الجداول المباشر إذا لم يكن المسار مفعلاً
+    }
+
+    await supabase.from('store_settings').upsert({
+      'id': 1,
+      'store_name': targetName,
+      'open_time': _formatHourForStoreSettings(start),
+      'close_time': _formatHourForStoreSettings(end),
+      'is_open': targetOpen,
+      'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+
+    await supabase.from('settings').upsert({
+      'id': 1,
+      'start_hour': start,
+      'end_hour': end,
+      'delivery_fee': targetFee,
+    });
   }
 
   Future<void> updateStoreHours(int start, int end) async {
@@ -1268,12 +1439,7 @@ class AppState extends ChangeNotifier {
     endHour = end;
     notifyListeners();
     try {
-      await supabase.from('settings').upsert({
-        'id': 1,
-        'start_hour': start,
-        'end_hour': end,
-        'delivery_fee': deliveryFee,
-      });
+      await _persistStoreSettingsToBackendOrSchema(start: start, end: end);
     } catch (e) {
       debugPrint('خطأ في حفظ أوقات الدوام: $e');
     }
@@ -1291,23 +1457,27 @@ class AppState extends ChangeNotifier {
     this.startHour = startHour;
     this.endHour = endHour;
     this.deliveryFee = deliveryFee;
-    await supabase.from('settings').upsert({
-      'id': 1,
-      'start_hour': startHour,
-      'end_hour': endHour,
-      'delivery_fee': deliveryFee,
-    });
+    await _persistStoreSettingsToBackendOrSchema(
+      start: startHour,
+      end: endHour,
+      fee: deliveryFee,
+    );
     notifyListeners();
   }
 
+  // التحقق من حالة المتجر مع مراعاة ساعات العمل التي تتجاوز منتصف الليل ومنطقة Asia/Aden
   bool get isStoreOpen {
-    final now = DateTime.now();
-    final currentHour = now.hour;
+    if (!storeIsOpenFlag) return false;
+    final nowUtc = DateTime.now().toUtc();
+    // التوقيت القياسي لـ Asia/Aden هو UTC+3
+    final adenNow = nowUtc.add(const Duration(hours: 3));
+    final currentHour = adenNow.hour;
     if (endHour > startHour) {
       return currentHour >= startHour && currentHour < endHour;
-    } else {
+    } else if (endHour < startHour) {
       return currentHour >= startHour || currentHour < endHour;
     }
+    return false;
   }
 
   bool isAdminLoggedIn = false;
@@ -1325,9 +1495,21 @@ class AppState extends ChangeNotifier {
         isAdminLoggedIn = false;
         return false;
       }
+
+      final verifiedAdmin =
+          await _verifyAdminFromBackendOrSchema(response.user);
+      if (verifiedAdmin == null) {
+        await supabase.auth.signOut();
+        isAdminLoggedIn = false;
+        return false;
+      }
+
       isAdminLoggedIn = true;
       currentCourier = null;
-      await _syncAdminProfileFromAuth(response.user);
+      await _syncAdminProfileFromAuth(
+        response.user,
+        verifiedAdminRow: verifiedAdmin,
+      );
       await fetchCouriersFromSupabase();
       listenToOrdersRealtime();
       notifyListeners();
@@ -1484,78 +1666,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // طلب OTP عبر Node.js Backend (مؤقتاً sandbox لحين موافقة Meta/WhatsApp) بدون رموز ثابتة أو تجاوز من Flutter
   Future<JsonMap> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) {
       throw Exception('الرجاء إدخال رقم هاتف صحيح.');
     }
 
-    if (_useTestOtpBypass) {
-      var existsInDb = false;
-      try {
-        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
-        existsInDb = dbRecord != null;
-        if (existsInDb) {
-          await restoreLastCustomerOrder();
-        }
-      } catch (e) {
-        debugPrint('خطأ في التحقق من العميل في قاعدة البيانات: $e');
-      }
-      notifyListeners();
-      return {
-        'exists': existsInDb,
-        'message': existsInDb
-            ? 'تم العثور على حسابك وجلب بياناتك. رمز التحقق التجريبي هو $_testOtpCode'
-            : 'رمز التحقق التجريبي هو $_testOtpCode',
-      };
-    }
-
     try {
       final response = await _postBackend('/api/auth/otp/request', {
         'phone': cleanPhone,
+        'channel': _useSandboxOtpProvider ? 'sandbox' : 'whatsapp',
       });
+
+      var existsInDb = response['exists'] == true;
+      if (existsInDb) {
+        try {
+          await fetchCustomerRecordByPhone(cleanPhone);
+          await restoreLastCustomerOrder();
+        } catch (_) {}
+      }
+
+      notifyListeners();
       return {
-        'exists': response['exists'] ?? false,
-        'message':
-            response['message']?.toString() ?? 'تم إرسال رمز التحقق بنجاح',
+        'exists': existsInDb,
+        'provider': response['provider']?.toString() ??
+            (_useSandboxOtpProvider ? 'sandbox' : 'whatsapp'),
+        'is_sandbox': response['is_sandbox'] ?? _useSandboxOtpProvider,
+        'message': response['message']?.toString() ??
+            'تم إنشاء رمز التحقق التجريبي (ليس إرسال WhatsApp حقيقياً).',
       };
     } catch (e) {
       debugPrint('خطأ في طلب رمز التحقق: $e');
       throw Exception(e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      notifyListeners();
     }
   }
 
+  // التحقق من OTP عبر Node.js Backend فقط دون أي تجاوز أو رمز ثابت في Flutter
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     if (enteredOtp.trim().isEmpty) return false;
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) return false;
-
-    if (_useTestOtpBypass) {
-      if (enteredOtp.trim() != _testOtpCode) return false;
-
-      try {
-        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
-        if (dbRecord != null) {
-          await restoreLastCustomerOrder();
-          return true;
-        }
-      } catch (e) {
-        debugPrint('خطأ في جلب سجل العميل بعد التحقق: $e');
-      }
-
-      userProfile = {
-        'phone': cleanPhone,
-        'name': '',
-        'address': '',
-        'city': currentCity,
-      };
-      await _persistUserSessionToPrefs(userProfile!);
-      await fetchUserAddressesFromSupabase();
-      notifyListeners();
-      return true;
-    }
 
     try {
       final response = await _postBackend('/api/auth/otp/verify', {
@@ -1583,17 +1734,15 @@ class AppState extends ChangeNotifier {
         return true;
       }
 
-      if (userProfile == null) {
-        userProfile = {
-          'phone': cleanPhone,
-          'name': response['name']?.toString() ?? '',
-          'address': response['address']?.toString() ?? '',
-          'city': currentCity,
-        };
-        await _persistUserSessionToPrefs(userProfile!);
-        await fetchUserAddressesFromSupabase();
-        notifyListeners();
-      }
+      userProfile = {
+        'phone': cleanPhone,
+        'name': response['name']?.toString() ?? '',
+        'address': response['address']?.toString() ?? '',
+        'city': currentCity,
+      };
+      await _persistUserSessionToPrefs(userProfile!);
+      await fetchUserAddressesFromSupabase();
+      notifyListeners();
       return true;
     } catch (e) {
       debugPrint('خطأ في التحقق من الرمز: $e');
@@ -1731,24 +1880,16 @@ class AppState extends ChangeNotifier {
       throw Exception('كلمة مرور المندوب يجب ألا تقل عن 6 أحرف.');
     }
 
-    final email = '${username.trim().toLowerCase()}@courier.fast.local';
-
-    final authRes = await supabase.auth.signUp(
-      email: email,
-      password: password,
-      data: {'role': 'courier', 'name': name.trim()},
-    );
-
-    final newUserId = authRes.user?.id;
-
-    await supabase.from('couriers').insert({
+    final res = await _postBackend('/api/admin/couriers', {
       'name': name.trim(),
       'phone': phone.trim(),
       'username': username.trim(),
-      if (newUserId != null) 'auth_user_id': newUserId,
-      'status': 'available',
-      'is_logged_in': false,
+      'password': password,
     });
+
+    if (res['success'] == false) {
+      throw Exception(res['error']?.toString() ?? 'تعذر إضافة المندوب.');
+    }
 
     await fetchCouriersFromSupabase();
   }
@@ -1757,50 +1898,30 @@ class AppState extends ChangeNotifier {
     final status = !courier.isEnabled
         ? 'disabled'
         : (courier.isAvailable ? 'available' : 'busy');
-    final intId = int.tryParse(courier.id);
-    if (intId != null) {
-      await supabase.from('couriers').update({
-        'name': courier.name.trim(),
-        'phone': courier.phone.trim(),
-        'status': status,
-      }).eq('id', intId);
-    } else {
-      await supabase.from('couriers').update({
-        'name': courier.name.trim(),
-        'phone': courier.phone.trim(),
-        'status': status,
-      }).eq('id', courier.id);
-    }
+
+    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courier.id)}/update', {
+      'name': courier.name.trim(),
+      'phone': courier.phone.trim(),
+      'status': status,
+    });
+
     await fetchCouriersFromSupabase();
   }
 
   Future<void> setCourierAvailability(String courierId, bool available) async {
     final status = available ? 'available' : 'busy';
-    final intId = int.tryParse(courierId);
-    if (intId != null) {
-      await supabase
-          .from('couriers')
-          .update({'status': status})
-          .eq('id', intId);
-    } else {
-      await supabase
-          .from('couriers')
-          .update({'status': status})
-          .eq('id', courierId);
-    }
+    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courierId)}/status', {
+      'status': status,
+    });
     await fetchCouriersFromSupabase();
   }
 
   Future<void> removeCourier(String courierId) async {
-    final intId = int.tryParse(courierId);
-    if (intId != null) {
-      await supabase.from('couriers').delete().eq('id', intId);
-    } else {
-      await supabase.from('couriers').delete().eq('id', courierId);
-    }
+    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courierId)}/delete', {});
     await fetchCouriersFromSupabase();
   }
 
+  // تسوية مستحقات المندوب عبر Node.js Backend لضمان عدم تكرار التسوية وحساب الطلبات المكتملة غير المسوّاة فقط
   Future<void> settleCourierEarnings(String courierName) async {
     try {
       final cleanCourierName = courierName.trim();
@@ -1808,50 +1929,9 @@ class AppState extends ChangeNotifier {
         throw Exception('اسم المندوب مطلوب لتسوية المستحقات.');
       }
 
-      final unsettledRows = await supabase
-          .from('orders')
-          .select('id, delivery_fee, is_settled')
-          .eq('assigned_courier', cleanCourierName)
-          .eq('status', 'delivered')
-          .or('is_settled.is.null,is_settled.eq.false');
-
-      final eligibleOrders = List<Map<String, dynamic>>.from(unsettledRows);
-      if (eligibleOrders.isEmpty) {
-        throw Exception('لا توجد طلبات مكتملة وغير مسوّاة لهذا المندوب.');
-      }
-
-      var totalSettledAmount = 0.0;
-      final List<int> orderIds = [];
-      for (final row in eligibleOrders) {
-        final idVal = int.tryParse(row['id'].toString());
-        if (idVal != null) {
-          orderIds.add(idVal);
-        }
-        final amount =
-            double.tryParse((row['delivery_fee'] ?? '0').toString()) ?? 0.0;
-        totalSettledAmount += amount;
-      }
-
-      if (orderIds.isEmpty) {
-        throw Exception('تعذر تحديد معرفات الطلبات المستحقة للتسوية.');
-      }
-
-      await supabase.from('courier_settlements').insert({
+      await _postBackend('/api/admin/couriers/settle', {
         'courier_name': cleanCourierName,
-        'orders_count': orderIds.length,
-        'total_amount': totalSettledAmount,
-        'settled_at': DateTime.now().toIso8601String(),
       });
-
-      await supabase
-          .from('orders')
-          .update({'is_settled': true})
-          .inFilter('id', orderIds)
-          .eq('status', 'delivered');
-
-      debugPrint(
-        'تمت تسوية ${orderIds.length} طلبات للمندوب $cleanCourierName بإجمالي: $totalSettledAmount',
-      );
 
       await fetchOrders();
       unawaited(fetchAdminFinancialReports());
@@ -2003,7 +2083,7 @@ class AppState extends ChangeNotifier {
       _accessToken ?? '',
       intId,
       status,
-    ).timeout(const Duration(seconds: 5));
+    ).timeout(const Duration(seconds: 12));
     if (res['order'] is Map) {
       _upsertOrderInList(res['order']);
     } else {
@@ -2021,7 +2101,7 @@ class AppState extends ChangeNotifier {
     final courier = await supabase
         .from('couriers')
         .select('id, name')
-        .eq('id', int.tryParse(courierId) ?? courierId)
+        .eq('id', courierId)
         .single();
 
     final currentOrder = orders.firstWhere(
@@ -2043,13 +2123,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> removeProduct(String id) async {
-    await supabase.from('products').delete().eq('id', id);
+    await _postBackend('/api/admin/products/${Uri.encodeComponent(id)}/delete', {});
     await fetchProductsFromSupabase();
     notifyListeners();
   }
 
   Future<void> upsertProduct(ProductModel product) async {
-    await supabase.from('products').upsert({
+    await _postBackend('/api/admin/products/upsert', {
       'id': product.id,
       'name': product.name.trim(),
       'description': product.description.trim(),
@@ -2060,7 +2140,7 @@ class AppState extends ChangeNotifier {
       'image_url': product.imageUrl,
       'unit': product.unit,
       'is_variable_price': product.isVariablePrice,
-    }, onConflict: 'id');
+    });
     await fetchProductsFromSupabase();
     notifyListeners();
   }
@@ -2304,9 +2384,13 @@ class AppState extends ChangeNotifier {
       final double cleanProductsTotal = productsTotal > 0 ? productsTotal : 0.0;
 
       final itemsPayload = _cartItems.map((cartItem) {
-        return {
+        final isCustom = cartItem.id.startsWith('custom_');
+        return <String, dynamic>{
           'product_id': cartItem.id,
+          'name': cartItem.name,
           'quantity': cartItem.quantity,
+          'is_custom': isCustom,
+          if (isCustom) 'unit_price': cartItem.price,
         };
       }).toList();
 
@@ -2392,7 +2476,7 @@ class AppState extends ChangeNotifier {
         intOrderId,
         cleanFee,
         cleanCourierName,
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 12));
 
       JsonMap updatedOrder = {};
       if (responseData['order'] is Map) {
@@ -2421,11 +2505,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _submitCustomerOrderAction(dynamic orderId, String action) async {
-    final phone = userProfile?['phone'];
-    if (phone == null) {
-      throw Exception('رمز متابعة الطلب غير موجود أو لم يتم تسجيل الدخول.');
-    }
-
     final intOrderId = int.tryParse(orderId.toString());
     if (intOrderId == null) {
       throw Exception('معرف الطلب غير صالح.');
@@ -2438,7 +2517,6 @@ class AppState extends ChangeNotifier {
         await _postBackend('/api/orders/$intOrderId/customer-action', {
       'action': action,
       'status': newStatus,
-      'phone': _normalizePhone(phone.toString()),
     });
 
     if (responseData['order'] is Map) {
@@ -2491,7 +2569,7 @@ class AppState extends ChangeNotifier {
       _accessToken ?? '',
       intOrderId,
       newStatus,
-    ).timeout(const Duration(seconds: 5));
+    ).timeout(const Duration(seconds: 12));
 
     if (responseData['order'] is Map) {
       _upsertOrderInList(responseData['order']);
