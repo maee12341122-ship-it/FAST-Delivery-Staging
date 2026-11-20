@@ -72,6 +72,7 @@ class _CourierScreenState extends State<CourierScreen> {
       }
 
       String cleanPhone = currentPhone.replaceAll(' ', '');
+      if (cleanPhone.startsWith('+967')) cleanPhone = cleanPhone.substring(4);
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
       final formattedPhone = '+967$cleanPhone';
@@ -435,8 +436,7 @@ class _CourierScreenState extends State<CourierScreen> {
                       )
                     : (courier == null
                         ? const Center(
-                            child: Text(
-                                'عذراً، يرجى تسجيل الدخول مجدداً ⚠️',
+                            child: Text('عذراً، يرجى تسجيل الدخول مجدداً ⚠️',
                                 style: TextStyle(color: Colors.grey)))
                         : _buildCourierOrdersListWithTabs(appState, courier)),
               ),
