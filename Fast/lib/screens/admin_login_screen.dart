@@ -47,22 +47,31 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       final bool success =
           await appState.loginAdminFromSupabase(username, password);
 
-      if (!success) {
+      if (!success || !appState.isAdminLoggedIn) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('اسم المستخدم أو كلمة المرور غير صحيحة للمشرف ❌'),
+            content: Text(
+              'تعذر تسجيل الدخول: تأكد من بيانات وصلاحيات المشرف ❌',
+            ),
           ),
         );
         return;
       }
 
-      final adminId = appState.supabase.auth.currentUser?.id ?? username;
-      await NotificationService.saveUserPlayerId(
-        adminId,
-        'admins',
-        identifierValue: username,
-      );
+      // حفظ معرف OneSignal للمشرف بأمان دون تمرير UUID خام كمعرّف رقمي
+      final authUserId = appState.supabase.auth.currentUser?.id;
+      if (authUserId != null && authUserId.isNotEmpty) {
+        try {
+          await NotificationService.saveUserPlayerId(
+            authUserId,
+            'admins',
+            identifierValue: username,
+          );
+        } catch (e) {
+          debugPrint('تعذر حفظ OneSignal Player ID للمشرف: $e');
+        }
+      }
 
       if (!mounted) return;
 
@@ -110,10 +119,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: AppConstants.gold.withOpacity(0.1),
+                          color: AppConstants.gold.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppConstants.gold.withOpacity(0.3),
+                            color: AppConstants.gold.withValues(alpha: 0.3),
                           ),
                         ),
                         child: const Icon(
