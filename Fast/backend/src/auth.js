@@ -52,8 +52,12 @@ async function resolveTrustedRole(user) {
     return { errorStatus: 401, errorMessage: 'هذا الحساب موقوف.' };
   }
 
-  // التحقق من صلاحية المشرف دون مقارنة UUID مع admins.id (integer)
+  // التحقق الصارم من صلاحية المشرف: يلزم app_metadata.role === 'admin' ووجود سجل مشرف موثق في جدول admins أو users (بدور admin)
   if (metadataRole === 'admin' || dbUserRecord?.role === 'admin') {
+    if (metadataRole !== 'admin') {
+      return { errorStatus: 403, errorMessage: 'صلاحية المشرف غير موثقة في الجلسة.' };
+    }
+
     let adminRecord = null;
 
     if (phone) {
@@ -75,11 +79,18 @@ async function resolveTrustedRole(user) {
       adminRecord = adminByUsername;
     }
 
-    // السماح بدور المشرف فقط إذا كان مصرحاً به في app_metadata ومرتبطاً بسجل مشرف/مستخدم نشط
-    if (metadataRole === 'admin' && (adminRecord || dbUserRecord?.role === 'admin')) {
+    if (!adminRecord && dbUserRecord?.role === 'admin') {
       return {
         role: 'admin',
-        adminRecord: adminRecord || null,
+        adminRecord: null,
+        dbUserRecord,
+      };
+    }
+
+    if (adminRecord) {
+      return {
+        role: 'admin',
+        adminRecord,
         dbUserRecord: dbUserRecord || null,
       };
     }
