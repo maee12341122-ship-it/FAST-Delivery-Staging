@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -219,7 +218,7 @@ class ApiService {
     }
   }
 
-  // 3. إنشاء الطلب حصرياً عبر Node.js Backend مع تمرير بيانات العناصر والمنتجات الخاصة
+  // 3. إنشاء الطلب حصرياً عبر Node.js Backend (السعر والإجمالي والخصم ورمز التتبع من الخادم)
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -229,8 +228,7 @@ class ApiService {
     String? couponCode,
     String? paymentMethod,
     String? paymentAccount,
-    double? productsTotal,
-    String? trackingCode,
+    String? clientRequestKey,
     String? token,
   }) async {
     if (_isCreatingOrder) {
@@ -239,26 +237,30 @@ class ApiService {
     _isCreatingOrder = true;
 
     try {
-      final resolvedTrackingCode =
-          (trackingCode != null && trackingCode.trim().isNotEmpty)
-              ? trackingCode.trim()
-              : (10000000 + Random().nextInt(90000000)).toString();
+      if (items.isEmpty) {
+        throw ApiException('لا يمكن إنشاء طلب بدون عناصر.');
+      }
 
       final sanitizedItems = items.map((item) {
-        final rawProductId = (item['product_id'] ?? item['id'] ?? '')
-            .toString()
-            .trim();
+        final rawProductId =
+            (item['product_id'] ?? item['id'] ?? '').toString().trim();
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
         final isCustomItem =
             rawProductId.startsWith('custom_') || item['is_custom'] == true;
 
+        // السعر المقترح يُرسل فقط كمرجع للمنتجات الخاصة (custom_) أو ذات السعر المتغير؛
+        // ويقوم Node.js Backend بالتحقق الفعلي وحساب الإجمالي والخصم ورسوم التوصيل.
         final parsedPrice = double.tryParse(
           (item['unit_price'] ?? item['price'] ?? item['custom_price'] ?? '')
               .toString(),
         );
 
         final sanitized = <String, dynamic>{
-          'product_id': rawProductId,
+          'product_id': isCustomItem
+              ? (rawProductId.startsWith('custom_')
+                  ? rawProductId
+                  : 'custom_${rawProductId.isNotEmpty ? rawProductId : DateTime.now().millisecondsSinceEpoch}')
+              : rawProductId,
           'quantity': qty > 0 ? qty : 1,
           'is_custom': isCustomItem,
         };
@@ -268,10 +270,10 @@ class ApiService {
           sanitized['name'] = itemName;
         }
 
-        // إرسال السعر المقترح فقط للمنتجات الخاصة (custom_) أو ذات السعر المتغير؛
-        // بينما يعتمد Backend على سعر قاعدة البيانات للمنتجات العادية.
-        if (parsedPrice != null && parsedPrice >= 0) {
+        if (isCustomItem && parsedPrice != null && parsedPrice >= 0) {
           sanitized['unit_price'] = parsedPrice;
+        } else if (!isCustomItem && parsedPrice != null && parsedPrice >= 0) {
+          sanitized['suggested_unit_price'] = parsedPrice;
         }
 
         return sanitized;
@@ -281,7 +283,8 @@ class ApiService {
         'items': sanitizedItems,
         'address': address.trim(),
         'notes': notes.trim(),
-        'tracking_code': resolvedTrackingCode,
+        if (clientRequestKey != null && clientRequestKey.trim().isNotEmpty)
+          'client_request_key': clientRequestKey.trim(),
         if (customerName != null && customerName.trim().isNotEmpty)
           'customer_name': customerName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
@@ -317,14 +320,12 @@ class ApiService {
     }
   }
 
-  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
-  static Future<List<dynamic>> fetchMyOrders(String phone,
-      {String? token}) async {
+  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend (يعتمد على الجلسة الموثقة على الخادم)
+  static Future<List<dynamic>> fetchMyOrders({String? token}) async {
     try {
       final data = await _sendJsonRequest(
         method: 'GET',
         path: '/api/orders/my',
-        queryParams: {'phone': phone.trim()},
         explicitToken: token,
       );
 
