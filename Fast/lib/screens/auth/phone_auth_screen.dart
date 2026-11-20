@@ -327,9 +327,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'customer_new';
       }
 
-      // طلب توليد وإرسال OTP فعلياً عبر Backend
+      // طلب توليد وإرسال OTP عبر AppState (يدعم الرمز التجريبي حالياً والربط الحقيقي لاحقاً)
       final reqResult = await appState.requestOtpForPhone(_cleanPhoneInput);
-      final msg = (reqResult is Map && reqResult['message'] != null)
+      final msg = reqResult['message']?.toString().isNotEmpty == true
           ? reqResult['message'].toString()
           : 'تم طلب إرسال رمز التحقق إلى $_formattedPhone 💬';
 
@@ -341,7 +341,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -365,7 +365,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP عبر الخادم وتفعيل الجلسة للعميل أو الانتقال لاستكمال البروفايل
+  // 2️⃣ التحقق من كود OTP وتفعيل الجلسة للعميل أو الانتقال لاستكمال البروفايل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -382,22 +382,45 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
 
       if (isValid) {
-        if (_detectedRole == 'customer_existing' && _pendingUserRecord != null) {
+        // إعادة التحقق من قاعدة البيانات لضمان جلب أحدث بيانات العميل حتى لو لم تكن محمّلة مسبقاً
+        Map<String, dynamic>? customerRow = _pendingUserRecord;
+        if (customerRow == null) {
+          final fetched = await _supabase
+              .from('customers')
+              .select()
+              .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+              .maybeSingle();
+          if (fetched != null) {
+            customerRow = Map<String, dynamic>.from(fetched);
+            _pendingUserRecord = customerRow;
+            final savedName = (customerRow['name'] ?? '').toString().trim();
+            final savedAddress = (customerRow['address'] ?? '').toString().trim();
+            if (mounted) {
+              _nameController.text = savedName;
+              _addressController.text = savedAddress;
+            }
+            if (savedName.isNotEmpty && savedAddress.isNotEmpty) {
+              _detectedRole = 'customer_existing';
+            }
+          }
+        }
+
+        if (_detectedRole == 'customer_existing' && customerRow != null) {
           final dbPhone =
-              (_pendingUserRecord!['phone'] ?? _cleanPhoneInput).toString();
+              (customerRow['phone'] ?? _cleanPhoneInput).toString();
           final latestRecord = await _supabase
               .from('customers')
               .select()
               .eq('phone', dbPhone)
               .maybeSingle();
 
-          final customerRow = latestRecord ?? _pendingUserRecord!;
+          final finalRow = latestRecord ?? customerRow;
           final String customerName =
-              (customerRow['name'] ?? '').toString().trim();
+              (finalRow['name'] ?? '').toString().trim();
           final String customerPhone =
-              (customerRow['phone'] ?? dbPhone).toString().trim();
+              _normalizePhone((finalRow['phone'] ?? dbPhone).toString().trim());
           final String customerAddress =
-              (customerRow['address'] ?? '').toString().trim();
+              (finalRow['address'] ?? '').toString().trim();
 
           appState.setUser(
             name: customerName,
@@ -406,7 +429,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           );
 
           await appState.requestLocationAndNotificationPermissions();
-          final syncKey = customerRow['id']?.toString() ?? customerPhone;
+          final syncKey = finalRow['id']?.toString() ?? customerPhone;
           await _syncOneSignalPlayerId(syncKey);
 
           if (!mounted) return;
@@ -528,8 +551,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final cleanPhone =
-          _cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : _formattedPhone;
+      final cleanPhone = _cleanPhoneInput.isNotEmpty
+          ? _cleanPhoneInput
+          : _normalizePhone(_formattedPhone);
 
       final savedRecord = await _supabase
           .from('customers')
@@ -542,7 +566,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           .maybeSingle();
 
       final finalName = (savedRecord?['name'] ?? name).toString().trim();
-      final finalPhone = (savedRecord?['phone'] ?? cleanPhone).toString().trim();
+      final finalPhone =
+          _normalizePhone((savedRecord?['phone'] ?? cleanPhone).toString().trim());
       final finalAddress =
           (savedRecord?['address'] ?? address).toString().trim();
 
