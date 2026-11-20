@@ -63,7 +63,7 @@ class LocalStorageService {
     try {
       final db = await database;
       final batch = db.batch();
-      for (var p in productsList) {
+      for (final p in productsList) {
         batch.insert(
           'local_products',
           {
@@ -128,16 +128,16 @@ class AppState extends ChangeNotifier {
   bool _isCreatingOrder = false;
 
   AppState() {
-    _initializeApplicationState();
+    unawaited(_initializeApplicationState());
     _initAuthListener();
   }
 
   @override
   void dispose() {
-    _authSub?.cancel();
-    _settingsSub?.cancel();
+    unawaited(_authSub?.cancel());
+    unawaited(_settingsSub?.cancel());
     if (_ordersChannel != null) {
-      supabase.removeChannel(_ordersChannel!);
+      unawaited(supabase.removeChannel(_ordersChannel!));
     }
     _httpClient.close();
     super.dispose();
@@ -177,8 +177,9 @@ class AppState extends ChangeNotifier {
         )
         .timeout(const Duration(milliseconds: 1500));
 
-    final decoded =
-        response.body.isNotEmpty ? jsonDecode(response.body) : <String, dynamic>{};
+    final decoded = response.body.isNotEmpty
+        ? jsonDecode(response.body)
+        : <String, dynamic>{};
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
@@ -462,7 +463,7 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
-      fetchProductsFromSupabase();
+      unawaited(fetchProductsFromSupabase());
     }
 
     notifyListeners();
@@ -496,7 +497,6 @@ class AppState extends ChangeNotifier {
   int pendingOrdersCount = 0;
   int cancelledOrdersCount = 0;
 
-  // حساب قيمة المنتجات فقط دون إضافة رسوم أو عمولات تلقائية زيادة
   double _extractOrderProductsTotal(Map order) {
     final candidates = [
       order['products_total'],
@@ -522,7 +522,7 @@ class AppState extends ChangeNotifier {
       var pending = 0;
       var cancelled = 0;
 
-      for (var order in response) {
+      for (final order in response) {
         final status = order['status']?.toString().trim();
         final price = _extractOrderProductsTotal(order);
 
@@ -606,7 +606,7 @@ class AppState extends ChangeNotifier {
       restaurantRatingsCache.clear();
       final Map<String, List<double>> tempRatings = {};
 
-      for (var row in response) {
+      for (final row in response) {
         final targetId = row['target_id']?.toString().trim() ?? '';
         final rating =
             double.tryParse(row['rating']?.toString() ?? '0.0') ?? 0.0;
@@ -690,28 +690,27 @@ class AppState extends ChangeNotifier {
 
   void addOrUpdateAddress(String formattedAddress) {
     if (userProfile != null) {
-      userProfile!['address'] = formattedAddress;
+      _userProfileData!['address'] = formattedAddress;
       notifyListeners();
     }
   }
 
   Future<void> fetchUserAddressesFromSupabase() async {
-    if (userProfile == null ||
-        userProfile!['phone'] == null ||
-        userProfile!['phone']!.isEmpty) {
-      _loadUserAddressesFromPrefs();
+    final phoneStr = userProfile?['phone']?.toString() ?? '';
+    if (phoneStr.isEmpty) {
+      await _loadUserAddressesFromPrefs();
       return;
     }
 
     try {
-      final cleanPhone = _normalizePhone(userProfile!['phone']!);
+      final cleanPhone = _normalizePhone(phoneStr);
       final response = await supabase
           .from('customer_addresses')
           .select()
           .eq('customer_phone', cleanPhone);
 
       _userAddresses.clear();
-      for (var row in response) {
+      for (final row in response) {
         _userAddresses.add(AddressModel(
           id: row['id'].toString(),
           title: row['title']?.toString() ?? 'عنوان',
@@ -720,10 +719,10 @@ class AppState extends ChangeNotifier {
           instructions: row['instructions']?.toString() ?? '',
         ));
       }
-      _saveUserAddressesFromPrefs();
+      await _saveUserAddressesFromPrefs();
       notifyListeners();
     } catch (e) {
-      _loadUserAddressesFromPrefs();
+      await _loadUserAddressesFromPrefs();
     }
   }
 
@@ -732,12 +731,13 @@ class AppState extends ChangeNotifier {
     if (_userAddresses.length == 1) {
       selectDefaultAddress(address);
     }
-    _saveUserAddressesFromPrefs();
+    await _saveUserAddressesFromPrefs();
     notifyListeners();
 
-    if (userProfile != null && userProfile!['phone'] != null) {
+    final phoneStr = userProfile?['phone']?.toString() ?? '';
+    if (phoneStr.isNotEmpty) {
       try {
-        final cleanPhone = _normalizePhone(userProfile!['phone'] ?? '');
+        final cleanPhone = _normalizePhone(phoneStr);
         await supabase.from('customer_addresses').insert({
           'customer_phone': cleanPhone,
           'title': address.title.trim(),
@@ -754,7 +754,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> removeUserAddress(String id) async {
     _userAddresses.removeWhere((a) => a.id == id);
-    _saveUserAddressesFromPrefs();
+    await _saveUserAddressesFromPrefs();
     notifyListeners();
 
     try {
@@ -786,7 +786,7 @@ class AppState extends ChangeNotifier {
       if (addressesJson != null && addressesJson.isNotEmpty) {
         final List<dynamic> decodedList = jsonDecode(addressesJson);
         _userAddresses.clear();
-        for (var item in decodedList) {
+        for (final item in decodedList) {
           if (item is Map) {
             _userAddresses.add(AddressModel(
               id: item['id']?.toString() ??
@@ -1046,6 +1046,41 @@ class AppState extends ChangeNotifier {
     String? targetChat,
     String? senderRole,
   }) async {
+    try {
+      final oid = orderId?.toString().trim() ?? '';
+      if (oid.isEmpty) return null;
+
+      final orderRow = await supabase
+          .from('orders')
+          .select('phone, assigned_courier')
+          .eq('id', int.tryParse(oid) ?? oid)
+          .maybeSingle();
+
+      if (senderRole == 'customer') {
+        final adminIds = await getAllAdminPlayerIds();
+        return adminIds.isNotEmpty ? adminIds.first : null;
+      }
+
+      if (targetChat == 'admin_courier') {
+        final courierName = orderRow?['assigned_courier']?.toString() ?? '';
+        if (courierName.isNotEmpty) {
+          return await getCourierPlayerIdByName(courierName);
+        }
+      } else {
+        final custPhone = _normalizePhone(orderRow?['phone']?.toString() ?? '');
+        if (custPhone.isNotEmpty) {
+          final cust = await supabase
+              .from('customers')
+              .select('onesignal_player_id')
+              .eq('phone', custPhone)
+              .maybeSingle();
+          final pid = cust?['onesignal_player_id']?.toString();
+          if (pid != null && pid.isNotEmpty) return pid;
+        }
+      }
+    } catch (e) {
+      debugPrint('تعذر تحديد معرف المستلم للشات: $e');
+    }
     return null;
   }
 
@@ -1081,17 +1116,18 @@ class AppState extends ChangeNotifier {
   String currentCity = 'تعز';
   void setCity(String city) {
     currentCity = city;
-    if (userProfile != null) {
-      userProfile!['city'] = city;
+    if (_userProfileData != null) {
+      _userProfileData!['city'] = city;
     }
     notifyListeners();
   }
 
   Stream<JsonList> getMessagesForOrder(dynamic orderId, String targetChat) {
+    final parsedId = int.tryParse(orderId.toString()) ?? orderId;
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
-        .eq('order_id', orderId)
+        .eq('order_id', parsedId)
         .eq('target_chat', targetChat)
         .order('created_at', ascending: true)
         .map((rows) {
@@ -1107,8 +1143,9 @@ class AppState extends ChangeNotifier {
   ) async {
     if (messageText.trim().isEmpty) return;
 
+    final parsedId = int.tryParse(orderId.toString()) ?? orderId;
     final newMessage = {
-      'order_id': orderId,
+      'order_id': parsedId,
       'sender_type': senderRole,
       'target_chat': targetChat,
       'message_text': messageText.trim(),
@@ -1133,10 +1170,10 @@ class AppState extends ChangeNotifier {
   }
 
   void shareApp() {
-    Share.share(
+    unawaited(Share.share(
       'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
-    );
+    ));
   }
 
   Future<bool> isLocationServiceEnabled() async {
@@ -1209,7 +1246,7 @@ class AppState extends ChangeNotifier {
 
   void listenToStoreSettingsRealtime() {
     try {
-      _settingsSub?.cancel();
+      unawaited(_settingsSub?.cancel());
       _settingsSub =
           supabase.from('settings').stream(primaryKey: ['id']).listen((data) {
         if (data.isNotEmpty) {
@@ -1325,9 +1362,12 @@ class AppState extends ChangeNotifier {
 
   dynamic get user => userProfile == null
       ? null
-      : _UserMock(userProfile!['name'] ?? '', userProfile!['phone'] ?? '');
+      : _UserMock(
+          userProfile!['name']?.toString() ?? '',
+          userProfile!['phone']?.toString() ?? '',
+        );
 
-  String? get currentUserId => userProfile?['phone'];
+  String? get currentUserId => userProfile?['phone']?.toString();
 
   void setUser({
     dynamic profile,
@@ -1424,7 +1464,7 @@ class AppState extends ChangeNotifier {
       final response = await supabase
           .from('orders')
           .select()
-          .eq('id', orderId)
+          .eq('id', int.tryParse(orderId) ?? orderId)
           .maybeSingle();
       if (response != null) {
         _upsertOrderInList(response);
@@ -1562,29 +1602,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateUser({String? name, String? address, String? phone}) async {
-    if (userProfile != null) {
+    if (_userProfileData != null) {
       if (phone != null && phone.trim().isNotEmpty) {
-        userProfile!['phone'] = _normalizePhone(phone);
+        _userProfileData!['phone'] = _normalizePhone(phone);
       }
       if (name != null) {
-        userProfile!['name'] = name;
+        _userProfileData!['name'] = name;
       }
       if (address != null) {
-        userProfile!['address'] = address;
+        _userProfileData!['address'] = address;
       }
     }
     await saveUserProfileDetails(
-      name ?? userProfile?['name'] ?? '',
-      address ?? userProfile?['address'] ?? '',
+      name ?? userProfile?['name']?.toString() ?? '',
+      address ?? userProfile?['address']?.toString() ?? '',
     );
   }
 
   Future<void> saveUserProfileDetails(String name, String address) async {
     if (userProfile != null) {
-      final cleanPhone = _normalizePhone(userProfile!['phone'] ?? '');
-      userProfile!['name'] = name;
-      userProfile!['address'] = address;
-      userProfile!['phone'] = cleanPhone;
+      final cleanPhone =
+          _normalizePhone(userProfile!['phone']?.toString() ?? '');
+      userProfile = {
+        ...userProfile!,
+        'name': name,
+        'address': address,
+        'phone': cleanPhone,
+      };
 
       await _persistUserSessionToPrefs(userProfile!);
 
@@ -1757,7 +1801,6 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
-  // تسوية مستحقات المندوب بناءً على رسوم التوصيل الفعلية المسجلة فقط
   Future<void> settleCourierEarnings(String courierName) async {
     try {
       final cleanCourierName = courierName.trim();
@@ -1978,7 +2021,7 @@ class AppState extends ChangeNotifier {
     final courier = await supabase
         .from('couriers')
         .select('id, name')
-        .eq('id', courierId)
+        .eq('id', int.tryParse(courierId) ?? courierId)
         .single();
 
     final currentOrder = orders.firstWhere(
@@ -2076,12 +2119,11 @@ class AppState extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> get customerOrders {
-    if (userProfile == null ||
-        userProfile!['phone'] == null ||
-        userProfile!['phone']!.isEmpty) {
+    final phoneStr = userProfile?['phone']?.toString() ?? '';
+    if (phoneStr.isEmpty) {
       return [];
     }
-    final myPhone = _normalizePhone(userProfile!['phone']!);
+    final myPhone = _normalizePhone(phoneStr);
 
     return orders.where((o) {
       final orderPhone = _normalizePhone(o['phone']?.toString() ?? '');
@@ -2092,7 +2134,7 @@ class AppState extends ChangeNotifier {
   void addNotification(String title, String body) {
     notifications.insert(
         0, {'title': title, 'body': body, 'time': DateTime.now()});
-    NotificationService.showLocalNotification(title, body);
+    unawaited(NotificationService.showLocalNotification(title, body));
     notifyListeners();
   }
 
@@ -2103,7 +2145,7 @@ class AppState extends ChangeNotifier {
       'time': DateTime.now(),
       'type': type ?? 'general',
     });
-    NotificationService.showLocalNotification(title, body);
+    unawaited(NotificationService.showLocalNotification(title, body));
     notifyListeners();
   }
 
@@ -2139,7 +2181,11 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  void listenToOrdersRealtime() async {
+  void listenToOrdersRealtime() {
+    unawaited(_initOrdersRealtime());
+  }
+
+  Future<void> _initOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
       orders = List<Map<String, dynamic>>.from(initialData);
@@ -2236,7 +2282,6 @@ class AppState extends ChangeNotifier {
             restName != 'خدمة الطلبات الخاصة');
   }
 
-  // إنشاء الطلب بدون إضافة أي عمولات أو رسوم تلقائية إضافية
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -2327,7 +2372,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // تحديد رسوم التوصيل وحساب الإجمالي بجمع قيمة المنتجات + رسوم التوصيل المحددة فقط
   Future<void> setOrderDeliveryFee(
     dynamic orderId,
     double fee,
