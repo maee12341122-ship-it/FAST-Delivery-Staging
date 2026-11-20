@@ -26,7 +26,7 @@ dependencies:
   flutter_local_notifications: 17.2.4
   google_maps_flutter: ^2.10.0
   
-  # 🖼️ إضافة مكتبة التخزين المؤقت للصور لتسريع التحعرض
+  # 🖼️ إضافة مكتبة التخزين المؤقت للصور لتسريع العرض
   cached_network_image: ^3.4.1
   
   # 💾 حزم التخزين المحلي وقاعدة البيانات (للعمل بدون إنترنت)
@@ -37,6 +37,14 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
 
 flutter:
   uses-material-design: true
