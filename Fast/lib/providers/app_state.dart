@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -195,7 +194,7 @@ class AppState extends ChangeNotifier {
     throw Exception(errorMsg);
   }
 
-  // التحقق الحقيقي من المشرف عبر Backend أو جدول admins الفعلي (بدون الاعتماد على user_metadata.role)
+  // التحقق الحقيقي من المشرف عبر Backend أو جدول admins الفعلي (بدون الاعتماد على user_metadata.role أو UUID في admins.id)
   Future<JsonMapNullable> _verifyAdminFromBackendOrSchema(User? user) async {
     if (user == null) return null;
     final token = _accessToken;
@@ -218,7 +217,7 @@ class AppState extends ChangeNotifier {
       if (phone.isEmpty) return null;
       final row = await supabase
           .from('admins')
-          .select()
+          .select('id, username, phone')
           .eq('phone', phone)
           .maybeSingle();
       if (row != null) {
@@ -305,8 +304,8 @@ class AppState extends ChangeNotifier {
     final row = verifiedAdminRow ?? await _verifyAdminFromBackendOrSchema(user);
     if (row != null) {
       adminPhone = _normalizePhone(row['phone']?.toString() ?? '');
-      if ((row['name']?.toString() ?? '').trim().isNotEmpty) {
-        adminName = row['name'].toString().trim();
+      if ((row['username']?.toString() ?? '').trim().isNotEmpty) {
+        adminName = row['username'].toString().trim();
       }
     }
 
@@ -2381,7 +2380,8 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
       }
 
       final normalizedPhone = _normalizePhone(phone);
-      final double cleanProductsTotal = productsTotal > 0 ? productsTotal : 0.0;
+      final clientRequestKey =
+          'req_${DateTime.now().microsecondsSinceEpoch}_$normalizedPhone';
 
       final itemsPayload = _cartItems.map((cartItem) {
         final isCustom = cartItem.id.startsWith('custom_');
@@ -2390,12 +2390,12 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
           'name': cartItem.name,
           'quantity': cartItem.quantity,
           'is_custom': isCustom,
-          if (isCustom) 'unit_price': cartItem.price,
+          if (isCustom || cartItem.price > 0) 'unit_price': cartItem.price,
         };
       }).toList();
 
       JsonMap order = {};
-      var trackingCode = (10000000 + Random().nextInt(90000000)).toString();
+      var trackingCode = '';
 
       final responseData = await ApiService.createOrder(
         items: itemsPayload,
@@ -2406,21 +2406,17 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
         couponCode: activeCouponCode,
         paymentMethod: paymentMethod,
         paymentAccount: paymentAccount,
-        productsTotal: cleanProductsTotal,
-        trackingCode: trackingCode,
+        clientRequestKey: clientRequestKey,
         token: _accessToken,
       );
 
       if (responseData['order'] is Map) {
         order = Map<String, dynamic>.from(responseData['order']);
-        trackingCode =
-            order['tracking_code']?.toString().trim().isNotEmpty == true
-                ? order['tracking_code'].toString()
-                : trackingCode;
+        trackingCode = order['tracking_code']?.toString().trim() ?? '';
       }
 
       final orderId = order['id'];
-      lastOrderTrackingCode = trackingCode;
+      lastOrderTrackingCode = trackingCode.isNotEmpty ? trackingCode : null;
       userProfile = {
         'phone': normalizedPhone,
         'name': customerName,
@@ -2510,13 +2506,9 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
       throw Exception('معرف الطلب غير صالح.');
     }
 
-    final newStatus =
-        action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
-
     final responseData =
         await _postBackend('/api/orders/$intOrderId/customer-action', {
       'action': action,
-      'status': newStatus,
     });
 
     if (responseData['order'] is Map) {
