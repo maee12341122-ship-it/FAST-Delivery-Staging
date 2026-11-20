@@ -9,7 +9,7 @@ import 'admin/admin_reports_screen.dart';
 import 'home_screen.dart';
 
 class AdminScreen extends StatefulWidget {
-  const AdminScreen({Key? key}) : super(key: key);
+  const AdminScreen({super.key});
 
   @override
   State<AdminScreen> createState() => _AdminScreenState();
@@ -58,7 +58,7 @@ class _AdminScreenState extends State<AdminScreen>
 
       if (appState.isAdminLoggedIn) return;
 
-      String cleanPhone = currentPhone.replaceAll(' ', '');
+      var cleanPhone = currentPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('+967')) cleanPhone = cleanPhone.substring(4);
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
@@ -85,7 +85,7 @@ class _AdminScreenState extends State<AdminScreen>
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => HomeScreen()),
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +96,7 @@ class _AdminScreenState extends State<AdminScreen>
   @override
   void dispose() {
     _ordersTabController.dispose();
-    for (var controller in _feeControllers.values) {
+    for (final controller in _feeControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -129,9 +129,10 @@ class _AdminScreenState extends State<AdminScreen>
 
   void _handleAdminNotificationTap(
       BuildContext context, Map<String, dynamic> notification) {
+    final additionalData = notification['additionalData'];
     final String? orderId = notification['order_id']?.toString() ??
         notification['related_id']?.toString() ??
-        notification['additionalData']?['order_id']?.toString();
+        (additionalData is Map ? additionalData['order_id']?.toString() : null);
 
     if (orderId != null && orderId.isNotEmpty) {
       Navigator.push(
@@ -554,23 +555,23 @@ class _AdminScreenState extends State<AdminScreen>
             final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
               final name = o['courier_name']?.toString().trim() ?? '';
-              final bool isDelivered =
+              final isDelivered =
                   o['status']?.toString().trim() == 'delivered';
-              final bool isSettled = o['is_settled'] == true;
+              final isSettled = o['is_settled'] == true;
               return (assigned == courierName || name == courierName) &&
                   isDelivered &&
                   !isSettled;
             }).toList();
 
-            double totalCourierEarnings = 0.0;
-            for (var order in courierUnsettledOrders) {
+            var totalCourierEarnings = 0.0;
+            for (final order in courierUnsettledOrders) {
               totalCourierEarnings +=
                   double.tryParse(order['delivery_fee']?.toString() ?? '0') ??
                       0.0;
             }
 
-            double adminCommission = totalCourierEarnings * 0.20;
-            double netCourierEarnings = totalCourierEarnings - adminCommission;
+            final adminCommission = totalCourierEarnings * 0.20;
+            final netCourierEarnings = totalCourierEarnings - adminCommission;
 
             return Card(
               color: const Color(0xFF1E1E1E),
@@ -858,8 +859,8 @@ class _AdminScreenState extends State<AdminScreen>
                       backgroundColor: Colors.amber,
                       minimumSize: const Size(double.infinity, 44)),
                   onPressed: () async {
-                    int? newStart = int.tryParse(startHourController.text);
-                    int? newEnd = int.tryParse(endHourController.text);
+                    final newStart = int.tryParse(startHourController.text);
+                    final newEnd = int.tryParse(endHourController.text);
                     if (newStart != null && newEnd != null) {
                       await appState.updateStoreHours(newStart, newEnd);
                       if (context.mounted) {
@@ -962,10 +963,10 @@ class _AdminScreenState extends State<AdminScreen>
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
-    final int totalCompletedOrdersCount =
+    final totalCompletedOrdersCount =
         appState.orders.where((o) => o['status'] == 'delivered').length;
 
-    final List<Widget> adminPages = [
+    final adminPages = <Widget>[
       _buildOrdersManagementWithTabs(appState),
       _buildProductsManagement(appState),
       _buildCouriersManagement(appState),
@@ -1408,22 +1409,22 @@ class _AdminScreenState extends State<AdminScreen>
         final rawStatus = order['status']?.toString() ?? '';
         final arabicStatus = _getArabicStatus(rawStatus);
 
-        final bool isWaitingPricing = rawStatus == 'waitingForPricing';
-        final bool isPricingThisOrder = _pricingOrderIds.contains(orderId);
+        final isWaitingPricing = rawStatus == 'waitingForPricing';
+        final isPricingThisOrder = _pricingOrderIds.contains(orderId);
 
-        final double deliveryFeeAmount = _parseDouble(order['delivery_fee']);
+        final deliveryFeeAmount = _parseDouble(order['delivery_fee']);
 
-        final double explicitProductsPrice = _parseDouble(
+        final explicitProductsPrice = _parseDouble(
           order['products_total'] ??
               order['items_price'] ??
               order['products_price'],
         );
 
-        final double rawTotalPrice = _parseDouble(
+        final rawTotalPrice = _parseDouble(
           order['total_price'] ?? order['total_amount'] ?? order['total'],
         );
 
-        double finalProductsPrice = explicitProductsPrice;
+        var finalProductsPrice = explicitProductsPrice;
         if (finalProductsPrice <= 0 && rawTotalPrice > 0) {
           finalProductsPrice = rawTotalPrice > deliveryFeeAmount &&
                   rawStatus != 'waitingForPricing'
@@ -1431,7 +1432,7 @@ class _AdminScreenState extends State<AdminScreen>
               : rawTotalPrice;
         }
 
-        final double grandTotal = rawTotalPrice > 0
+        final grandTotal = rawTotalPrice > 0
             ? rawTotalPrice
             : (finalProductsPrice + deliveryFeeAmount);
 
@@ -1697,7 +1698,7 @@ class _AdminScreenState extends State<AdminScreen>
                                 ),
                                 items: couriersList
                                     .map<DropdownMenuItem<String>>((courier) {
-                                  String name = courier['name']?.toString() ??
+                                  final name = courier['name']?.toString() ??
                                       courier['full_name']?.toString() ??
                                       'مندوب';
                                   return DropdownMenuItem<String>(
@@ -1728,9 +1729,9 @@ class _AdminScreenState extends State<AdminScreen>
                       onPressed: isPricingThisOrder
                           ? null
                           : () async {
-                              double? fee = double.tryParse(
+                              final fee = double.tryParse(
                                   _feeControllers[orderId]?.text ?? '0');
-                              String? selectedCourier =
+                              final selectedCourier =
                                   _selectedCouriersForOrder[orderId];
 
                               if (fee == null || fee < 0) {
