@@ -22,7 +22,7 @@ import '../services/api_service.dart';
 
 typedef JsonMap = Map<String, dynamic>;
 typedef JsonMapNullable = Map<String, dynamic>?;
-typedef JsonList = List<Map<String, dynamic>>;
+typedef JsonList = List>;
 
 class LocalStorageService {
   static Database? _database;
@@ -118,7 +118,7 @@ class AppState extends ChangeNotifier {
   final http.Client _httpClient = http.Client();
 
   StreamSubscription<AuthState>? _authSub;
-  StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
+  StreamSubscription<List>>? _settingsSub;
   RealtimeChannel? _ordersChannel;
 
   static const bool _useTestOtpBypass = true;
@@ -347,17 +347,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List<Map<String, dynamic>> restaurantsList = [];
-  List<Map<String, dynamic>> categoriesList = [];
+  List> restaurantsList = [];
+  List> categoriesList = [];
   String? selectedCategory;
 
   Future<void> fetchRestaurantsAndCategories() async {
     try {
       final restRes = await supabase.from('restaurants').select();
-      restaurantsList = List<Map<String, dynamic>>.from(restRes);
+      restaurantsList = List>.from(restRes);
 
       final catRes = await supabase.from('categories').select();
-      categoriesList = List<Map<String, dynamic>>.from(catRes);
+      categoriesList = List>.from(catRes);
 
       notifyListeners();
     } catch (e) {
@@ -387,14 +387,14 @@ class AppState extends ChangeNotifier {
         try {
           final backendOrders = await ApiService.fetchAdminOrders(token)
               .timeout(const Duration(milliseconds: 1500));
-          orders = List<Map<String, dynamic>>.from(backendOrders);
+          orders = List>.from(backendOrders);
         } catch (_) {
           final initialData = await supabase.from('orders').select();
-          orders = List<Map<String, dynamic>>.from(initialData);
+          orders = List>.from(initialData);
         }
       } else {
         final initialData = await supabase.from('orders').select();
-        orders = List<Map<String, dynamic>>.from(initialData);
+        orders = List>.from(initialData);
       }
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
@@ -577,7 +577,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Map<String, dynamic>> productModifiers = [];
+  List> productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
   Future<void> fetchProductModifiers(String productId) async {
@@ -587,7 +587,7 @@ class AppState extends ChangeNotifier {
           .select()
           .eq('product_id', productId);
 
-      productModifiers = List<Map<String, dynamic>>.from(response);
+      productModifiers = List>.from(response);
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب إضافات المنتج: $e');
@@ -1132,8 +1132,7 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     Share.share(
-      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل
-https://play.google.com/store/apps/details?id=com.example.taiz_express',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     );
   }
@@ -1634,7 +1633,7 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
     }
   }
 
-  List<Map<String, dynamic>> couriers = [];
+  List> couriers = [];
 
   Future<void> _loadCourierSession() async {
     final user = supabase.auth.currentUser;
@@ -1667,7 +1666,7 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
   Future<void> fetchCouriersFromSupabase() async {
     try {
       final response = await supabase.from('couriers').select();
-      couriers = List<Map<String, dynamic>>.from(response);
+      couriers = List>.from(response);
       await _loadCourierSession();
       notifyListeners();
     } catch (e) {
@@ -1769,7 +1768,7 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
           .eq('status', 'delivered')
           .or('is_settled.is.null,is_settled.eq.false');
 
-      final eligibleOrders = List<Map<String, dynamic>>.from(unsettledRows);
+      final eligibleOrders = List>.from(unsettledRows);
       if (eligibleOrders.isEmpty) {
         throw Exception('لا توجد طلبات مكتملة وغير مسوّاة لهذا المندوب.');
       }
@@ -2074,8 +2073,8 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
     }
   }
 
-  List<Map<String, dynamic>> orders = [];
-  List<Map<String, dynamic>> notifications = [];
+  List> orders = [];
+  List> notifications = [];
 
   int get unreadNotificationsCount => notifications.length;
 
@@ -2090,7 +2089,7 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
     return clean;
   }
 
-  List<Map<String, dynamic>> get customerOrders {
+  List> get customerOrders {
     if (userProfile == null ||
         userProfile!['phone'] == null ||
         userProfile!['phone']!.isEmpty) {
@@ -2157,7 +2156,7 @@ https://play.google.com/store/apps/details?id=com.example.taiz_express',
   void listenToOrdersRealtime() async {
     try {
       final initialData = await supabase.from('orders').select();
-      orders = List<Map<String, dynamic>>.from(initialData);
+      orders = List>.from(initialData);
       _sortOrders();
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
