@@ -121,9 +121,6 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
   RealtimeChannel? _ordersChannel;
 
-  static const bool _useTestOtpBypass = true;
-  static const String _testOtpCode = '1234';
-
   bool _isCreatingOrder = false;
 
   AppState() {
@@ -1449,26 +1446,6 @@ class AppState extends ChangeNotifier {
       throw Exception('الرجاء إدخال رقم هاتف صحيح.');
     }
 
-    if (_useTestOtpBypass) {
-      var existsInDb = false;
-      try {
-        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
-        existsInDb = dbRecord != null;
-        if (existsInDb) {
-          await restoreLastCustomerOrder();
-        }
-      } catch (e) {
-        debugPrint('خطأ في التحقق من العميل في قاعدة البيانات: $e');
-      }
-      notifyListeners();
-      return {
-        'exists': existsInDb,
-        'message': existsInDb
-            ? 'تم العثور على حسابك وجلب بياناتك. رمز التحقق التجريبي هو $_testOtpCode'
-            : 'رمز التحقق التجريبي هو $_testOtpCode',
-      };
-    }
-
     try {
       final response = await _postBackend('/api/auth/otp/request', {
         'phone': cleanPhone,
@@ -1479,7 +1456,7 @@ class AppState extends ChangeNotifier {
             response['message']?.toString() ?? 'تم إرسال رمز التحقق بنجاح',
       };
     } catch (e) {
-      debugPrint('خطأ في طلب رمز التحقق');
+      debugPrint('خطأ في طلب رمز التحقق: $e');
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     } finally {
       notifyListeners();
@@ -1490,31 +1467,6 @@ class AppState extends ChangeNotifier {
     if (enteredOtp.trim().isEmpty) return false;
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) return false;
-
-    if (_useTestOtpBypass) {
-      if (enteredOtp.trim() != _testOtpCode) return false;
-
-      try {
-        final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
-        if (dbRecord != null) {
-          await restoreLastCustomerOrder();
-          return true;
-        }
-      } catch (e) {
-        debugPrint('خطأ في جلب سجل العميل بعد التحقق: $e');
-      }
-
-      userProfile = {
-        'phone': cleanPhone,
-        'name': '',
-        'address': '',
-        'city': currentCity,
-      };
-      await _persistUserSessionToPrefs(userProfile!);
-      await fetchUserAddressesFromSupabase();
-      notifyListeners();
-      return true;
-    }
 
     try {
       final response = await _postBackend('/api/auth/otp/verify', {
@@ -1550,11 +1502,12 @@ class AppState extends ChangeNotifier {
           'city': currentCity,
         };
         await _persistUserSessionToPrefs(userProfile!);
+        await fetchUserAddressesFromSupabase();
         notifyListeners();
       }
       return true;
     } catch (e) {
-      debugPrint('خطأ في التحقق من الرمز');
+      debugPrint('خطأ في التحقق من الرمز: $e');
       return false;
     }
   }
@@ -1954,27 +1907,15 @@ class AppState extends ChangeNotifier {
     if (intId == null) {
       throw Exception('معرف الطلب غير صالح.');
     }
-    try {
-      final res = await ApiService.adminUpdateOrderStatus(
-        _accessToken ?? '',
-        intId,
-        status,
-      ).timeout(const Duration(milliseconds: 1500));
-      if (res['order'] is Map) {
-        _upsertOrderInList(res['order']);
-      } else {
-        await fetchOrders();
-      }
-    } catch (_) {
-      final updatedRow = await supabase
-          .from('orders')
-          .update({'status': status})
-          .eq('id', intId)
-          .select()
-          .maybeSingle();
-      if (updatedRow != null) {
-        _upsertOrderInList(updatedRow);
-      }
+    final res = await ApiService.adminUpdateOrderStatus(
+      _accessToken ?? '',
+      intId,
+      status,
+    ).timeout(const Duration(seconds: 5));
+    if (res['order'] is Map) {
+      _upsertOrderInList(res['order']);
+    } else {
+      await fetchOrders();
     }
     unawaited(fetchAdminFinancialReports());
     notifyListeners();
@@ -2300,22 +2241,6 @@ class AppState extends ChangeNotifier {
                 : trackingCode;
       }
 
-      // اعتماد قيمة المنتجات المدخلة مباشرة دون زيادة تلقائية
-      order['products_total'] = cleanProductsTotal;
-      order['total_price'] = cleanProductsTotal;
-
-      if (order['id'] != null) {
-        try {
-          await supabase
-              .from('orders')
-              .update({
-                'total_price': cleanProductsTotal,
-                'products_total': cleanProductsTotal,
-              })
-              .eq('id', order['id']);
-        } catch (_) {}
-      }
-
       final orderId = order['id'];
       lastOrderTrackingCode = trackingCode;
       userProfile = {
@@ -2332,6 +2257,8 @@ class AppState extends ChangeNotifier {
       }
       if (order.isNotEmpty) {
         _upsertOrderInList(order);
+      } else {
+        await fetchOrders();
       }
 
       _cartItems.clear();
@@ -2367,58 +2294,24 @@ class AppState extends ChangeNotifier {
       final cleanCourierName =
           courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim();
 
+      final responseData = await ApiService.adminPricingOrder(
+        _accessToken ?? '',
+        intOrderId,
+        cleanFee,
+        cleanCourierName,
+      ).timeout(const Duration(seconds: 5));
+
       JsonMap updatedOrder = {};
-
-      final existingIndex =
-          orders.indexWhere((o) => o['id'].toString() == orderId.toString());
-      final existingOrder = existingIndex >= 0
-          ? Map<String, dynamic>.from(orders[existingIndex])
-          : <String, dynamic>{};
-
-      final productsTotal = _extractOrderProductsTotal(existingOrder);
-      final newTotal = productsTotal + cleanFee;
-
-      try {
-        final responseData = await ApiService.adminPricingOrder(
-          _accessToken ?? '',
-          intOrderId,
-          cleanFee,
-          cleanCourierName,
-        ).timeout(const Duration(milliseconds: 1500));
-
-        if (responseData['order'] is Map) {
-          updatedOrder = Map<String, dynamic>.from(responseData['order']);
-        }
-      } catch (_) {}
-
-      final dbRow = await supabase
-          .from('orders')
-          .update({
-            'delivery_fee': cleanFee,
-            'total_price': newTotal,
-            'products_total': productsTotal,
-            'assigned_courier': cleanCourierName,
-            'status': 'pricingSentToCustomer',
-          })
-          .eq('id', intOrderId)
-          .select()
-          .maybeSingle();
-
-      if (dbRow != null) {
-        updatedOrder = {
-          ...updatedOrder,
-          ...Map<String, dynamic>.from(dbRow),
-        };
+      if (responseData['order'] is Map) {
+        updatedOrder = Map<String, dynamic>.from(responseData['order']);
       }
 
-      updatedOrder['id'] = updatedOrder['id'] ?? intOrderId;
-      updatedOrder['delivery_fee'] = cleanFee;
-      updatedOrder['products_total'] = productsTotal;
-      updatedOrder['total_price'] = newTotal;
-      updatedOrder['assigned_courier'] = cleanCourierName;
-      updatedOrder['status'] = updatedOrder['status'] ?? 'pricingSentToCustomer';
+      if (updatedOrder.isNotEmpty) {
+        _upsertOrderInList(updatedOrder);
+      } else {
+        await fetchOrders();
+      }
 
-      _upsertOrderInList(updatedOrder);
       unawaited(fetchAdminFinancialReports());
 
       addLocalNotification(
@@ -2448,29 +2341,17 @@ class AppState extends ChangeNotifier {
     final newStatus =
         action == 'approve' ? 'waitingCourierApproval' : 'cancelled';
 
-    try {
-      final responseData =
-          await _postBackend('/api/orders/$intOrderId/customer-action', {
-        'action': action,
-        'status': newStatus,
-        'phone': _normalizePhone(phone.toString()),
-      });
+    final responseData =
+        await _postBackend('/api/orders/$intOrderId/customer-action', {
+      'action': action,
+      'status': newStatus,
+      'phone': _normalizePhone(phone.toString()),
+    });
 
-      if (responseData['order'] is Map) {
-        _upsertOrderInList(responseData['order']);
-      } else {
-        await fetchOrders();
-      }
-    } catch (_) {
-      final updatedRow = await supabase
-          .from('orders')
-          .update({'status': newStatus})
-          .eq('id', intOrderId)
-          .select()
-          .maybeSingle();
-      if (updatedRow != null) {
-        _upsertOrderInList(updatedRow);
-      }
+    if (responseData['order'] is Map) {
+      _upsertOrderInList(responseData['order']);
+    } else {
+      await fetchOrders();
     }
 
     unawaited(fetchAdminFinancialReports());
@@ -2513,28 +2394,16 @@ class AppState extends ChangeNotifier {
       newStatus = 'delivered';
     }
 
-    try {
-      final responseData = await ApiService.courierUpdateOrderStatus(
-        _accessToken ?? '',
-        intOrderId,
-        newStatus,
-      ).timeout(const Duration(milliseconds: 1500));
+    final responseData = await ApiService.courierUpdateOrderStatus(
+      _accessToken ?? '',
+      intOrderId,
+      newStatus,
+    ).timeout(const Duration(seconds: 5));
 
-      if (responseData['order'] is Map) {
-        _upsertOrderInList(responseData['order']);
-      } else {
-        await fetchOrders();
-      }
-    } catch (_) {
-      final updatedRow = await supabase
-          .from('orders')
-          .update({'status': newStatus})
-          .eq('id', intOrderId)
-          .select()
-          .maybeSingle();
-      if (updatedRow != null) {
-        _upsertOrderInList(updatedRow);
-      }
+    if (responseData['order'] is Map) {
+      _upsertOrderInList(responseData['order']);
+    } else {
+      await fetchOrders();
     }
 
     unawaited(fetchAdminFinancialReports());
