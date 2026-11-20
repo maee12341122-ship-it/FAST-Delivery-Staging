@@ -32,6 +32,33 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   void initState() {
     super.initState();
     _selectedPoint = widget.initialPoint ?? _taizCenter;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkInitialLocationStatus();
+    });
+  }
+
+  Future<void> _checkInitialLocationStatus() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final permission = await Geolocator.checkPermission();
+      if (!mounted) return;
+
+      if (!serviceEnabled) {
+        setState(() {
+          _isServiceDisabled = true;
+          _error = 'الموقع غير مفعّل حالياً! يرجى تفعيل الموقع (GPS) لتحديد موقعك بدقة.';
+        });
+      } else if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _isPermissionDeniedForever = true;
+          _error = 'إذن الموقع مغلق من الإعدادات! يرجى تفعيل الموقع من إعدادات الهاتف.';
+        });
+      } else if (permission == LocationPermission.denied) {
+        setState(() {
+          _error = 'يرجى السماح بتفعيل الموقع لتحديد عنوانك بدقة.';
+        });
+      }
+    } catch (_) {}
   }
 
   // 📍 دالة تحويل الإحداثيات الجغرافية إلى اسم منطقة واضحة في تعز بدلاً من الأرقام
@@ -74,15 +101,15 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               Icon(Icons.location_off_rounded, color: AppConstants.gold, size: 26),
               SizedBox(width: 8),
               Text(
-                'تشغيل الموقع مطلوب 📍',
+                'يرجى تفعيل الموقع 📍',
                 style: TextStyle(color: AppConstants.gold, fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           content: Text(
             openAppSettingsMode
-                ? 'تم رفض إذن الموقع سابقاً. يرجى تشغيل الموقع والسماح بالوصول من إعدادات الهاتف لتحديد موقعك بدقة.'
-                : 'خدمة الموقع متوقفة حالياً. يرجى تشغيل الموقع لتحديد موقعك بدقة على الخريطة.',
+                ? 'الموقع غير مفعّل أو تم رفض الإذن سابقاً. يرجى تفعيل الموقع والسماح بالوصول من إعدادات الهاتف لتحديد موقعك بدقة.'
+                : 'الموقع غير مفعّل حالياً! يرجى تفعيل خدمة الموقع (GPS) لتحديد موقعك بدقة على الخريطة.',
             style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
           ),
           actions: [
@@ -105,7 +132,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                 }
               },
               icon: const Icon(Icons.settings_rounded, size: 18),
-              label: const Text('تشغيل الموقع', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('تفعيل الموقع', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -159,10 +186,14 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (!mounted) return;
+        const msg = 'الموقع غير مفعّل! يرجى تفعيل الموقع (GPS) للمتابعة.';
         setState(() {
           _isServiceDisabled = true;
-          _error = 'يرجى تشغيل الموقع (GPS) للمتابعة.';
+          _error = msg;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+        );
         await _showEnableLocationDialog(openAppSettingsMode: false);
         return;
       }
@@ -172,9 +203,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (!mounted) return;
+          const msg = 'الموقع غير مفعّل! يرجى السماح بتفعيل الموقع لتحديد عنوانك بدقة.';
           setState(() {
-            _error = 'يرجى السماح بتشغيل الموقع لتحديد عنوانك بدقة.';
+            _error = msg;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+          );
           await _showEnableLocationDialog(openAppSettingsMode: false);
           return;
         }
@@ -182,10 +217,14 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
       if (permission == LocationPermission.deniedForever) {
         if (!mounted) return;
+        const msg = 'الموقع غير مفعّل من الإعدادات! اضغط "تفعيل الموقع" لفتحه من الإعدادات.';
         setState(() {
           _isPermissionDeniedForever = true;
-          _error = 'إذن الموقع مغلق من الإعدادات. اضغط "تشغيل الموقع" لتفعيله.';
+          _error = msg;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+        );
         await _showEnableLocationDialog(openAppSettingsMode: true);
         return;
       }
@@ -339,7 +378,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                               }
                             },
                             child: const Text(
-                              'تشغيل الموقع',
+                              'تفعيل الموقع',
                               style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                           ),
