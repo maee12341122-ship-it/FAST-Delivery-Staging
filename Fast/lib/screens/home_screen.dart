@@ -1069,10 +1069,40 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // استبعاد الطلبات الخاصة وخدمة "وصل لي" من تقييم المطاعم
+  bool _isCustomOrSpecialOrder(
+      Map<dynamic, dynamic> order, String itemsText) {
+    final trimmedItems = itemsText.trim();
+    if (trimmedItems.startsWith('طلب خاص') ||
+        trimmedItems.contains('[خدمة وصل لي الخاصة]') ||
+        trimmedItems.contains('خدمة وصل لي') ||
+        trimmedItems.contains('مكان الاستلام:')) {
+      return true;
+    }
+
+    final orderType =
+        (order['order_type'] ?? order['type'] ?? '').toString().trim().toLowerCase();
+    if (orderType == 'custom' ||
+        orderType == 'special' ||
+        orderType == 'custom_delivery' ||
+        orderType == 'wasalli') {
+      return true;
+    }
+
+    return false;
+  }
+
   Map<String, dynamic> _resolveRestaurantOrderInfo(
       AppState appState, Map<dynamic, dynamic> order) {
     final String itemsText =
         (order['items_desc'] ?? order['items_description'] ?? '').toString();
+
+    if (_isCustomOrSpecialOrder(order, itemsText)) {
+      return {
+        'isRestaurant': false,
+        'restaurantName': '',
+      };
+    }
 
     String rawRestaurantName = (order['restaurant_name'] ??
             order['restaurantName'] ??
@@ -1080,6 +1110,14 @@ class _HomeScreenState extends State<HomeScreen>
             '')
         .toString()
         .trim();
+
+    if (rawRestaurantName == 'طلب خاص' ||
+        rawRestaurantName.startsWith('طلب خاص')) {
+      return {
+        'isRestaurant': false,
+        'restaurantName': '',
+      };
+    }
 
     if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
       for (final item in appState.cartItems) {
