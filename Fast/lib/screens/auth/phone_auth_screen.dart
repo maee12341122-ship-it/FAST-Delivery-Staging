@@ -59,6 +59,75 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     return clean;
   }
 
+  // ربط بيانات المشرف في الحساب الشخصي (appState.userProfile) برقم هاتفه
+  Future<void> _syncAdminUserSession(
+    AppState appState, {
+    String? username,
+    Map<String, dynamic>? adminRecord,
+  }) async {
+    Map<String, dynamic>? record = adminRecord ?? _pendingUserRecord;
+
+    try {
+      if (record == null && username != null && username.trim().isNotEmpty) {
+        final res = await _supabase
+            .from('admins')
+            .select()
+            .eq('username', username.trim())
+            .maybeSingle();
+        if (res != null) {
+          record = Map<String, dynamic>.from(res);
+        }
+      } else if (record == null && _cleanPhoneInput.isNotEmpty) {
+        final res = await _supabase
+            .from('admins')
+            .select()
+            .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
+            .maybeSingle();
+        if (res != null) {
+          record = Map<String, dynamic>.from(res);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ تعذر جلب سجل المشرف الكامل: $e');
+    }
+
+    final String resolvedUsername = (record?['username'] ??
+            username ??
+            _loginUsernameController.text.trim())
+        .toString()
+        .trim();
+
+    final String resolvedPhone = (record?['phone'] ??
+            (_cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : ''))
+        .toString()
+        .trim();
+
+    final String resolvedName = (record?['name'] ??
+            (resolvedUsername.isNotEmpty ? resolvedUsername : 'مشرف النظام'))
+        .toString()
+        .trim();
+
+    final String resolvedAddress =
+        (record?['address'] ?? 'تعز').toString().trim();
+
+    appState.setUser(
+      name: resolvedName,
+      phone: resolvedPhone,
+      address: resolvedAddress,
+    );
+
+    if (appState.userProfile != null) {
+      appState.userProfile!['is_admin'] = true;
+      if (record?['id'] != null) {
+        appState.userProfile!['id'] = record!['id'];
+      }
+      if (resolvedUsername.isNotEmpty) {
+        appState.userProfile!['username'] = resolvedUsername;
+      }
+      appState.notifyListeners();
+    }
+  }
+
   // 🛡️ التحقق التلقائي إذا كان المشرف أو المندوب مسجل الدخول مسبقاً لتخطي تسجيل الدخول
   Future<void> _checkExistingAdminOrCourierSession() async {
     try {
@@ -74,13 +143,19 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           if (candidateUsername.isNotEmpty) {
             final adminRes = await _supabase
                 .from('admins')
-                .select('id, username, phone')
+                .select()
                 .eq('username', candidateUsername)
                 .maybeSingle();
 
             if (adminRes != null && mounted) {
-              Provider.of<AppState>(context, listen: false).isAdminLoggedIn =
-                  true;
+              final appState = Provider.of<AppState>(context, listen: false);
+              appState.isAdminLoggedIn = true;
+              await _syncAdminUserSession(
+                appState,
+                username: candidateUsername,
+                adminRecord: Map<String, dynamic>.from(adminRes),
+              );
+              if (!mounted) return;
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const AdminScreen()),
@@ -193,7 +268,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       // 1. فحص هل الرقم يتبع للمشرفين (admins)
       final adminRes = await _supabase
           .from('admins')
-          .select('id, username, phone')
+          .select()
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
           .maybeSingle();
 
@@ -395,6 +470,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         bool adminSuccess =
             await appState.loginAdminFromSupabase(username, password);
         if (adminSuccess) {
+          await _syncAdminUserSession(appState, username: username);
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
