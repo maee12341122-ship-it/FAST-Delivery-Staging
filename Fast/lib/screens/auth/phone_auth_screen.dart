@@ -71,7 +71,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (record == null && username != null && username.trim().isNotEmpty) {
         final res = await _supabase
             .from('admins')
-            .select()
+            .select('id, username, phone')
             .eq('username', username.trim())
             .maybeSingle();
         if (res != null) {
@@ -80,7 +80,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       } else if (record == null && _cleanPhoneInput.isNotEmpty) {
         final res = await _supabase
             .from('admins')
-            .select()
+            .select('id, username, phone')
             .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
             .maybeSingle();
         if (res != null) {
@@ -97,18 +97,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         .toString()
         .trim();
 
-    final String resolvedPhone = (record?['phone'] ??
-            (_cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : ''))
-        .toString()
-        .trim();
+    final String resolvedPhone = _normalizePhone(
+      (record?['phone'] ??
+              (_cleanPhoneInput.isNotEmpty ? _cleanPhoneInput : ''))
+          .toString()
+          .trim(),
+    );
 
-    final String resolvedName = (record?['name'] ??
-            (resolvedUsername.isNotEmpty ? resolvedUsername : 'مشرف النظام'))
-        .toString()
-        .trim();
+    final String resolvedName =
+        (resolvedUsername.isNotEmpty ? resolvedUsername : 'مشرف النظام').trim();
 
-    final String resolvedAddress =
-        (record?['address'] ?? 'تعز').toString().trim();
+    const String resolvedAddress = 'تعز';
 
     appState.setUser(
       name: resolvedName,
@@ -143,7 +142,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           if (candidateUsername.isNotEmpty) {
             final adminRes = await _supabase
                 .from('admins')
-                .select()
+                .select('id, username, phone')
                 .eq('username', candidateUsername)
                 .maybeSingle();
 
@@ -268,7 +267,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       // 1. فحص هل الرقم يتبع للمشرفين (admins)
       final adminRes = await _supabase
           .from('admins')
-          .select()
+          .select('id, username, phone')
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
           .maybeSingle();
 
@@ -785,9 +784,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                             color: Colors.white,
                             fontSize: 20,
                             letterSpacing: 8),
-                        maxLength: 4,
+                        maxLength: 6,
                         decoration: InputDecoration(
-                          labelText: 'رمز التحقق (4 أرقام)',
+                          labelText: 'رمز التحقق (6 أرقام)',
                           labelStyle: const TextStyle(
                               color: Colors.grey, letterSpacing: 0),
                           prefixIcon: const Icon(Icons.lock_clock_outlined,
