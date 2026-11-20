@@ -24,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final FocusNode _msgFocus = FocusNode();
   final ScrollController _scrollController = ScrollController();
   int _lastMessageCount = 0;
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -47,43 +48,52 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isSending) return;
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
 
+    setState(() => _isSending = true);
     final appState = context.read<AppState>();
     HapticFeedback.lightImpact();
 
-    await appState.sendChatMessage(
-      widget.orderId,
-      widget.userRole,
-      widget.targetChat,
-      text,
-    );
-
-    _msgController.clear();
-
-    if (!mounted) return;
-
     try {
-      final String? receiverPlayerId = await appState.getReceiverPlayerIdForChat(
-        orderId: widget.orderId,
-        senderRole: widget.userRole,
-        targetChat: widget.targetChat,
+      await appState.sendChatMessage(
+        widget.orderId,
+        widget.userRole,
+        widget.targetChat,
+        text,
       );
 
-      final String senderName = widget.userRole == 'admin'
-          ? 'الإدارة'
-          : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
+      _msgController.clear();
 
-      if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
-        await appState.sendAutoNotification(
-          targetPlayerId: receiverPlayerId,
-          title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
-          body: '$senderName: $text',
+      if (!mounted) return;
+
+      try {
+        final String? receiverPlayerId =
+            await appState.getReceiverPlayerIdForChat(
+          orderId: widget.orderId,
+          senderRole: widget.userRole,
+          targetChat: widget.targetChat,
         );
+
+        final String senderName = widget.userRole == 'admin'
+            ? 'الإدارة'
+            : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
+
+        if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
+          await appState.sendAutoNotification(
+            targetPlayerId: receiverPlayerId,
+            title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
+            body: '$senderName: $text',
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ خطأ في إرسال إشعار الشات: $e');
       }
-    } catch (e) {
-      debugPrint('⚠️ خطأ في إرسال إشعار الشات: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
@@ -153,7 +163,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       padding: const EdgeInsets.all(12),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
-                        final msg = messages[index] as Map<String, dynamic>;
+                        final raw = messages[index];
+                        final msg = raw is Map
+                            ? Map<String, dynamic>.from(raw)
+                            : <String, dynamic>{};
                         final String senderType =
                             msg['sender_type']?.toString() ?? '';
                         final String messageText =
@@ -218,6 +231,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: TextField(
                         controller: _msgController,
                         focusNode: _msgFocus,
+                        enabled: !_isSending,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         style: const TextStyle(color: Colors.white),
@@ -230,8 +244,17 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.send, color: Colors.amber),
-                      onPressed: _sendMessage,
+                      icon: _isSending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.amber,
+                              ),
+                            )
+                          : const Icon(Icons.send, color: Colors.amber),
+                      onPressed: _isSending ? null : _sendMessage,
                     ),
                   ],
                 ),
