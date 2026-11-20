@@ -85,21 +85,81 @@ function canTransitionStatus(currentStatus, nextStatus) {
   }
   const allowedNext = ALLOWED_TRANSITIONS[currentStatus];
   if (!allowedNext) {
-    return true;
+    return false;
   }
   return allowedNext.has(nextStatus);
 }
 
 async function recordStatusHistory({ orderId, oldStatus, newStatus, changedBy }) {
+  const { error } = await supabase.from('order_status_history').insert({
+    order_id: orderId,
+    old_status: oldStatus ?? null,
+    new_status: newStatus,
+    changed_by: changedBy || 'system',
+  });
+  if (error) {
+    fail(500, `تعذر تسجيل سجل حالة الطلب: ${error.message}`);
+  }
+}
+
+function parseTimeToMinutes(rawTime) {
+  if (!rawTime) return null;
+  const match = String(rawTime).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function getCurrentMinutesInTimezone(timeZone) {
+  const tz = timeZone || 'Asia/Aden';
   try {
-    await supabase.from('order_status_history').insert({
-      order_id: orderId,
-      old_status: oldStatus ?? null,
-      new_status: newStatus,
-      changed_by: changedBy || 'system',
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
-  } catch (err) {
-    console.error('⚠️ تعذر تسجيل سجل حالة الطلب:', err.message);
+    const parts = formatter.formatToParts(new Date());
+    const h = Number.parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const m = Number.parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    return h * 60 + m;
+  } catch (_err) {
+    const now = new Date();
+    return now.getUTCHours() * 60 + now.getUTCMinutes();
+  }
+}
+
+async function assertStoreOpen() {
+  const { data: settingsRow, error } = await supabase
+    .from('store_settings')
+    .select('store_name, open_time, close_time, is_open, timezone')
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!settingsRow) return;
+
+  if (settingsRow.is_open === false) {
+    fail(400, `المتجر (${settingsRow.store_name || 'المتجر'}) مغلق حالياً.`);
+  }
+
+  const openMin = parseTimeToMinutes(settingsRow.open_time);
+  const closeMin = parseTimeToMinutes(settingsRow.close_time);
+  if (openMin !== null && closeMin !== null && openMin !== closeMin) {
+    const nowMin = getCurrentMinutesInTimezone(settingsRow.timezone || 'Asia/Aden');
+    let isWithinHours = false;
+    if (closeMin > openMin) {
+      isWithinHours = nowMin >= openMin && nowMin < closeMin;
+    } else {
+      // ساعات العمل تتجاوز منتصف الليل (مثال: 18:00 إلى 02:00)
+      isWithinHours = nowMin >= openMin || nowMin < closeMin;
+    }
+    if (!isWithinHours) {
+      fail(400, 'المتجر خارج أوقات العمل الرسمية حالياً.');
+    }
   }
 }
 
@@ -165,6 +225,80 @@ async function evaluateCoupon(code, subtotal) {
   };
 }
 
+async function consumeCouponUsage(coupon) {
+  const currentUsed = Number(coupon.used_count ?? 0);
+  const usageLimit =
+    coupon.usage_limit === null || coupon.usage_limit === undefined
+      ? null
+      : Number(coupon.usage_limit);
+
+  if (usageLimit !== null && currentUsed >= usageLimit) {
+    fail(400, 'تم استنفاد الحد الأقصى لاستخدام هذا الكوبون.');
+  }
+
+  let query = supabase
+    .from('coupons')
+    .update({ used_count: currentUsed + 1 })
+    .eq('id', coupon.id)
+    .eq('used_count', currentUsed);
+
+  if (usageLimit !== null) {
+    query = query.lt('used_count', usageLimit);
+  }
+
+  const { data: updatedCoupon, error } = await query.select('id').maybeSingle();
+  if (error) {
+    fail(500, `تعذر تحديث عداد استخدام الكوبون: ${error.message}`);
+  }
+  if (!updatedCoupon) {
+    fail(409, 'تعذر تطبيق الكوبون بسبب التزامن أو نفاد حد الاستخدام.');
+  }
+}
+
+async function sendOneSignalNotification({ targetPlayerIds, title, body, dataPayload }) {
+  const uniqueIds = Array.from(
+    new Set((targetPlayerIds || []).map((id) => String(id || '').trim()).filter(Boolean))
+  );
+  if (uniqueIds.length === 0) return { sent: false, skipped: true };
+
+  const appId =
+    config.oneSignalAppId ||
+    process.env.ONESIGNAL_APP_ID ||
+    '60850bed-4af8-4df1-a2f5-77411630f447';
+  const restApiKey =
+    config.oneSignalRestApiKey || process.env.ONESIGNAL_REST_API_KEY;
+
+  if (!restApiKey) {
+    return { sent: false, error: 'مفتاح OneSignal السري غير مضبوط على الخادم.' };
+  }
+
+  const response = await fetch('https://api.onesignal.com/notifications', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${restApiKey}`,
+    },
+    body: JSON.stringify({
+      app_id: appId,
+      include_subscription_ids: uniqueIds,
+      headings: { en: title, ar: title },
+      contents: { en: body, ar: body },
+      ...(dataPayload ? { data: dataPayload } : {}),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      sent: false,
+      status: response.status,
+      error: data?.errors?.[0] || 'تعذر إرسال الإشعار عبر OneSignal.',
+    };
+  }
+
+  return { sent: true, notification: data };
+}
+
 function isOrderAssignedToCourier(order, userProfile) {
   const profileId =
     userProfile?.id !== undefined && userProfile?.id !== null
@@ -190,12 +324,21 @@ api.get('/health', async (_req, res) => {
   res.json({ status: 'ok', service: 'fast-delivery-api' });
 });
 
-// 🔐 طلب رمز تحقق OTP لرقم العميل
+// 🔐 طلب رمز تحقق OTP لرقم العميل (تجريبي في otp_codes لحين ربط WhatsApp الرسمي)
 api.post('/auth/otp/request', async (req, res) => {
   const body = z.object({ phone: z.string().trim().min(6).max(25) }).parse(req.body);
   const cleanPhone = normalizePhone(body.phone);
   if (!cleanPhone) {
     fail(400, 'رقم الهاتف غير صالح.');
+  }
+
+  const now = Date.now();
+  const prev = otpStore.get(cleanPhone);
+  if (prev && now - prev.lastSentAt < 30000) {
+    fail(429, 'يرجى الانتظار قبل طلب رمز تحقق جديد.');
+  }
+  if (prev && prev.requestCount >= 5 && now < prev.resetAt) {
+    fail(429, 'تم تجاوز الحد المسموح لطلبات رمز التحقق مؤقتاً.');
   }
 
   const { data: existingCustomer } = await supabase
@@ -205,16 +348,34 @@ api.post('/auth/otp/request', async (req, res) => {
     .maybeSingle();
 
   const code = String(crypto.randomInt(100000, 999999));
-  otpStore.set(cleanPhone, {
-    code,
-    expiresAt: Date.now() + 5 * 60 * 1000,
+  const codeHash = crypto.createHash('sha256').update(`${cleanPhone}:${code}`).digest('hex');
+  const expiresAtIso = new Date(now + 5 * 60 * 1000).toISOString();
+
+  await supabase.from('otp_codes').insert({
+    phone: cleanPhone,
+    code_hash: codeHash,
+    expires_at: expiresAtIso,
+    used: false,
+    attempts: 0,
   });
 
-  // في بيئة الإنتاج يُربط الإرسال بمزود SMS/WhatsApp ولا يُعاد الرمز في الاستجابة
+  const nextCount = prev && now < prev.resetAt ? prev.requestCount + 1 : 1;
+  const resetAt = prev && now < prev.resetAt ? prev.resetAt : now + 60 * 60 * 1000;
+
+  otpStore.set(cleanPhone, {
+    codeHash,
+    expiresAt: now + 5 * 60 * 1000,
+    attempts: 0,
+    requestCount: nextCount,
+    lastSentAt: now,
+    resetAt,
+  });
+
   const isProd = process.env.NODE_ENV === 'production';
   res.json({
     exists: Boolean(existingCustomer),
-    message: 'تم إرسال رمز التحقق بنجاح 💬',
+    experimental_otp: true,
+    message: 'رمز تحقق تجريبي مؤقت (بانتظار ربط WhatsApp الرسمي)',
     ...(isProd ? {} : { debug_otp: code }),
   });
 });
@@ -234,14 +395,42 @@ api.post('/auth/otp/verify', async (req, res) => {
   }
 
   const entry = otpStore.get(cleanPhone);
-  if (!entry || entry.expiresAt <= Date.now() || entry.code !== body.otp_code.trim()) {
+  if (!entry || entry.expiresAt <= Date.now()) {
+    otpStore.delete(cleanPhone);
     return res.status(400).json({
       verified: false,
       error: 'رمز التحقق غير صحيح أو منتهي الصلاحية.',
     });
   }
 
+  if (entry.attempts >= 5) {
+    otpStore.delete(cleanPhone);
+    return res.status(429).json({
+      verified: false,
+      error: 'تم تجاوز الحد الأقصى لمحاولات التحقق.',
+    });
+  }
+
+  const candidateHash = crypto
+    .createHash('sha256')
+    .update(`${cleanPhone}:${body.otp_code.trim()}`)
+    .digest('hex');
+
+  if (candidateHash !== entry.codeHash) {
+    entry.attempts += 1;
+    otpStore.set(cleanPhone, entry);
+    return res.status(400).json({
+      verified: false,
+      error: 'رمز التحقق غير صحيح.',
+    });
+  }
+
   otpStore.delete(cleanPhone);
+  await supabase
+    .from('otp_codes')
+    .update({ used: true })
+    .eq('phone', cleanPhone)
+    .eq('code_hash', entry.codeHash);
 
   const { data: customer } = await supabase
     .from('customers')
@@ -257,51 +446,39 @@ api.post('/auth/otp/verify', async (req, res) => {
   });
 });
 
-// 🔔 إرسال إشعار OneSignal عبر مفاتيح الخادم السرية
-api.post('/notifications/send', ...authGuard, async (req, res) => {
+// 🔔 إرسال إشعار OneSignal (للمشرف فقط عند الإرسال المباشر إلى Player IDs محددة، أو عبر أحداث النظام من الخادم)
+api.post('/notifications/send', ...adminGuard, async (req, res) => {
   const body = z
     .object({
-      target_player_id: z.string().trim().min(1).max(200),
+      target_player_id: z.string().trim().min(1).max(200).optional(),
+      target_player_ids: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
       title: z.string().trim().min(1).max(200),
       body: z.string().trim().min(1).max(1000),
       additional_data: z.record(z.any()).optional(),
     })
     .parse(req.body);
 
-  const appId =
-    config.oneSignalAppId ||
-    process.env.ONESIGNAL_APP_ID ||
-    '60850bed-4af8-4df1-a2f5-77411630f447';
-  const restApiKey =
-    config.oneSignalRestApiKey || process.env.ONESIGNAL_REST_API_KEY;
+  const targets = [
+    ...(body.target_player_id ? [body.target_player_id] : []),
+    ...(body.target_player_ids || []),
+  ];
 
-  if (!restApiKey) {
-    return res.status(503).json({
-      error: 'مفتاح OneSignal السري غير مضبوط على الخادم.',
-    });
+  if (targets.length === 0) {
+    fail(400, 'يجب تحديد مستلم واحد على الأقل.');
   }
 
-  const response = await fetch('https://api.onesignal.com/notifications', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Key ${restApiKey}`,
-    },
-    body: JSON.stringify({
-      app_id: appId,
-      include_subscription_ids: [body.target_player_id],
-      headings: { en: body.title, ar: body.title },
-      contents: { en: body.body, ar: body.body },
-      ...(body.additional_data ? { data: body.additional_data } : {}),
-    }),
+  const result = await sendOneSignalNotification({
+    targetPlayerIds: targets,
+    title: body.title,
+    body: body.body,
+    dataPayload: body.additional_data,
   });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    fail(response.status, data?.errors?.[0] || 'تعذر إرسال الإشعار عبر OneSignal.');
+  if (!result.sent) {
+    fail(result.status || 502, result.error || 'تعذر إرسال الإشعار عبر OneSignal.');
   }
 
-  res.json({ sent: true, notification: data });
+  res.json({ sent: true, notification: result.notification });
 });
 
 // 🌐 الكتالوج العام (المطاعم والمنتجات المتاحة)
@@ -343,7 +520,7 @@ api.post('/coupons/validate', ...authGuard, async (req, res) => {
   });
 });
 
-// 🛒 إنشاء طلب جديد (يعتمد معرف المنتج والكمية فقط ويحسب الأسعار في الخادم)
+// 🛒 إنشاء طلب جديد (يعتمد معرف المنتج والكمية فقط ويحسب الأسعار في الخادم، ويدعم custom_)
 api.post('/orders', ...customerGuard, async (req, res) => {
   const body = z
     .object({
@@ -352,6 +529,10 @@ api.post('/orders', ...customerGuard, async (req, res) => {
           z.object({
             product_id: z.string().trim().min(1).max(120),
             quantity: z.number().int().min(1).max(99),
+            name: z.string().trim().max(200).optional(),
+            unit_price: z.number().min(0).optional(),
+            suggested_unit_price: z.number().min(0).optional(),
+            is_custom: z.boolean().optional(),
           })
         )
         .min(1)
@@ -363,13 +544,17 @@ api.post('/orders', ...customerGuard, async (req, res) => {
       coupon_code: z.string().trim().max(60).optional(),
       payment_method: z.string().trim().max(60).optional(),
       payment_account: z.string().trim().max(120).optional(),
+      client_request_key: z.string().trim().max(120).optional(),
       idempotency_key: z.string().trim().max(120).optional(),
     })
     .parse(req.body);
 
+  await assertStoreOpen();
+
+  const requestKey = body.client_request_key || body.idempotency_key;
   const actorKey = `${req.user?.id || req.userProfile?.phone || 'anon'}`;
-  const dedupSignature = body.idempotency_key
-    ? `${actorKey}:${body.idempotency_key}`
+  const dedupSignature = requestKey
+    ? `${actorKey}:${requestKey}`
     : `${actorKey}:${body.address}:${JSON.stringify(body.items)}`;
 
   const now = Date.now();
@@ -387,45 +572,82 @@ api.post('/orders', ...customerGuard, async (req, res) => {
   }
 
   const customerName = body.customer_name || req.userProfile?.name || 'عميل';
-  const phone = normalizePhone(body.phone || req.userProfile?.phone || '');
+  const phone = normalizePhone(req.userProfile?.phone || body.phone || '');
   if (!phone) {
     fail(400, 'رقم هاتف العميل مطلوب.');
   }
 
-  const qtyByProductId = new Map();
+  const standardProductIds = [];
   for (const item of body.items) {
-    const currentQty = qtyByProductId.get(item.product_id) || 0;
-    qtyByProductId.set(item.product_id, currentQty + item.quantity);
+    const isCustom = item.is_custom === true || item.product_id.startsWith('custom_');
+    if (!isCustom) {
+      standardProductIds.push(item.product_id);
+    }
   }
 
-  const productIds = Array.from(qtyByProductId.keys());
-  const { data: dbProducts, error: prodError } = await supabase
-    .from('products')
-    .select('id, name, price, available, restaurant_id, restaurant_name')
-    .in('id', productIds);
+  let productMap = new Map();
+  if (standardProductIds.length > 0) {
+    const { data: dbProducts, error: prodError } = await supabase
+      .from('products')
+      .select('id, name, price, available, restaurant_id, restaurant_name')
+      .in('id', Array.from(new Set(standardProductIds)));
 
-  if (prodError) throw prodError;
+    if (prodError) throw prodError;
+    productMap = new Map((dbProducts || []).map((p) => [String(p.id), p]));
+  }
 
-  const productMap = new Map((dbProducts || []).map((p) => [String(p.id), p]));
   const restaurantIds = new Set();
   const restaurantNames = new Set();
 
   let productsTotal = 0;
+  let hasCustomOrVariablePrice = false;
   const itemsDescriptionParts = [];
   const preparedOrderItems = [];
 
-  for (const [productId, quantity] of qtyByProductId.entries()) {
-    const product = productMap.get(productId);
+  for (const item of body.items) {
+    const isCustom = item.is_custom === true || item.product_id.startsWith('custom_');
+    const quantity = item.quantity;
+
+    if (isCustom) {
+      hasCustomOrVariablePrice = true;
+      const customName = item.name || 'طلب خاص';
+      const customPrice =
+        item.unit_price !== undefined && Number.isFinite(item.unit_price) && item.unit_price >= 0
+          ? item.unit_price
+          : 0;
+      const lineTotal = Math.round(customPrice * quantity * 100) / 100;
+      productsTotal = Math.round((productsTotal + lineTotal) * 100) / 100;
+      itemsDescriptionParts.push(
+        customPrice > 0
+          ? `${customName} (${quantity}) - ${lineTotal} ر.ي`
+          : `${customName} (${quantity}) - تسعير حسب الطلب`
+      );
+      preparedOrderItems.push({
+        product_name: customName,
+        price: customPrice,
+        quantity,
+        total_price: lineTotal,
+      });
+      continue;
+    }
+
+    const product = productMap.get(item.product_id);
     if (!product) {
-      fail(400, `المنتج غير موجود: ${productId}`);
+      fail(400, `المنتج غير موجود: ${item.product_id}`);
     }
     if (product.available === false) {
       fail(400, `المنتج غير متوفر حالياً: ${product.name}`);
     }
 
-    const unitPrice = Number(product.price ?? 0);
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    const rawPrice = Number(product.price ?? 0);
+    if (!Number.isFinite(rawPrice) || rawPrice < 0) {
       fail(400, `سعر المنتج غير صالح: ${product.name}`);
+    }
+
+    // في حال كان المنتج بسعر متغير (0) ويوجد سعر مقترح، يُسجل كسعر مبدئي ويُحول للتسعير/التأكيد
+    const unitPrice = rawPrice === 0 && item.suggested_unit_price ? item.suggested_unit_price : rawPrice;
+    if (rawPrice === 0) {
+      hasCustomOrVariablePrice = true;
     }
 
     const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
@@ -455,7 +677,7 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     validatedCoupon = couponResult.coupon;
   }
 
-  const discountedProductsTotal = Math.max(0, productsTotal - discountAmount);
+  const discountedProductsTotal = Math.max(0, Math.round((productsTotal - discountAmount) * 100) / 100);
 
   const { data: settingsData } = await supabase
     .from('settings')
@@ -468,6 +690,7 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     : Number(config.deliveryBaseFee ?? 0);
   const totalPrice = Math.round((discountedProductsTotal + deliveryFee) * 100) / 100;
   const itemsDescription = itemsDescriptionParts.join(', ');
+  const trackingCode = crypto.randomBytes(4).toString('hex').toUpperCase();
 
   const singleRestaurantId =
     restaurantIds.size === 1 ? Array.from(restaurantIds)[0] : null;
@@ -488,6 +711,7 @@ api.post('/orders', ...customerGuard, async (req, res) => {
       address: body.address,
       items_description: itemsDescription,
       notes: body.notes,
+      tracking_code: trackingCode,
       products_total: discountedProductsTotal,
       delivery_fee: deliveryFee,
       total_price: totalPrice,
@@ -518,11 +742,7 @@ api.post('/orders', ...customerGuard, async (req, res) => {
   }
 
   if (validatedCoupon && discountAmount > 0) {
-    const nextUsedCount = Number(validatedCoupon.used_count ?? 0) + 1;
-    await supabase
-      .from('coupons')
-      .update({ used_count: nextUsedCount })
-      .eq('id', validatedCoupon.id);
+    await consumeCouponUsage(validatedCoupon);
   }
 
   await recordStatusHistory({
@@ -531,6 +751,21 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     newStatus: 'waitingForPricing',
     changedBy: req.user?.id || phone,
   });
+
+  // إشعار المشرفين عبر OneSignal عند إنشاء طلب جديد
+  const { data: adminRows } = await supabase
+    .from('admins')
+    .select('onesignal_player_id')
+    .not('onesignal_player_id', 'is', null);
+  const adminPlayerIds = (adminRows || []).map((a) => a.onesignal_player_id);
+  if (adminPlayerIds.length > 0) {
+    await sendOneSignalNotification({
+      targetPlayerIds: adminPlayerIds,
+      title: 'طلب جديد في النظام 🛒',
+      body: `تم استلام طلب جديد رقم #${orderData.id} (${hasCustomOrVariablePrice ? 'يتطلب مراجعة التسعير' : `${totalPrice} ر.ي`})`,
+      dataPayload: { order_id: orderData.id, status: 'waitingForPricing' },
+    });
+  }
 
   recentOrderSubmissions.set(dedupSignature, {
     createdAt: now,
@@ -546,7 +781,7 @@ api.post('/orders', ...customerGuard, async (req, res) => {
 
 // 📦 جلب طلبات العميل الشخصية (المسار المعتمد /api/orders/my والمتوافق /api/orders/mine)
 async function handleGetMyOrders(req, res) {
-  const phone = normalizePhone(req.userProfile?.phone || req.query.phone || '');
+  const phone = normalizePhone(req.userProfile?.phone || '');
   if (!phone) return res.json({ orders: [] });
 
   const { data: orders, error } = await supabase
@@ -648,7 +883,7 @@ async function handlePricingOrder(req, res) {
   if (body.courier_id) {
     const { data: cById, error: cErr } = await supabase
       .from('couriers')
-      .select('id, name')
+      .select('id, name, onesignal_player_id')
       .eq('id', body.courier_id)
       .maybeSingle();
     if (cErr) throw cErr;
@@ -659,7 +894,7 @@ async function handlePricingOrder(req, res) {
   if (!courierRecord && courierNameInput) {
     const { data: cByName, error: cNameErr } = await supabase
       .from('couriers')
-      .select('id, name')
+      .select('id, name, onesignal_player_id')
       .eq('name', courierNameInput)
       .maybeSingle();
     if (cNameErr) throw cNameErr;
@@ -674,7 +909,7 @@ async function handlePricingOrder(req, res) {
 
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('id, status, products_total, total_price')
+    .select('id, status, phone, products_total, total_price')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -714,6 +949,23 @@ async function handlePricingOrder(req, res) {
     changedBy: req.user?.id || 'admin',
   });
 
+  // إشعار العميل بتوفر التسعير
+  if (order.phone) {
+    const { data: cust } = await supabase
+      .from('customers')
+      .select('onesignal_player_id')
+      .eq('phone', normalizePhone(order.phone))
+      .maybeSingle();
+    if (cust?.onesignal_player_id) {
+      await sendOneSignalNotification({
+        targetPlayerIds: [cust.onesignal_player_id],
+        title: 'تم تسعير طلبك 💰',
+        body: `إجمالي الطلب #${orderId} أصبح ${totalPrice} ر.ي (شامل التوصيل). يرجى تأكيد الموافقة.`,
+        dataPayload: { order_id: orderId, status: nextStatus },
+      });
+    }
+  }
+
   res.json({ order: data, message: 'تم تحديث السعر بنجاح' });
 }
 
@@ -727,7 +979,7 @@ async function handleAdminUpdateStatus(req, res) {
 
   const { data: existing, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status')
+    .select('id, status, phone, courier_id, assigned_courier')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -760,6 +1012,22 @@ async function handleAdminUpdateStatus(req, res) {
     changedBy: req.user?.id || 'admin',
   });
 
+  if (existing.phone) {
+    const { data: cust } = await supabase
+      .from('customers')
+      .select('onesignal_player_id')
+      .eq('phone', normalizePhone(existing.phone))
+      .maybeSingle();
+    if (cust?.onesignal_player_id) {
+      await sendOneSignalNotification({
+        targetPlayerIds: [cust.onesignal_player_id],
+        title: 'تحديث حالة الطلب 📦',
+        body: `تم تحديث حالة الطلب #${orderId} إلى: ${body.status}`,
+        dataPayload: { order_id: orderId, status: body.status },
+      });
+    }
+  }
+
   res.json({ order: data, message: 'تم تحديث الحالة بنجاح' });
 }
 
@@ -781,24 +1049,21 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
   const body = z
     .object({
       action: z.enum(['approve', 'cancel']),
-      phone: z.string().trim().optional(),
     })
     .parse(req.body);
 
   const { data: existing, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, phone, status')
+    .select('id, phone, status, courier_id, assigned_courier')
     .eq('id', orderId)
     .maybeSingle();
 
   if (fetchErr) throw fetchErr;
   if (!existing) fail(404, 'الطلب غير موجود.');
 
-  const requesterPhone = normalizePhone(
-    req.userProfile?.phone || body.phone || ''
-  );
+  const requesterPhone = normalizePhone(req.userProfile?.phone || '');
   const orderPhone = normalizePhone(existing.phone || '');
-  if (orderPhone && requesterPhone && orderPhone !== requesterPhone) {
+  if (!requesterPhone || !orderPhone || orderPhone !== requesterPhone) {
     fail(403, 'هذا الطلب لا يخص حسابك.');
   }
 
@@ -835,6 +1100,22 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
     newStatus: nextStatus,
     changedBy: req.user?.id || requesterPhone || 'customer',
   });
+
+  if (body.action === 'approve' && existing.courier_id) {
+    const { data: courierRow } = await supabase
+      .from('couriers')
+      .select('onesignal_player_id')
+      .eq('id', existing.courier_id)
+      .maybeSingle();
+    if (courierRow?.onesignal_player_id) {
+      await sendOneSignalNotification({
+        targetPlayerIds: [courierRow.onesignal_player_id],
+        title: 'طلب بانتظار موافقتك 🛵',
+        body: `وافق العميل على الطلب #${orderId}، يرجى مراجعة الطلب.`,
+        dataPayload: { order_id: orderId, status: nextStatus },
+      });
+    }
+  }
 
   res.json({ order: data });
 });
@@ -884,7 +1165,7 @@ async function handleCourierUpdateStatus(req, res) {
 
   const { data: existing, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, courier_id, assigned_courier')
+    .select('id, status, phone, courier_id, assigned_courier')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -930,6 +1211,22 @@ async function handleCourierUpdateStatus(req, res) {
     newStatus: body.status,
     changedBy: req.user?.id || String(req.userProfile?.id || 'courier'),
   });
+
+  if (existing.phone) {
+    const { data: cust } = await supabase
+      .from('customers')
+      .select('onesignal_player_id')
+      .eq('phone', normalizePhone(existing.phone))
+      .maybeSingle();
+    if (cust?.onesignal_player_id) {
+      await sendOneSignalNotification({
+        targetPlayerIds: [cust.onesignal_player_id],
+        title: 'تحديث حالة التوصيل 🛵',
+        body: `حالة الطلب #${orderId} الآن: ${body.status}`,
+        dataPayload: { order_id: orderId, status: body.status },
+      });
+    }
+  }
 
   res.json({ order: data, message: 'تم تحديث الحالة بنجاح' });
 }
