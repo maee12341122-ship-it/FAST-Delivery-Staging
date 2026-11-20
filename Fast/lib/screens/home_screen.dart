@@ -25,7 +25,7 @@ import 'admin_screen.dart';
 import 'courier_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -46,16 +46,8 @@ class _HomeScreenState extends State<HomeScreen>
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressDescriptionController = TextEditingController();
-  final _paymentAccountController = TextEditingController();
   String _selectedPaymentMethod = 'cash';
   bool _isSubmittingCheckout = false;
-
-  final FocusNode _searchFocus = FocusNode();
-  final FocusNode _customItemNameFocus = FocusNode();
-  final FocusNode _customItemPriceFocus = FocusNode();
-  final FocusNode _nameFocus = FocusNode();
-  final FocusNode _phoneFocus = FocusNode();
-  final FocusNode _addressFocus = FocusNode();
 
   final Set<String> _shownPricingDialogs = {};
 
@@ -145,9 +137,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final appState = Provider.of<AppState>(context, listen: false);
-      appState.fetchStoreSettings();
-      appState.fetchProductsFromSupabase();
+      unawaited(appState.fetchStoreSettings());
+      unawaited(appState.fetchProductsFromSupabase());
 
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
@@ -170,18 +163,11 @@ class _HomeScreenState extends State<HomeScreen>
     _nameController.dispose();
     _phoneController.dispose();
     _addressDescriptionController.dispose();
-    _paymentAccountController.dispose();
-    _searchFocus.dispose();
-    _customItemNameFocus.dispose();
-    _customItemPriceFocus.dispose();
-    _nameFocus.dispose();
-    _phoneFocus.dispose();
-    _addressFocus.dispose();
     super.dispose();
   }
 
   void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
-    bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy;
+    final bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy;
     final accent = _accent(appState);
 
     if (!hasAcceptedPrivacy) {
@@ -1080,8 +1066,10 @@ class _HomeScreenState extends State<HomeScreen>
       return true;
     }
 
-    final orderType =
-        (order['order_type'] ?? order['type'] ?? '').toString().trim().toLowerCase();
+    final orderType = (order['order_type'] ?? order['type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
     if (orderType == 'custom' ||
         orderType == 'special' ||
         orderType == 'custom_delivery' ||
@@ -1764,9 +1752,10 @@ class _HomeScreenState extends State<HomeScreen>
                               onPressed: isSubmittingOrder
                                   ? null
                                   : () async {
-                                      String msg = await appState.applyCouponCode(
-                                          couponController.text,
-                                          appState.totalAmount);
+                                      final String msg =
+                                          await appState.applyCouponCode(
+                                              couponController.text,
+                                              appState.totalAmount);
                                       setDialogState(() {});
                                       if (context.mounted) {
                                         ScaffoldMessenger.of(context)
@@ -1872,9 +1861,11 @@ class _HomeScreenState extends State<HomeScreen>
                           onChanged: isSubmittingOrder
                               ? null
                               : (val) {
-                                  setDialogState(() {
-                                    _selectedPaymentMethod = val!;
-                                  });
+                                  if (val != null) {
+                                    setDialogState(() {
+                                      _selectedPaymentMethod = val;
+                                    });
+                                  }
                                 },
                         ),
                       ],
@@ -1949,10 +1940,7 @@ class _HomeScreenState extends State<HomeScreen>
                             } finally {
                               _isSubmittingCheckout = false;
                               if (context.mounted) {
-                                try {
-                                  setDialogState(
-                                      () => isSubmittingOrder = false);
-                                } catch (_) {}
+                                setDialogState(() => isSubmittingOrder = false);
                               }
                             }
                           },
@@ -2643,7 +2631,7 @@ class _HomeScreenState extends State<HomeScreen>
     final searchQuery = _searchController.text.trim().toLowerCase();
     List filteredProducts = [];
 
-    bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
+    final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
         selectedCategory == 'حلويات ومعجنات' ||
         selectedCategory == 'الصيدلية الآمنة' ||
         selectedCategory == 'البقالات';
@@ -2862,7 +2850,7 @@ class _HomeScreenState extends State<HomeScreen>
                       final bool isVariable =
                           product.category == 'الخضار والفواكه';
                       final bool isFav = appState.isProductFavorite(product.id);
-                      int qtyInCart =
+                      final int qtyInCart =
                           appState.getProductQuantityInCart(product.id);
 
                       return Container(
@@ -3751,9 +3739,9 @@ class _HomeScreenState extends State<HomeScreen>
     final profile = appState.userProfile;
     final accent = _accent(appState);
 
-    bool isAdmin = appState.isAdminLoggedIn ||
+    final bool isAdmin = appState.isAdminLoggedIn ||
         (profile != null && profile['is_admin'] == true);
-    bool isCourier = appState.currentCourier != null ||
+    final bool isCourier = appState.currentCourier != null ||
         (profile != null && profile['is_courier'] == true);
 
     return ListView(
