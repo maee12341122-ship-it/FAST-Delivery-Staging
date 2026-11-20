@@ -23,7 +23,7 @@ class ApiService {
   static final http.Client _httpClient = http.Client();
 
   static const Duration _requestTimeout = Duration(seconds: 20);
-  static const Duration _orderTimeout = Duration(seconds: 4);
+  static const Duration _orderTimeout = Duration(seconds: 15);
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
@@ -219,7 +219,7 @@ class ApiService {
     }
   }
 
-  // 3. إنشاء الطلب مرة واحدة فقط (مع منع التكرار عبر tracking_code وقفل الإرسال)
+  // 3. إنشاء الطلب حصرياً عبر Node.js Backend مع تمرير بيانات العناصر والمنتجات الخاصة
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -239,17 +239,42 @@ class ApiService {
     _isCreatingOrder = true;
 
     try {
-      final resolvedTrackingCode = (trackingCode != null && trackingCode.trim().isNotEmpty)
-          ? trackingCode.trim()
-          : (10000000 + Random().nextInt(90000000)).toString();
+      final resolvedTrackingCode =
+          (trackingCode != null && trackingCode.trim().isNotEmpty)
+              ? trackingCode.trim()
+              : (10000000 + Random().nextInt(90000000)).toString();
 
       final sanitizedItems = items.map((item) {
-        final rawProductId = item['product_id'] ?? item['id'];
+        final rawProductId = (item['product_id'] ?? item['id'] ?? '')
+            .toString()
+            .trim();
         final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
-        return {
-          'product_id': rawProductId?.toString() ?? '',
+        final isCustomItem =
+            rawProductId.startsWith('custom_') || item['is_custom'] == true;
+
+        final parsedPrice = double.tryParse(
+          (item['unit_price'] ?? item['price'] ?? item['custom_price'] ?? '')
+              .toString(),
+        );
+
+        final sanitized = <String, dynamic>{
+          'product_id': rawProductId,
           'quantity': qty > 0 ? qty : 1,
+          'is_custom': isCustomItem,
         };
+
+        final itemName = (item['name'] ?? item['title'] ?? '').toString().trim();
+        if (itemName.isNotEmpty) {
+          sanitized['name'] = itemName;
+        }
+
+        // إرسال السعر المقترح فقط للمنتجات الخاصة (custom_) أو ذات السعر المتغير؛
+        // بينما يعتمد Backend على سعر قاعدة البيانات للمنتجات العادية.
+        if (parsedPrice != null && parsedPrice >= 0) {
+          sanitized['unit_price'] = parsedPrice;
+        }
+
+        return sanitized;
       }).toList();
 
       final payload = <String, dynamic>{
@@ -268,112 +293,25 @@ class ApiService {
           'payment_account': paymentAccount.trim(),
       };
 
-      final isLocalDefaultBackend =
-          baseUrl.contains('10.0.2.2') || baseUrl.contains('localhost');
+      final data = await _sendJsonRequest(
+        method: 'POST',
+        path: '/api/orders',
+        body: payload,
+        explicitToken: token,
+        timeoutOverride: _orderTimeout,
+      );
 
-      if (!isLocalDefaultBackend) {
-        try {
-          final data = await _sendJsonRequest(
-            method: 'POST',
-            path: '/api/orders',
-            body: payload,
-            explicitToken: token,
-            timeoutOverride: _orderTimeout,
-          );
-
-          if (data is Map<String, dynamic>) {
-            if (data['order'] is Map) {
-              final backendOrder = Map<String, dynamic>.from(data['order']);
-              final cleanTotal = (productsTotal != null && productsTotal > 0)
-                  ? productsTotal
-                  : 0.0;
-              final bTotal = double.tryParse(
-                      backendOrder['total_price']?.toString() ?? '') ??
-                  0.0;
-              if (bTotal <= 0 && cleanTotal > 0) {
-                backendOrder['total_price'] = cleanTotal;
-                backendOrder['products_total'] = cleanTotal;
-                try {
-                  if (backendOrder['id'] != null) {
-                    await _supabase
-                        .from('orders')
-                        .update({
-                          'total_price': cleanTotal,
-                          'products_total': cleanTotal,
-                        })
-                        .eq('id', backendOrder['id']);
-                  }
-                } catch (_) {}
-              }
-              return {
-                ...data,
-                'order': backendOrder,
-              };
-            }
-            return data;
-          }
-        } catch (e) {
-          debugPrint(
-              '⚠️ تعذر الوصول للـ Backend، التمرير الآمن إلى Supabase: $e');
+      if (data is Map<String, dynamic>) {
+        if (data['order'] is Map) {
+          return {
+            ...data,
+            'order': Map<String, dynamic>.from(data['order'] as Map),
+          };
         }
+        return data;
       }
 
-      // التحقق أولاً من عدم وجود طلب مسبق بنفس رمز التتبع لمنع أي تكرار نهائياً
-      final existingOrder = await _supabase
-          .from('orders')
-          .select()
-          .eq('tracking_code', resolvedTrackingCode)
-          .maybeSingle();
-
-      if (existingOrder != null) {
-        return {
-          'success': true,
-          'order': Map<String, dynamic>.from(existingOrder),
-        };
-      }
-
-      final cleanTotal = (productsTotal != null && productsTotal > 0)
-          ? productsTotal
-          : 0.0;
-
-      final inserted = await _supabase
-          .from('orders')
-          .insert({
-            'customer_name': (customerName ?? '').trim(),
-            'phone': (phone ?? '').trim(),
-            'address': address.trim(),
-            'items_desc': notes.trim(),
-            'total_price': cleanTotal,
-            'products_total': cleanTotal,
-            'payment_method': (paymentMethod ?? 'cash').trim(),
-            'payment_account': (paymentAccount ?? 'نقدي').trim(),
-            'status': 'waitingForPricing',
-            'tracking_code': resolvedTrackingCode,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select()
-          .maybeSingle();
-
-      final orderMap = inserted != null
-          ? Map<String, dynamic>.from(inserted)
-          : <String, dynamic>{
-              'customer_name': (customerName ?? '').trim(),
-              'phone': (phone ?? '').trim(),
-              'address': address.trim(),
-              'items_desc': notes.trim(),
-              'total_price': cleanTotal,
-              'products_total': cleanTotal,
-              'payment_method': (paymentMethod ?? 'cash').trim(),
-              'payment_account': (paymentAccount ?? 'نقدي').trim(),
-              'status': 'waitingForPricing',
-              'tracking_code': resolvedTrackingCode,
-              'created_at': DateTime.now().toIso8601String(),
-            };
-
-      return {
-        'success': true,
-        'order': orderMap,
-      };
+      throw ApiException('استجابة غير صالحة من الخادم عند إنشاء الطلب.');
     } finally {
       _isCreatingOrder = false;
     }
