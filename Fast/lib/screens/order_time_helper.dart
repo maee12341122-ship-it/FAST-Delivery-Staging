@@ -4,6 +4,7 @@ class OrderTimeHelper {
   /// تحويل قيمة التاريخ/الوقت من قاعدة البيانات (UTC غالباً) إلى التوقيت المحلي
   static DateTime? parseLocal(dynamic rawValue) {
     if (rawValue == null) return null;
+    if (rawValue is DateTime) return rawValue.toLocal();
     final str = rawValue.toString().trim();
     if (str.isEmpty) return null;
     final parsed = DateTime.tryParse(str);
@@ -26,16 +27,46 @@ class OrderTimeHelper {
     return '$year/$month/$day • $hour12:$minute $period';
   }
 
-  /// التحقق مما إذا كان الطلب يقع ضمن فترة زمنية محددة (من تاريخ/وقت إلى تاريخ/وقت)
+  /// التحقق مما إذا كان الطلب يقع ضمن فترة زمنية محددة
+  /// يدعم الاستدعاء الموضعي: isWithinRange(val, start, end)
+  /// ويدعم الاستدعاء المسمّى: isWithinRange(val, start: s, end: e)
   static bool isWithinRange(
-    dynamic rawValue, {
+    dynamic rawValue, [
+    DateTime? positionalStart,
+    DateTime? positionalEnd,
     DateTime? start,
     DateTime? end,
-  }) {
+  ]) {
+    final rangeStart = start ?? positionalStart;
+    final rangeEnd = end ?? positionalEnd;
+
     final dt = parseLocal(rawValue);
     if (dt == null) return false;
-    if (start != null && dt.isBefore(start)) return false;
-    if (end != null && dt.isAfter(end)) return false;
+
+    if (rangeStart != null) {
+      final startOfDay = DateTime(
+        rangeStart.year,
+        rangeStart.month,
+        rangeStart.day,
+        0,
+        0,
+        0,
+      );
+      if (dt.isBefore(startOfDay)) return false;
+    }
+
+    if (rangeEnd != null) {
+      final endOfDay = DateTime(
+        rangeEnd.year,
+        rangeEnd.month,
+        rangeEnd.day,
+        23,
+        59,
+        59,
+      );
+      if (dt.isAfter(endOfDay)) return false;
+    }
+
     return true;
   }
 
