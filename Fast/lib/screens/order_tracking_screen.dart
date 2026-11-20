@@ -9,8 +9,8 @@ import 'order_time_helper.dart';
 ​class OrderTrackingScreen extends StatefulWidget {
 final Map<String, dynamic>? orderMap;
 final String? orderIdParam;
-​const OrderTrackingScreen({super.key, this.orderMap, this.orderIdParam});
-​@override
+const OrderTrackingScreen({super.key, this.orderMap, this.orderIdParam});
+@override
 State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
 }
 ​class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
@@ -20,11 +20,11 @@ LatLng _customerPosition =
 const LatLng(13.5795, 44.0209); // مركز تعز الافتراضي
 RealtimeChannel? _orderChannel;
 RealtimeChannel? _locationChannel;
-​Map<String, dynamic>? _restaurantRatingData;
+Map<String, dynamic>? _restaurantRatingData;
 Map<String, dynamic>? _courierRatingData;
 bool _isLoadingRatings = false;
 bool _isSubmittingOrderAction = false;
-​@override
+@override
 void initState() {
 super.initState();
 final String targetId =
@@ -40,10 +40,10 @@ if (found.isNotEmpty && found.first is Map) {
 sourceOrder = Map<String, dynamic>.from(found.first as Map);
 }
 }
-​_extractCustomerCoordinates(sourceOrder);
+_extractCustomerCoordinates(sourceOrder);
 _subscribeToOrderUpdates(targetId);
 _fetchOrderRatings(targetId);
-​final isAdminOrCourier = context.read<AppState>().isAdminLoggedIn ||
+final isAdminOrCourier = context.read<AppState>().isAdminLoggedIn ||
 context.read<AppState>().currentCourier != null;
 final initialCourier =
 sourceOrder?['assigned_courier']?.toString().trim() ?? '';
@@ -54,7 +54,7 @@ _fetchAndListenCourierLocation(initialCourier);
 }
 ​void safeMoveMapTo(LatLng point, double zoom) {
 if (!mounted) return;
-WidgetsBinding.instance.addPostFrameCallback(() {
+WidgetsBinding.instance.addPostFrameCallback((_) {
 if (!mounted) return;
 try {
 _mapController.move(point, zoom);
@@ -66,18 +66,18 @@ debugPrint('تعذر تحريك الخريطة حالياً: $e');
 ​Future<void> _fetchOrderRatings(String orderId) async {
 final intOrderId = int.tryParse(orderId.trim());
 if (intOrderId == null) return;
-​if (mounted) {
+if (mounted) {
 setState(() => _isLoadingRatings = true);
 }
-​try {
+try {
 final rows = await Supabase.instance.client
 .from('ratings_and_reviews')
 .select(
 'id, order_id, target_type, target_id, rating, comment, created_at')
 .eq('order_id', intOrderId);
-​Map<String, dynamic>? restRes;
+Map<String, dynamic>? restRes;
 Map<String, dynamic>? courierRes;
-​for (final raw in (rows as List)) {
+for (final raw in (rows as List)) {
 if (raw is Map) {
 final map = Map<String, dynamic>.from(raw);
 final targetType = map['target_type']?.toString().trim();
@@ -88,7 +88,7 @@ courierRes = map;
 }
 }
 }
-​if (mounted) {
+if (mounted) {
 setState(() {
 _restaurantRatingData = restRes;
 _courierRatingData = courierRes;
@@ -108,7 +108,7 @@ final latVal = double.tryParse(order['lat']?.toString() ?? '') ??
 double.tryParse(order['latitude']?.toString() ?? '');
 final lngVal = double.tryParse(order['lng']?.toString() ?? '') ??
 double.tryParse(order['longitude']?.toString() ?? '');
-​if (latVal != null &&
+if (latVal != null &&
 lngVal != null &&
 latVal >= -90 &&
 latVal <= 90 &&
@@ -121,7 +121,7 @@ _customerPosition = LatLng(latVal, lngVal);
 }
 return;
 }
-​if (address.contains('(') && address.contains(')')) {
+if (address.contains('(') && address.contains(')')) {
 final coordsPart =
 address.substring(address.indexOf('(') + 1, address.indexOf(')'));
 final parts = coordsPart.split(',');
@@ -200,10 +200,10 @@ final resolvedKey = _resolveCourierLocationKey(courierNameOrId);
 final keysToCheck = {courierNameOrId.trim(), resolvedKey}
 .where((k) => k.isNotEmpty)
 .toList();
-​Map<String, dynamic>? foundRow;
+Map<String, dynamic>? foundRow;
 String activeChannelKey =
 resolvedKey.isNotEmpty ? resolvedKey : courierNameOrId.trim();
-​for (final key in keysToCheck) {
+for (final key in keysToCheck) {
 final res = await Supabase.instance.client
 .from('courier_locations')
 .select('courier_id, latitude, longitude, updated_at')
@@ -217,19 +217,19 @@ activeChannelKey = key;
 break;
 }
 }
-​if (foundRow != null && mounted) {
+if (foundRow != null && mounted) {
 final lat = (foundRow['latitude'] as num).toDouble();
 final lng = (foundRow['longitude'] as num).toDouble();
 final pos = LatLng(lat, lng);
 setState(() {
 _courierPosition = pos;
 });
-_safeMoveMapTo(pos, 16.5);
+safeMoveMapTo(pos, 16.5);
 }
-​if (_locationChannel != null) {
+if (_locationChannel != null) {
 await Supabase.instance.client.removeChannel(_locationChannel!);
 }
-​_locationChannel = Supabase.instance.client
+_locationChannel = Supabase.instance.client
 .channel('public:courier_locations:courier_id=eq.$activeChannelKey')
 .onPostgresChanges(
 event: PostgresChangeEvent.all,
@@ -252,7 +252,7 @@ final nextPos = LatLng(lat, lng);
 setState(() {
 _courierPosition = nextPos;
 });
-_safeMoveMapTo(nextPos, 17.0);
+safeMoveMapTo(nextPos, 17.0);
 }
 },
 )
@@ -305,7 +305,7 @@ BuildContext parentContext, AppState appState, String orderId) async {
 double rating = 5.0;
 bool isSubmitting = false;
 final TextEditingController reviewController = TextEditingController();
-​await showDialog(
+await showDialog(
 context: parentContext,
 builder: (dialogContext) => Directionality(
 textDirection: TextDirection.rtl,
@@ -425,7 +425,7 @@ AppState appState, String orderId, String courierName) async {
 double rating = 5.0;
 bool isSubmitting = false;
 final TextEditingController reviewController = TextEditingController();
-​await showDialog(
+await showDialog(
 context: parentContext,
 builder: (dialogContext) => Directionality(
 textDirection: TextDirection.rtl,
@@ -557,11 +557,11 @@ Widget build(BuildContext context) {
 final appState = Provider.of<AppState>(context);
 final String targetId =
 widget.orderIdParam ?? widget.orderMap?['id']?.toString() ?? '';
-​final order = appState.orders.firstWhere(
+final order = appState.orders.firstWhere(
 (o) => o['id'].toString() == targetId,
 orElse: () => widget.orderMap ?? {},
 );
-​if (order.isEmpty) {
+if (order.isEmpty) {
 return Directionality(
 textDirection: TextDirection.rtl,
 child: Scaffold(
@@ -579,9 +579,9 @@ style: TextStyle(color: Colors.grey)),
 ),
 );
 }
-​final String rawStatus =
+final String rawStatus =
 order['status']?.toString().trim() ?? 'waitingForPricing';
-​int currentStep = 0;
+int currentStep = 0;
 if (rawStatus == 'waitingForPricing') {
 currentStep = 0;
 } else if (rawStatus == 'pricingSentToCustomer' ||
@@ -595,50 +595,50 @@ currentStep = 3;
 } else if (rawStatus == 'delivered') {
 currentStep = 4;
 }
-​final steps = [
+final steps = [
 {'title': 'التأسيس', 'icon': Icons.receipt_long},
 {'title': 'التسعير', 'icon': Icons.local_offer},
 {'title': 'في الطريق', 'icon': Icons.two_wheeler},
 {'title': 'الوصول', 'icon': Icons.location_on},
 {'title': 'التسليم', 'icon': Icons.check_circle},
 ];
-​final double deliveryFee =
+final double deliveryFee =
 double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-​final double? explicitProductsPrice = double.tryParse(
+final double? explicitProductsPrice = double.tryParse(
 (order['products_total'] ??
 order['products_price'] ??
 order['items_price'] ??
 '')
 .toString());
-​final double totalPriceField =
+final double totalPriceField =
 double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
-​final double finalProductsPrice = explicitProductsPrice ??
+final double finalProductsPrice = explicitProductsPrice ??
 ((deliveryFee > 0 && totalPriceField >= deliveryFee)
 ? (totalPriceField - deliveryFee)
 : totalPriceField);
-​final double dbTotalAmount = double.tryParse(
+final double dbTotalAmount = double.tryParse(
 order['total_amount']?.toString() ??
 order['total']?.toString() ??
 '0') ??
 0.0;
-​final double grandTotal = dbTotalAmount > 0
+final double grandTotal = dbTotalAmount > 0
 ? dbTotalAmount
 : (finalProductsPrice + deliveryFee);
-​final String courierName =
+final String courierName =
 order['assigned_courier']?.toString() ?? 'مندوب عام';
-​final bool isManagerOrCourier =
+final bool isManagerOrCourier =
 appState.isAdminLoggedIn || appState.currentCourier != null;
-​final double? restaurantRatingVal = _restaurantRatingData != null
+final double? restaurantRatingVal = _restaurantRatingData != null
 ? double.tryParse(_restaurantRatingData!['rating']?.toString() ?? '')
 : null;
 final String restaurantReviewVal =
 _restaurantRatingData?['comment']?.toString() ?? '';
-​final double? courierRatingVal = _courierRatingData != null
+final double? courierRatingVal = _courierRatingData != null
 ? double.tryParse(_courierRatingData!['rating']?.toString() ?? '')
 : null;
 final String courierReviewVal =
 _courierRatingData?['comment']?.toString() ?? '';
-​return Directionality(
+return Directionality(
 textDirection: TextDirection.rtl,
 child: Scaffold(
 backgroundColor: const Color(0xFF121212),
@@ -721,7 +721,7 @@ textAlign: TextAlign.center,
 ),
 ),
 const SizedBox(height: 16),
-​// المشرف والمندوب: تتبع حي على الخريطة
+// المشرف والمندوب: تتبع حي على الخريطة
 if (isManagerOrCourier) ...[
 Container(
 height: 250,
@@ -888,7 +888,7 @@ textAlign: TextAlign.center,
 ),
 const SizedBox(height: 16),
 ],
-​// تفاصيل الطلب والأسعار
+// تفاصيل الطلب والأسعار
 Container(
 padding: const EdgeInsets.all(16),
 decoration: BoxDecoration(
@@ -1016,7 +1016,7 @@ fontWeight: FontWeight.bold, fontSize: 12),
 ),
 ),
 const SizedBox(height: 16),
-​// قسم التقييم عند التسليم
+// قسم التقييم عند التسليم
 if (rawStatus == 'delivered') ...[
 if (_isLoadingRatings)
 const Center(
