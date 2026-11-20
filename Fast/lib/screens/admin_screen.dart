@@ -49,7 +49,7 @@ class _AdminScreenState extends State<AdminScreen>
         return;
       }
 
-      final currentPhone = appState.userProfile?['phone'] ?? '';
+      final currentPhone = appState.userProfile?['phone']?.toString() ?? '';
 
       if (currentPhone.isEmpty && !appState.isAdminLoggedIn) {
         _kickOutUnauthorizedUser('جلسة غير صالحة، يرجى تسجيل الدخول مجدداً ⚠️');
@@ -59,6 +59,7 @@ class _AdminScreenState extends State<AdminScreen>
       if (appState.isAdminLoggedIn) return;
 
       String cleanPhone = currentPhone.replaceAll(' ', '');
+      if (cleanPhone.startsWith('+967')) cleanPhone = cleanPhone.substring(4);
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
       final formattedPhone = '+967$cleanPhone';
@@ -387,10 +388,12 @@ class _AdminScreenState extends State<AdminScreen>
               child: FutureBuilder<List<dynamic>>(
                 future: Supabase.instance.client
                     .from('ratings_and_reviews')
-                    .select('id, order_id, customer_phone, target_id, rating, comment, created_at')
+                    .select(
+                        'id, order_id, customer_phone, target_id, rating, comment, created_at')
                     .eq('target_type', 'restaurant')
                     .order('created_at', ascending: false),
-                builder: (BuildContext context, AsyncSnapshot<List<dynamic>> snapshot) {
+                builder: (BuildContext context,
+                    AsyncSnapshot<List<dynamic>> snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
                         child: CircularProgressIndicator(color: Colors.amber));
@@ -499,44 +502,26 @@ class _AdminScreenState extends State<AdminScreen>
         .where((id) => id != null)
         .toList();
 
-    try {
-      try {
-        await appState.settleCourierEarnings(courierName);
-      } catch (_) {
-        await Supabase.instance.client.from('courier_settlements').insert({
-          'courier_name': courierName,
-        });
+    await appState.settleCourierEarnings(courierName);
 
-        if (orderIds.isNotEmpty) {
-          await Supabase.instance.client
-              .from('orders')
-              .update({'is_settled': true}).inFilter('id', orderIds);
-        }
+    if (orderIds.isNotEmpty) {
+      await Supabase.instance.client
+          .from('orders')
+          .update({'is_settled': true}).inFilter('id', orderIds);
+      await appState.fetchOrders();
+    }
 
-        await appState.fetchOrders();
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'تم تصفير حساب المندوب $courierName بنجاح ✅ (صافي العمولة لك: ${adminCommission.toStringAsFixed(0)} ر.ي)'),
-            backgroundColor: Colors.green[700],
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+    if (mounted) {
+      setState(() {});
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'تم تصفير حساب المندوب $courierName بنجاح ✅ (صافي العمولة لك: ${adminCommission.toStringAsFixed(0)} ر.ي)'),
+          backgroundColor: Colors.green[700],
+        ),
+      );
     }
   }
 
@@ -702,6 +687,22 @@ class _AdminScreenState extends State<AdminScreen>
                                                       netCourierEarnings:
                                                           netCourierEarnings,
                                                     );
+                                                  } catch (e) {
+                                                    if (context.mounted) {
+                                                      ScaffoldMessenger.of(
+                                                              context)
+                                                          .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(e
+                                                              .toString()
+                                                              .replaceAll(
+                                                                  'Exception: ',
+                                                                  '')),
+                                                          backgroundColor:
+                                                              Colors.orange,
+                                                        ),
+                                                      );
+                                                    }
                                                   } finally {
                                                     if (mounted) {
                                                       setState(() =>
@@ -1677,8 +1678,9 @@ class _AdminScreenState extends State<AdminScreen>
                         const SizedBox(width: 8),
                         Expanded(
                           child: FutureBuilder<List<dynamic>>(
-                            future:
-                                Supabase.instance.client.from('couriers').select(),
+                            future: Supabase.instance.client
+                                .from('couriers')
+                                .select(),
                             builder: (context, courierSnapshot) {
                               final couriersList = courierSnapshot.data ?? [];
                               return DropdownButtonFormField<String>(
