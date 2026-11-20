@@ -495,17 +495,18 @@ class AppState extends ChangeNotifier {
   int pendingOrdersCount = 0;
   int cancelledOrdersCount = 0;
 
+  // حساب قيمة المنتجات فقط دون إضافة رسوم أو عمولات تلقائية زيادة
   double _extractOrderProductsTotal(Map order) {
     final candidates = [
       order['products_total'],
-      order['total_price'],
       order['items_price'],
       order['products_price'],
+      order['total_price'],
     ];
     for (final val in candidates) {
       if (val != null) {
         final parsed = double.tryParse(val.toString());
-        if (parsed != null) return parsed;
+        if (parsed != null && parsed >= 0) return parsed;
       }
     }
     return 0.0;
@@ -1754,6 +1755,7 @@ class AppState extends ChangeNotifier {
     await fetchCouriersFromSupabase();
   }
 
+  // تسوية مستحقات المندوب بناءً على رسوم التوصيل الفعلية المسجلة فقط
   Future<void> settleCourierEarnings(String courierName) async {
     try {
       final cleanCourierName = courierName.trim();
@@ -1763,7 +1765,7 @@ class AppState extends ChangeNotifier {
 
       final unsettledRows = await supabase
           .from('orders')
-          .select('id, total_price, total_amount, delivery_fee, is_settled')
+          .select('id, delivery_fee, is_settled')
           .eq('assigned_courier', cleanCourierName)
           .eq('status', 'delivered')
           .or('is_settled.is.null,is_settled.eq.false');
@@ -1780,14 +1782,8 @@ class AppState extends ChangeNotifier {
         if (idVal != null) {
           orderIds.add(idVal);
         }
-        final amount = double.tryParse(
-              (row['delivery_fee'] ??
-                      row['total_price'] ??
-                      row['total_amount'] ??
-                      '0')
-                  .toString(),
-            ) ??
-            0.0;
+        final amount =
+            double.tryParse((row['delivery_fee'] ?? '0').toString()) ?? 0.0;
         totalSettledAmount += amount;
       }
 
@@ -2250,6 +2246,7 @@ class AppState extends ChangeNotifier {
             restName != 'خدمة الطلبات الخاصة');
   }
 
+  // إنشاء الطلب بدون إضافة أي عمولات أو رسوم تلقائية إضافية
   Future<void> createOrder({
     required String customerName,
     required String phone,
@@ -2303,26 +2300,17 @@ class AppState extends ChangeNotifier {
                 : trackingCode;
       }
 
-      final parsedTotal =
-          double.tryParse(order['total_price']?.toString() ?? '');
-      final parsedProductsTotal =
-          double.tryParse(order['products_total']?.toString() ?? '');
-      final resolvedTotal =
-          (parsedTotal != null && parsedTotal > 0) ? parsedTotal : cleanProductsTotal;
-      final resolvedProductsTotal =
-          (parsedProductsTotal != null && parsedProductsTotal > 0)
-              ? parsedProductsTotal
-              : cleanProductsTotal;
-      order['total_price'] = resolvedTotal;
-      order['products_total'] = resolvedProductsTotal;
+      // اعتماد قيمة المنتجات المدخلة مباشرة دون زيادة تلقائية
+      order['products_total'] = cleanProductsTotal;
+      order['total_price'] = cleanProductsTotal;
 
-      if (order['id'] != null && resolvedTotal > 0) {
+      if (order['id'] != null) {
         try {
           await supabase
               .from('orders')
               .update({
-                'total_price': resolvedTotal,
-                'products_total': resolvedProductsTotal,
+                'total_price': cleanProductsTotal,
+                'products_total': cleanProductsTotal,
               })
               .eq('id', order['id']);
         } catch (_) {}
@@ -2363,6 +2351,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // تحديد رسوم التوصيل وحساب الإجمالي بجمع قيمة المنتجات + رسوم التوصيل المحددة فقط
   Future<void> setOrderDeliveryFee(
     dynamic orderId,
     double fee,
@@ -2374,6 +2363,7 @@ class AppState extends ChangeNotifier {
         throw Exception('معرف الطلب غير صالح.');
       }
 
+      final double cleanFee = fee > 0 ? fee : 0.0;
       final cleanCourierName =
           courierName.trim().isEmpty ? 'مندوب عام' : courierName.trim();
 
@@ -2386,66 +2376,54 @@ class AppState extends ChangeNotifier {
           : <String, dynamic>{};
 
       final productsTotal = _extractOrderProductsTotal(existingOrder);
-      final newTotal = productsTotal + fee;
+      final newTotal = productsTotal + cleanFee;
 
       try {
         final responseData = await ApiService.adminPricingOrder(
           _accessToken ?? '',
           intOrderId,
-          fee,
+          cleanFee,
           cleanCourierName,
         ).timeout(const Duration(milliseconds: 1500));
 
         if (responseData['order'] is Map) {
           updatedOrder = Map<String, dynamic>.from(responseData['order']);
         }
-      } catch (_) {
-        final dbRow = await supabase
-            .from('orders')
-            .update({
-              'delivery_fee': fee,
-              'total_price': newTotal,
-              'products_total': productsTotal,
-              'assigned_courier': cleanCourierName,
-              'status': 'pricingSentToCustomer',
-            })
-            .eq('id', intOrderId)
-            .select()
-            .maybeSingle();
+      } catch (_) {}
 
-        if (dbRow != null) {
-          updatedOrder = Map<String, dynamic>.from(dbRow);
-        } else {
-          updatedOrder = {
-            ...existingOrder,
-            'id': intOrderId,
-            'delivery_fee': fee,
+      final dbRow = await supabase
+          .from('orders')
+          .update({
+            'delivery_fee': cleanFee,
             'total_price': newTotal,
             'products_total': productsTotal,
             'assigned_courier': cleanCourierName,
             'status': 'pricingSentToCustomer',
-          };
-        }
+          })
+          .eq('id', intOrderId)
+          .select()
+          .maybeSingle();
+
+      if (dbRow != null) {
+        updatedOrder = {
+          ...updatedOrder,
+          ...Map<String, dynamic>.from(dbRow),
+        };
       }
 
-      updatedOrder['products_total'] =
-          double.tryParse(updatedOrder['products_total']?.toString() ?? '') ??
-              productsTotal;
-      updatedOrder['total_price'] =
-          double.tryParse(updatedOrder['total_price']?.toString() ?? '') ??
-              newTotal;
+      updatedOrder['id'] = updatedOrder['id'] ?? intOrderId;
+      updatedOrder['delivery_fee'] = cleanFee;
+      updatedOrder['products_total'] = productsTotal;
+      updatedOrder['total_price'] = newTotal;
+      updatedOrder['assigned_courier'] = cleanCourierName;
+      updatedOrder['status'] = updatedOrder['status'] ?? 'pricingSentToCustomer';
 
-      if (updatedOrder.isNotEmpty) {
-        _upsertOrderInList(updatedOrder);
-      } else {
-        await fetchOrders();
-      }
-
+      _upsertOrderInList(updatedOrder);
       unawaited(fetchAdminFinancialReports());
 
       addLocalNotification(
         'تم تحديد سعر الطلب #$orderId',
-        'رسوم التوصيل: $fee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
+        'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
         type: 'pricing_sent',
       );
 
