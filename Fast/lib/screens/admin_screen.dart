@@ -485,7 +485,6 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
-  /// تسوية حساب المندوب بشكل آمن ومتوافق مع عمود orders_count في courier_settlements
   Future<void> _settleCourierSafely({
     required BuildContext context,
     required AppState appState,
@@ -495,7 +494,6 @@ class _AdminScreenState extends State<AdminScreen>
     required double adminCommission,
     required double netCourierEarnings,
   }) async {
-    final int ordersCount = unsettledOrders.length;
     final orderIds = unsettledOrders
         .map((o) => o['id'])
         .where((id) => id != null)
@@ -504,23 +502,10 @@ class _AdminScreenState extends State<AdminScreen>
     try {
       try {
         await appState.settleCourierEarnings(courierName);
-      } catch (e) {
-        final msg = e.toString();
-        if (!msg.contains('orders_count') && !msg.contains('PGRST204')) {
-          rethrow;
-        }
-
-        final Map<String, dynamic> settlementPayload = {
+      } catch (_) {
+        await Supabase.instance.client.from('courier_settlements').insert({
           'courier_name': courierName,
-          'total_delivery_fees': totalCourierEarnings,
-          'courier_net': netCourierEarnings,
-          'admin_commission': adminCommission,
-          'settled_orders_count': ordersCount,
-        };
-
-        await Supabase.instance.client
-            .from('courier_settlements')
-            .insert(settlementPayload);
+        });
 
         if (orderIds.isNotEmpty) {
           await Supabase.instance.client
