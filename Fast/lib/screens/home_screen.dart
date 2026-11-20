@@ -2110,7 +2110,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted) {
-          _popupAnimController.reverse().then(() {
+          _popupAnimController.reverse().then((_) {
             if (mounted) setState(() => _showPopupBadge = false);
           });
         }
