@@ -255,6 +255,12 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
+  bool _isWassalliServiceOrder(Map order) {
+    final String itemsText =
+        '${order['items_description'] ?? ''} ${order['items_desc'] ?? ''} ${order['itemsDesc'] ?? ''} ${order['notes'] ?? ''}';
+    return itemsText.contains('وصل لي') || itemsText.contains('وصللي');
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -646,10 +652,12 @@ class _CourierScreenState extends State<CourierScreen> {
         final String orderStatus = order['status']?.toString().trim() ?? '';
         final bool isUpdating = _updatingOrderIds.contains(orderId);
 
-        final double productsPrice =
+        final double rawProductsPrice =
             double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
         final double deliveryFee =
             double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
+        final double productsPrice =
+            _isWassalliServiceOrder(order as Map) ? 0.0 : rawProductsPrice;
         final double grandTotal = productsPrice + deliveryFee;
 
         return Card(
