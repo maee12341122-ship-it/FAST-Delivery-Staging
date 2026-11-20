@@ -13,7 +13,7 @@ import 'order_tracking_screen.dart';
 import 'home_screen.dart';
 
 class CourierScreen extends StatefulWidget {
-  const CourierScreen({Key? key}) : super(key: key);
+  const CourierScreen({super.key});
 
   @override
   State<CourierScreen> createState() => _CourierScreenState();
@@ -37,29 +37,29 @@ class _CourierScreenState extends State<CourierScreen> {
       final appState = Provider.of<AppState>(context, listen: false);
 
       if (appState.currentCourier != null) {
-        final String courierId = (appState.currentCourier!['id'] ??
+        final courierId = (appState.currentCourier!['id'] ??
                 appState.currentCourier!['name'] ??
                 '')
             .toString()
             .trim();
         if (courierId.isNotEmpty) {
-          _startLiveLocationUpdates(courierId);
+          unawaited(_startLiveLocationUpdates(courierId));
         }
         if (mounted) setState(() => _isLoadingSession = false);
         return;
       }
 
       final prefs = await SharedPreferences.getInstance();
-      final String? savedCourierJson = prefs.getString('saved_courier_session');
+      final savedCourierJson = prefs.getString('saved_courier_session');
 
       if (savedCourierJson != null && savedCourierJson.isNotEmpty) {
-        final Map<String, dynamic> courierData =
+        final courierData =
             Map<String, dynamic>.from(jsonDecode(savedCourierJson) as Map);
         appState.currentCourier = courierData;
-        final String courierId =
+        final courierId =
             (courierData['id'] ?? courierData['name'] ?? '').toString().trim();
         if (courierId.isNotEmpty) {
-          _startLiveLocationUpdates(courierId);
+          unawaited(_startLiveLocationUpdates(courierId));
         }
         if (mounted) setState(() => _isLoadingSession = false);
         return;
@@ -71,7 +71,7 @@ class _CourierScreenState extends State<CourierScreen> {
         return;
       }
 
-      String cleanPhone = currentPhone.replaceAll(' ', '');
+      var cleanPhone = currentPhone.replaceAll(' ', '');
       if (cleanPhone.startsWith('+967')) cleanPhone = cleanPhone.substring(4);
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
@@ -90,10 +90,10 @@ class _CourierScreenState extends State<CourierScreen> {
         appState.currentCourier = courierRes;
         await prefs.setString('saved_courier_session', jsonEncode(courierRes));
 
-        final String courierId =
+        final courierId =
             (courierRes['id'] ?? courierRes['name'] ?? '').toString().trim();
         if (courierId.isNotEmpty) {
-          _startLiveLocationUpdates(courierId);
+          unawaited(_startLiveLocationUpdates(courierId));
         }
         if (mounted) setState(() => _isLoadingSession = false);
       }
@@ -107,7 +107,7 @@ class _CourierScreenState extends State<CourierScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => HomeScreen()),
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
       (route) => false,
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -121,11 +121,11 @@ class _CourierScreenState extends State<CourierScreen> {
     super.dispose();
   }
 
-  void _startLiveLocationUpdates(String courierId) async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  Future<void> _startLiveLocationUpdates(String courierId) async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
-    LocationPermission permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
@@ -134,7 +134,7 @@ class _CourierScreenState extends State<CourierScreen> {
 
     await _locationSubscription?.cancel();
 
-    const LocationSettings locationSettings = LocationSettings(
+    const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 5,
     );
@@ -174,9 +174,10 @@ class _CourierScreenState extends State<CourierScreen> {
 
   void _handleCourierNotificationTap(
       BuildContext context, Map<String, dynamic> notification) {
-    final String? orderId = notification['order_id']?.toString() ??
+    final additionalData = notification['additionalData'];
+    final orderId = notification['order_id']?.toString() ??
         notification['related_id']?.toString() ??
-        notification['additionalData']?['order_id']?.toString() ??
+        (additionalData is Map ? additionalData['order_id']?.toString() : null) ??
         _extractOrderIdFromText(
             '${notification['title'] ?? ''} ${notification['body'] ?? notification['message'] ?? ''}');
 
@@ -200,7 +201,7 @@ class _CourierScreenState extends State<CourierScreen> {
   }
 
   String? _extractOrderIdFromText(String text) {
-    final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
+    final regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
     final match = regExp.firstMatch(text);
     if (match != null && match.groupCount >= 1) {
       return match.group(1);
@@ -257,7 +258,7 @@ class _CourierScreenState extends State<CourierScreen> {
   }
 
   bool _isWassalliServiceOrder(Map order) {
-    final String itemsText =
+    final itemsText =
         '${order['items_description'] ?? ''} ${order['items_desc'] ?? ''} ${order['itemsDesc'] ?? ''} ${order['notes'] ?? ''}';
     return itemsText.contains('وصل لي') || itemsText.contains('وصللي');
   }
@@ -276,8 +277,8 @@ class _CourierScreenState extends State<CourierScreen> {
             final courierName =
                 (courier['name'] ?? '').toString().trim().toLowerCase();
             final courierId = (courier['id'] ?? '').toString().trim();
-            final String orderStatus = o['status']?.toString().trim() ?? '';
-            final bool isMyOrder = assigned == courierName ||
+            final orderStatus = o['status']?.toString().trim() ?? '';
+            final isMyOrder = assigned == courierName ||
                 (courierId.isNotEmpty && assigned == courierId);
             return isMyOrder &&
                 (orderStatus == 'waitingCourierApproval' ||
@@ -449,9 +450,9 @@ class _CourierScreenState extends State<CourierScreen> {
 
   Widget _buildCourierOrdersListWithTabs(
       AppState appState, Map<String, dynamic> courier) {
-    final String courierName =
+    final courierName =
         (courier['name'] ?? '').toString().trim().toLowerCase();
-    final String courierId = (courier['id'] ?? '').toString().trim();
+    final courierId = (courier['id'] ?? '').toString().trim();
 
     final myOrders = appState.orders.where((o) {
       final assigned =
@@ -461,8 +462,8 @@ class _CourierScreenState extends State<CourierScreen> {
     }).toList();
 
     final completedOrders = myOrders.where((o) {
-      final bool isDelivered = o['status']?.toString().trim() == 'delivered';
-      final bool isSettled = o['is_settled'] == true;
+      final isDelivered = o['status']?.toString().trim() == 'delivered';
+      final isSettled = o['is_settled'] == true;
       return isDelivered && !isSettled;
     }).toList();
 
@@ -478,16 +479,16 @@ class _CourierScreenState extends State<CourierScreen> {
             o['status'] == 'cancelled' || o['status'] == 'cancelledByCustomer')
         .toList();
 
-    double totalEarnings = 0.0;
-    int completedCount = 0;
-    for (var order in completedOrders) {
+    var totalEarnings = 0.0;
+    var completedCount = 0;
+    for (final order in completedOrders) {
       completedCount++;
       totalEarnings +=
           double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
     }
 
-    double adminCommission = totalEarnings * 0.20;
-    double courierNetEarnings = totalEarnings - adminCommission;
+    final adminCommission = totalEarnings * 0.20;
+    final courierNetEarnings = totalEarnings - adminCommission;
 
     return DefaultTabController(
       length: 3,
@@ -648,17 +649,17 @@ class _CourierScreenState extends State<CourierScreen> {
       itemBuilder: (context, index) {
         final order = ordersList[index];
         final orderId = order['id'].toString();
-        final String customerAddress = order['address']?.toString() ?? '';
-        final String orderStatus = order['status']?.toString().trim() ?? '';
-        final bool isUpdating = _updatingOrderIds.contains(orderId);
+        final customerAddress = order['address']?.toString() ?? '';
+        final orderStatus = order['status']?.toString().trim() ?? '';
+        final isUpdating = _updatingOrderIds.contains(orderId);
 
-        final double rawProductsPrice =
+        final rawProductsPrice =
             double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
-        final double deliveryFee =
+        final deliveryFee =
             double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final double productsPrice =
+        final productsPrice =
             _isWassalliServiceOrder(order as Map) ? 0.0 : rawProductsPrice;
-        final double grandTotal = productsPrice + deliveryFee;
+        final grandTotal = productsPrice + deliveryFee;
 
         return Card(
           color: const Color(0xFF1E1E1E),
