@@ -556,6 +556,103 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     reviewController.dispose();
   }
 
+  Widget _buildCustomerIllustrationCard(
+    BuildContext context,
+    AppState appState,
+    String rawStatus,
+    int currentStep,
+    Map order,
+  ) {
+    final progressRatio = (currentStep / 4).clamp(0.0, 1.0);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.amber.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle,
+                  color: Colors.greenAccent, size: 20),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  appState.getArabicStatus(rawStatus),
+                  style: const TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // رسمة توضيحية لمسار الطلب للعميل دون موقع المندوب الحي
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.storefront,
+                    color: Colors.amber, size: 22),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: progressRatio,
+                      minHeight: 6,
+                      backgroundColor: Colors.white12,
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(Colors.amber),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.35),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  rawStatus == 'delivered' ? Icons.verified : Icons.home_rounded,
+                  color: Colors.black,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            rawStatus == 'delivered'
+                ? 'تم تسليم طلبك بنجاح، شكراً لتعاملكم معنا'
+                : 'موقع التوصيل المحدد: ${order['address'] ?? 'تعز'}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     if (_orderChannel != null) {
@@ -837,69 +934,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
               ] else ...[
-                // العميل لوحده: عرض حالة الطلب وعنوانه بدون تتبع حي لبقية الخريطة
-                Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: Colors.amber.withOpacity(0.4), width: 1.5),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.check_circle,
-                              color: Colors.greenAccent, size: 20),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              appState.getArabicStatus(rawStatus),
-                              style: const TextStyle(
-                                  color: Colors.amber,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.amber,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.amber.withOpacity(0.35),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          rawStatus == 'delivered'
-                              ? Icons.verified
-                              : Icons.location_on,
-                          color: Colors.black,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        rawStatus == 'delivered'
-                            ? 'تم تسليم طلبك بنجاح، شكراً لتعاملكم معنا'
-                            : 'موقع التوصيل المحدد: ${order['address'] ?? 'تعز'}',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+                // العميل لوحده: رسمة توضيحية لحالة الطلب دون خريطة أو موقع حي للمندوب
+                _buildCustomerIllustrationCard(
+                  context,
+                  appState,
+                  rawStatus,
+                  currentStep,
+                  order,
                 ),
                 const SizedBox(height: 16),
               ],
