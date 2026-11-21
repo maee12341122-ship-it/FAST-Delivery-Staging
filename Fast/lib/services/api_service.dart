@@ -21,11 +21,12 @@ class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final http.Client _httpClient = http.Client();
 
-  static const Duration _requestTimeout = Duration(seconds: 20);
-  static const Duration _orderTimeout = Duration(seconds: 15);
+  static const Duration _requestTimeout = Duration(seconds: 25);
+  static const Duration _orderTimeout = Duration(seconds: 20);
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
+  // ملاحظة: على جهاز أندرويد حقيقي، يجب تمرير --dart-define=BACKEND_URL=https://your-backend-domain
   static const String baseUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'http://10.0.2.2:3000',
