@@ -194,7 +194,6 @@ class AppState extends ChangeNotifier {
     throw Exception(errorMsg);
   }
 
-  // التحقق الحقيقي من المشرف عبر Backend أو جدول admins الفعلي (بدون الاعتماد على user_metadata.role أو UUID في admins.id)
   Future<JsonMapNullable> _verifyAdminFromBackendOrSchema(User? user) async {
     if (user == null) return null;
     final token = _accessToken;
@@ -208,7 +207,7 @@ class AppState extends ChangeNotifier {
         }
         return null;
       } catch (_) {
-        // إذا لم يكن مسار التحقق مفعلاً بعد أو فشل الاتصال، نتحقق من جدول admins بالأعمدة الفعلية فقط
+        // Fallback إلى التحقق من جدول admins بالأعمدة الفعلية فقط
       }
     }
 
@@ -1128,7 +1127,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  // إرسال الإشعارات عبر مسار Node.js Backend المحمي (POST /api/notifications/send)
   Future<void> sendAutoNotification({
     String? playerId,
     String? targetPlayerId,
@@ -1238,13 +1236,12 @@ class AppState extends ChangeNotifier {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-    void shareApp() {
+  void shareApp() {
     unawaited(Share.share(
       'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     ));
   }
-
 
   Future<bool> isLocationServiceEnabled() async {
     return await Geolocator.isLocationServiceEnabled();
@@ -1334,14 +1331,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchStoreSettings() async {
     try {
-      // قراءة رسوم التوصيل من جدول settings
       final feeResponse = await supabase.from('settings').select().maybeSingle();
       if (feeResponse != null && feeResponse['delivery_fee'] != null) {
         deliveryFee =
             int.tryParse(feeResponse['delivery_fee'].toString()) ?? deliveryFee;
       }
 
-      // قراءة إعدادات المتجر وساعات العمل وحالة الفتح من جدول store_settings
       final storeResponse =
           await supabase.from('store_settings').select().limit(1).maybeSingle();
       if (storeResponse != null) {
@@ -1411,9 +1406,7 @@ class AppState extends ChangeNotifier {
         'delivery_fee': targetFee,
       });
       return;
-    } catch (_) {
-      // Fallback إلى تحديث الجداول المباشر إذا لم يكن المسار مفعلاً
-    }
+    } catch (_) {}
 
     await supabase.from('store_settings').upsert({
       'id': 1,
@@ -1464,11 +1457,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // التحقق من حالة المتجر مع مراعاة ساعات العمل التي تتجاوز منتصف الليل ومنطقة Asia/Aden
   bool get isStoreOpen {
     if (!storeIsOpenFlag) return false;
     final nowUtc = DateTime.now().toUtc();
-    // التوقيت القياسي لـ Asia/Aden هو UTC+3
     final adenNow = nowUtc.add(const Duration(hours: 3));
     final currentHour = adenNow.hour;
     if (endHour > startHour) {
@@ -1665,7 +1656,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // طلب OTP عبر Node.js Backend (مؤقتاً sandbox لحين موافقة Meta/WhatsApp) بدون رموز ثابتة أو تجاوز من Flutter
   Future<JsonMap> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) {
@@ -1678,7 +1668,7 @@ class AppState extends ChangeNotifier {
         'channel': _useSandboxOtpProvider ? 'sandbox' : 'whatsapp',
       });
 
-      var existsInDb = response['exists'] == true;
+      final existsInDb = response['exists'] == true;
       if (existsInDb) {
         try {
           await fetchCustomerRecordByPhone(cleanPhone);
@@ -1701,7 +1691,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // التحقق من OTP عبر Node.js Backend فقط دون أي تجاوز أو رمز ثابت في Flutter
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     if (enteredOtp.trim().isEmpty) return false;
     final cleanPhone = _normalizePhone(phone);
@@ -1898,7 +1887,8 @@ class AppState extends ChangeNotifier {
         ? 'disabled'
         : (courier.isAvailable ? 'available' : 'busy');
 
-    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courier.id)}/update', {
+    await _postBackend(
+        '/api/admin/couriers/${Uri.encodeComponent(courier.id)}/update', {
       'name': courier.name.trim(),
       'phone': courier.phone.trim(),
       'status': status,
@@ -1909,18 +1899,19 @@ class AppState extends ChangeNotifier {
 
   Future<void> setCourierAvailability(String courierId, bool available) async {
     final status = available ? 'available' : 'busy';
-    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courierId)}/status', {
+    await _postBackend(
+        '/api/admin/couriers/${Uri.encodeComponent(courierId)}/status', {
       'status': status,
     });
     await fetchCouriersFromSupabase();
   }
 
   Future<void> removeCourier(String courierId) async {
-    await _postBackend('/api/admin/couriers/${Uri.encodeComponent(courierId)}/delete', {});
+    await _postBackend(
+        '/api/admin/couriers/${Uri.encodeComponent(courierId)}/delete', {});
     await fetchCouriersFromSupabase();
   }
 
-  // تسوية مستحقات المندوب عبر Node.js Backend لضمان عدم تكرار التسوية وحساب الطلبات المكتملة غير المسوّاة فقط
   Future<void> settleCourierEarnings(String courierName) async {
     try {
       final cleanCourierName = courierName.trim();
@@ -2188,6 +2179,9 @@ class AppState extends ChangeNotifier {
 
   String _normalizePhone(String phone) {
     var clean = phone.trim().replaceAll(' ', '');
+    if (clean.startsWith('+967')) {
+      clean = clean.substring(4);
+    }
     if (clean.startsWith('0')) {
       clean = clean.substring(1);
     }
@@ -2446,7 +2440,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ أثناء إرسال الطلب: $e');
-      throw Exception('تعذر إرسال الطلب: $e');
+      rethrow;
     } finally {
       _isCreatingOrder = false;
     }
