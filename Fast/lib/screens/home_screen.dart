@@ -67,6 +67,14 @@ class _HomeScreenState extends State<HomeScreen>
     return value.toStringAsFixed(1);
   }
 
+  String _formatHourLabel(int hour) {
+    final normalized = ((hour % 24) + 24) % 24;
+    if (normalized == 0 || normalized == 24) return '12:00 ص';
+    if (normalized == 12) return '12:00 م';
+    if (normalized < 12) return '$normalized:00 ص';
+    return '${normalized - 12}:00 م';
+  }
+
   String formatLocationAddress(String? rawAddress) {
     if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة';
     if (rawAddress.contains('(') && rawAddress.contains(',')) {
@@ -303,6 +311,51 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _launchWhatsAppForAd() async {
     await _launchWhatsApp(
         message: 'مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
+  }
+
+  Widget _buildStoreHoursStatusBar(
+      AppState appState, Color cardBg, Color textColor) {
+    final bool isOpen = appState.isStoreOpen;
+    final String hoursText =
+        '${_formatHourLabel(appState.startHour)} - ${_formatHourLabel(appState.endHour)}';
+    final Color statusColor = isOpen ? Colors.green : Colors.redAccent;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.45)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.access_time_filled, color: statusColor, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                isOpen ? 'مفتوح الآن' : 'مغلق حالياً',
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            'ساعات العمل: $hoursText',
+            style: TextStyle(
+              color: textColor.withOpacity(0.8),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDynamicPromoBanners(AppState appState) {
@@ -1055,7 +1108,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // استبعاد الطلبات الخاصة وخدمة "وصل لي" من تقييم المطاعم
   bool _isCustomOrSpecialOrder(
       Map<dynamic, dynamic> order, String itemsText) {
     final trimmedItems = itemsText.trim();
@@ -2559,6 +2611,7 @@ class _HomeScreenState extends State<HomeScreen>
         padding: const EdgeInsets.all(12.0),
         child: ListView(
           children: [
+            _buildStoreHoursStatusBar(appState, cardBg, textColor),
             _buildCategoriesHorizontalList(appState, textColor, cardBg),
             const SizedBox(height: 10),
             Container(
@@ -2669,6 +2722,7 @@ class _HomeScreenState extends State<HomeScreen>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         children: [
+          _buildStoreHoursStatusBar(appState, cardBg, textColor),
           _buildDynamicPromoBanners(appState),
           _buildCustomDeliveryBanner(
               context, appState, appState.userProfile?['id'] ?? 'guest'),
