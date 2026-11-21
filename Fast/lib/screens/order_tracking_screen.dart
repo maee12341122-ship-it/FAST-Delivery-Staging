@@ -593,7 +593,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          // رسمة توضيحية لمسار الطلب للعميل دون موقع المندوب الحي
           Row(
             children: [
               Container(
@@ -769,7 +768,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // شريط مراحل الطلب
               Container(
                 padding:
                     const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
@@ -833,7 +831,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // المشرف والمندوب: تتبع حي على الخريطة
               if (isManagerOrCourier) ...[
                 Container(
                   height: 250,
@@ -855,6 +852,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         children: [
                           TileLayer(
                             urlTemplate:
+                                'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                            fallbackUrl:
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.fast.taiz',
                             errorTileCallback: (tile, error, stackTrace) {},
@@ -934,7 +933,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
               ] else ...[
-                // العميل لوحده: رسمة توضيحية لحالة الطلب دون خريطة أو موقع حي للمندوب
                 _buildCustomerIllustrationCard(
                   context,
                   appState,
@@ -944,7 +942,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-              // تفاصيل الطلب والأسعار
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1077,7 +1074,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // قسم التقييم عند التسليم
               if (rawStatus == 'delivered') ...[
                 if (_isLoadingRatings)
                   const Center(
