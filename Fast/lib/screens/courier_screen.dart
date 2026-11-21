@@ -263,6 +263,28 @@ class _CourierScreenState extends State<CourierScreen> {
     return itemsText.contains('وصل لي') || itemsText.contains('وصللي');
   }
 
+  /// استخراج سعر المنتجات الصحيح دون تكرار إضافة رسوم التوصيل
+  double _resolveProductsPrice(Map order, double deliveryFee) {
+    if (_isWassalliServiceOrder(order)) return 0.0;
+
+    final explicitProductsTotal =
+        double.tryParse(order['products_total']?.toString() ?? '');
+    if (explicitProductsTotal != null && explicitProductsTotal > 0) {
+      return explicitProductsTotal;
+    }
+
+    final storedTotal = double.tryParse(
+          (order['total_price'] ?? order['total_amount'] ?? '0').toString(),
+        ) ??
+        0.0;
+
+    if (storedTotal <= 0) return 0.0;
+    if (deliveryFee > 0 && storedTotal >= deliveryFee) {
+      return storedTotal - deliveryFee;
+    }
+    return storedTotal;
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
@@ -647,18 +669,15 @@ class _CourierScreenState extends State<CourierScreen> {
     return ListView.builder(
       itemCount: ordersList.length,
       itemBuilder: (context, index) {
-        final order = ordersList[index];
+        final order = ordersList[index] as Map;
         final orderId = order['id'].toString();
         final customerAddress = order['address']?.toString() ?? '';
         final orderStatus = order['status']?.toString().trim() ?? '';
         final isUpdating = _updatingOrderIds.contains(orderId);
 
-        final rawProductsPrice =
-            double.tryParse(order['total_price']?.toString() ?? '0') ?? 0.0;
         final deliveryFee =
             double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
-        final productsPrice =
-            _isWassalliServiceOrder(order as Map) ? 0.0 : rawProductsPrice;
+        final productsPrice = _resolveProductsPrice(order, deliveryFee);
         final grandTotal = productsPrice + deliveryFee;
 
         return Card(
