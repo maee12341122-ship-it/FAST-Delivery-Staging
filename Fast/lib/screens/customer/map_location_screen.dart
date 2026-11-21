@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -249,10 +250,23 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-        timeLimit: const Duration(seconds: 10),
-      );
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 18),
+        );
+      } on TimeoutException {
+        position = await Geolocator.getLastKnownPosition();
+        if (position == null) {
+          if (!mounted) return;
+          setState(() {
+            _error =
+                'تأخر التقاط إشارة الـ GPS؛ يمكنك سحب الدبوس على موقعك مباشرة أو المحاولة مجدداً.';
+          });
+          return;
+        }
+      }
 
       final point = LatLng(position.latitude, position.longitude);
       if (!mounted) return;
@@ -264,9 +278,25 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
       _mapController.move(point, 17.5);
     } catch (error) {
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null && mounted) {
+          final fallbackPoint = LatLng(lastKnown.latitude, lastKnown.longitude);
+          setState(() {
+            _selectedPoint = fallbackPoint;
+            _error =
+                'تم جلب آخر موقع معروف؛ يمكنك تحريك الدبوس لتعديل الموضع بدقة.';
+          });
+          _mapController.move(fallbackPoint, 17.0);
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
-        setState(
-            () => _error = error.toString().replaceFirst('Exception: ', ''));
+        setState(() {
+          _error =
+              'تعذر جلب الموقع تلقائياً حالياً؛ يمكنك تحريك الدبوس على الخريطة يدوياً.';
+        });
       }
     } finally {
       if (mounted) setState(() => _gettingLocation = false);
@@ -468,6 +498,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                               fallbackUrl:
                                   'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                               userAgentPackageName: 'com.fast.taiz',
+                              tileProvider: NetworkTileProvider(),
                               maxZoom: 19,
                               errorTileCallback: (tile, error, stackTrace) {},
                             ),
