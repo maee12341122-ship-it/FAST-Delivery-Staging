@@ -14,13 +14,13 @@ class CustomDeliveryScreen extends StatefulWidget {
 
 class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // حقول الربط الثلاثي الجديدة (من أين، إلى أين، وصف الغرض والملاحظات)
   final TextEditingController _pickupController = TextEditingController();
   final TextEditingController _dropoffController = TextEditingController();
   final TextEditingController _itemDescriptionController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
-  
+
   bool _isLoading = false;
 
   @override
@@ -49,24 +49,33 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
             children: [
               const Text(
                 'اختر مصدر العنوان 📍',
-                style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               ListTile(
                 tileColor: const Color(0xFF121212),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 leading: const Icon(Icons.map, color: Colors.amber),
-                title: const Text('تحديد من الخريطة التفاعلية 🗺️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                title: const Text('تحديد من الخريطة التفاعلية 🗺️',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
                 onTap: () async {
                   Navigator.pop(context);
                   final result = await Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const MapLocationScreen()),
+                    MaterialPageRoute(
+                        builder: (context) => const MapLocationScreen()),
                   );
                   if (result != null && result is Map) {
                     setState(() {
-                      targetController.text = result['address'] ?? 'موقع محدد من الخريطة';
+                      targetController.text =
+                          result['address'] ?? 'موقع محدد من الخريطة';
                     });
                   }
                 },
@@ -74,10 +83,14 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
               const SizedBox(height: 10),
               ListTile(
                 tileColor: const Color(0xFF121212),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 leading: const Icon(Icons.bookmark, color: Colors.amber),
-                title: const Text('من العناوين المحفوظة 🏠', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                title: const Text('من العناوين المحفوظة 🏠',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
                 onTap: () {
                   Navigator.pop(context);
                   _showSavedAddressesDialog(targetController);
@@ -97,7 +110,9 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
 
     if (appState.userAddresses.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا توجد عناوين محفوظة مسبقاً. يمكنك إضافتها من صفحة حسابي 🏠')),
+        const SnackBar(
+            content: Text(
+                'لا توجد عناوين محفوظة مسبقاً. يمكنك إضافتها من صفحة حسابي 🏠')),
       );
       return;
     }
@@ -112,7 +127,8 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
             children: [
               Icon(Icons.bookmark, color: Colors.amber),
               SizedBox(width: 8),
-              Text('عناوينك المحفوظة 📍', style: TextStyle(color: Colors.amber, fontSize: 16)),
+              Text('عناوينك المحفوظة 📍',
+                  style: TextStyle(color: Colors.amber, fontSize: 16)),
             ],
           ),
           content: SizedBox(
@@ -127,12 +143,20 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                   color: const Color(0xFF121212),
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   child: ListTile(
-                    title: Text(addr.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                    subtitle: Text('${addr.area} - ${addr.details}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                    trailing: const Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
+                    title: Text(addr.title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    subtitle: Text('${addr.area} - ${addr.details}',
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 11)),
+                    trailing: const Icon(Icons.arrow_forward_ios,
+                        color: Colors.amber, size: 14),
                     onTap: () {
                       setState(() {
-                        targetController.text = '${addr.title}: ${addr.area} - ${addr.details}';
+                        targetController.text =
+                            '${addr.title}: ${addr.area} - ${addr.details}';
                       });
                       Navigator.pop(context);
                     },
@@ -155,9 +179,12 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
   Future<void> _submitOrder(AppState appState) async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (appState.userProfile == null || appState.userProfile!['phone'] == null || (appState.userProfile!['phone'] as String).isEmpty) {
+    if (appState.userProfile == null ||
+        appState.userProfile!['phone'] == null ||
+        (appState.userProfile!['phone'] as String).isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء تسجيل الدخول برقم الهاتف أولاً ⚠️')),
+        const SnackBar(
+            content: Text('الرجاء تسجيل الدخول برقم الهاتف أولاً ⚠️')),
       );
       return;
     }
@@ -169,7 +196,7 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
     try {
       final customerName = appState.userProfile!['name'] ?? 'عميل';
       final phone = appState.userProfile!['phone'] ?? '';
-      
+
       final pickup = _pickupController.text.trim();
       final dropoff = _dropoffController.text.trim();
       final itemDesc = _itemDescriptionController.text.trim();
@@ -178,9 +205,10 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
       // دمج تفاصيل النقل والمسار في وصف الطلب والعنوان لترسل للإدارة والمندوب بدقة
       final fullAddress = 'من: $pickup ➡️ إلى: $dropoff';
       final itemsDesc = '📦 [خدمة وصل لي الخاصة]\n'
-          '📍 مكان الاستلام: $pickup\n'
-          '🎯 مكان التوصيل: $dropoff\n'
-          '🏷️ الغرض: $itemDesc' + (notes.isNotEmpty ? '\n💬 ملاحظات: $notes' : '');
+              '📍 مكان الاستلام: $pickup\n'
+              '🎯 مكان التوصيل: $dropoff\n'
+              '🏷️ الغرض: $itemDesc' +
+          (notes.isNotEmpty ? '\n💬 ملاحظات: $notes' : '');
 
       // 💡 سعر المنتجات 0.0 تماماً لأنها خدمة توصيل أغراض وليست شراء منتجات، بانتظار تسعير الإدارة لرسوم التوصيل
       await appState.createOrder(
@@ -195,7 +223,9 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إرسال طلب "وصل لي" بنجاح، بانتظار تسعير الإدارة 🚀')),
+        const SnackBar(
+            content:
+                Text('تم إرسال طلب "وصل لي" بنجاح، بانتظار تسعير الإدارة 🚀')),
       );
       Navigator.pop(context);
     } catch (e) {
@@ -222,7 +252,9 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('خدمة "وصل لي" الخاصة 🛵', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+          title: const Text('خدمة "وصل لي" الخاصة 🛵',
+              style:
+                  TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
         body: SingleChildScrollView(
@@ -241,7 +273,8 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                   ),
                   child: const Text(
                     'خدمة توصيل الأغراض من نقطة إلى نقطة (من أين وإلى أين). حدد موقع الاستلام، موقع التوصيل، ووصف الغرض، وسيقوم المشرف بتحديد رسوم التوصيل وإرسالها لك.',
-                    style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                    style:
+                        TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -256,14 +289,18 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
-                    prefixIcon: const Icon(Icons.trip_origin, color: Colors.amber),
+                    prefixIcon:
+                        const Icon(Icons.trip_origin, color: Colors.amber),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.location_searching, color: Colors.amber),
+                      icon: const Icon(Icons.location_searching,
+                          color: Colors.amber),
                       tooltip: 'اختر من الخريطة أو العناوين',
                       onPressed: () => _pickLocationOptions(_pickupController),
                     ),
                   ),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'الرجاء إحديد مكان الاستلام' : null,
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'الرجاء إحديد مكان الاستلام'
+                      : null,
                 ),
                 const SizedBox(height: 14),
 
@@ -277,14 +314,18 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
-                    prefixIcon: const Icon(Icons.location_on, color: Colors.redAccent),
+                    prefixIcon:
+                        const Icon(Icons.location_on, color: Colors.redAccent),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.location_searching, color: Colors.amber),
+                      icon: const Icon(Icons.location_searching,
+                          color: Colors.amber),
                       tooltip: 'اختر من الخريطة أو العناوين',
                       onPressed: () => _pickLocationOptions(_dropoffController),
                     ),
                   ),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'الرجاء تحديد مكان التوصيل' : null,
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'الرجاء تحديد مكان التوصيل'
+                      : null,
                 ),
                 const SizedBox(height: 14),
 
@@ -301,9 +342,12 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     border: OutlineInputBorder(),
                     filled: true,
                     fillColor: Color(0xFF1E1E1E),
-                    prefixIcon: Icon(Icons.inventory_2_outlined, color: Colors.amber),
+                    prefixIcon:
+                        Icon(Icons.inventory_2_outlined, color: Colors.amber),
                   ),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'الرجاء كتابة وصف الغرض أو الشحنة' : null,
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'الرجاء كتابة وصف الغرض أو الشحنة'
+                      : null,
                 ),
                 const SizedBox(height: 14),
 
@@ -318,7 +362,8 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     border: OutlineInputBorder(),
                     filled: true,
                     fillColor: Color(0xFF1E1E1E),
-                    prefixIcon: Icon(Icons.note_alt_outlined, color: Colors.amber),
+                    prefixIcon:
+                        Icon(Icons.note_alt_outlined, color: Colors.amber),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -329,18 +374,21 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     backgroundColor: Colors.amber,
                     foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _isLoading ? null : () => _submitOrder(appState),
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              color: Colors.black, strokeWidth: 2),
                         )
                       : const Text(
                           'إرسال طلب "وصل لي" 🚀',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                 ),
               ],
