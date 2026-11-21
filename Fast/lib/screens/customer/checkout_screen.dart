@@ -93,7 +93,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   // 📍 نافذة اختيار العنوان من العناوين المحفوظة أو إضافة عنوان جديد
-  void _showAddressBookBottomSheet(BuildContext context, Color cardBg, Color textColor) {
+  void _showAddressBookBottomSheet(
+      BuildContext context, Color cardBg, Color textColor) {
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
     showModalBottomSheet(
@@ -114,9 +115,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('عناويني المحفوظة 📍', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('عناويني المحفوظة 📍',
+                        style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold)),
                     TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: Colors.amber),
+                      style:
+                          TextButton.styleFrom(foregroundColor: Colors.amber),
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('إضافة عنوان جديد'),
                       onPressed: () {
@@ -129,19 +135,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const Divider(color: Colors.white24),
                 SizedBox(
                   height: 250,
-                  child: FutureBuilder<List>>(
+                  child: FutureBuilder<List>(
                     future: Supabase.instance.client
                         .from('user_addresses')
                         .select()
                         .eq('user_id', userId ?? '')
-                        .then((response) => List>.from(response)),
+                        .then((response) => List.from(response)),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Colors.amber));
+                        return const Center(
+                            child:
+                                CircularProgressIndicator(color: Colors.amber));
                       }
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
                         return const Center(
-                          child: Text('لا توجد عناوين محفوظة. أضف عنوانك الأول!', style: TextStyle(color: Colors.grey)),
+                          child: Text(
+                              'لا توجد عناوين محفوظة. أضف عنوانك الأول!',
+                              style: TextStyle(color: Colors.grey)),
                         );
                       }
 
@@ -154,13 +164,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             color: const Color(0xFF2A2A2A),
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             child: ListTile(
-                              leading: const Icon(Icons.location_on, color: Colors.amber),
-                              title: Text(addr['title'] ?? 'عنوان', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              subtitle: Text(addr['address_text'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                              trailing: const Icon(Icons.check_circle_outline, color: Colors.amber),
+                              leading: const Icon(Icons.location_on,
+                                  color: Colors.amber),
+                              title: Text(addr['title'] ?? 'عنوان',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(addr['address_text'] ?? '',
+                                  style: const TextStyle(
+                                      color: Colors.grey, fontSize: 12)),
+                              trailing: const Icon(Icons.check_circle_outline,
+                                  color: Colors.amber),
                               onTap: () {
                                 setState(() {
-                                  _addressDescriptionController.text = "${addr['title']}: ${addr['address_text']}";
+                                  _addressDescriptionController.text =
+                                      "${addr['title']}: ${addr['address_text']}";
                                 });
                                 Navigator.pop(context);
                               },
@@ -191,20 +209,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: const Text('إضافة عنوان توصيل جديد 🏠', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            title: const Text('إضافة عنوان توصيل جديد 🏠',
+                style: TextStyle(color: Colors.amber, fontSize: 16)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: titleController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'تسمية العنوان (مثل: المنزل، العمل)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                      labelText: 'تسمية العنوان (مثل: المنزل، العمل)',
+                      labelStyle: TextStyle(color: Colors.grey)),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: textController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'تفاصيل العنوان (الشارع، المعلم القريب)', labelStyle: TextStyle(color: Colors.grey)),
+                  decoration: const InputDecoration(
+                      labelText: 'تفاصيل العنوان (الشارع، المعلم القريب)',
+                      labelStyle: TextStyle(color: Colors.grey)),
                 ),
               ],
             ),
@@ -216,21 +239,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  if (titleController.text.isNotEmpty && textController.text.isNotEmpty) {
-                    final userId = Supabase.instance.client.auth.currentUser?.id;
-                    await Supabase.instance.client.from('user_addresses').insert({
+                  if (titleController.text.isNotEmpty &&
+                      textController.text.isNotEmpty) {
+                    final userId =
+                        Supabase.instance.client.auth.currentUser?.id;
+                    await Supabase.instance.client
+                        .from('user_addresses')
+                        .insert({
                       'user_id': userId,
                       'title': titleController.text.trim(),
                       'address_text': textController.text.trim(),
                     });
                     if (context.mounted) {
                       Navigator.pop(context);
-                      _addressDescriptionController.text = "${titleController.text}: ${textController.text}";
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة وحفظ العنوان بنجاح ✅')));
+                      _addressDescriptionController.text =
+                          "${titleController.text}: ${textController.text}";
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('تمت إضافة وحفظ العنوان بنجاح ✅')));
                     }
                   }
                 },
-                child: const Text('حفظ واختيار', style: TextStyle(color: Colors.black)),
+                child: const Text('حفظ واختيار',
+                    style: TextStyle(color: Colors.black)),
               ),
             ],
           ),
@@ -241,9 +271,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // دالة إرسال الطلب النهائي مع تمرير السعر الحقيقي للمنتجات
   Future<void> _submitOrder(AppState appState) async {
-    if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _addressDescriptionController.text.isEmpty) {
+    if (_nameController.text.isEmpty ||
+        _phoneController.text.isEmpty ||
+        _addressDescriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
+        const SnackBar(
+            content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
       );
       return;
     }
@@ -251,12 +284,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق
     final lat = _selectedLocation.latitude;
     final lng = _selectedLocation.longitude;
-    final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
-    
-    final fullAddress = '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
-    
+    final formattedCoords =
+        '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+
+    final fullAddress =
+        '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
+
     // 🛒 حساب وتنسيق أسماء المنتجات مع أسعارها الفعلية لتظهر بدقة في لوحة المشرف والمندوب والعميل
-    final itemsDesc = appState.cartItems.map((item) => '${item.name} (x${item.quantity}) - ${item.price * item.quantity} ر.ي').join(', ');
+    final itemsDesc = appState.cartItems
+        .map((item) =>
+            '${item.name} (x${item.quantity}) - ${item.price * item.quantity} ر.ي')
+        .join(', ');
 
     await appState.saveUserProfileDetails(_nameController.text, fullAddress);
     try {
@@ -281,7 +319,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
       }
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
+      }
     }
   }
 
@@ -293,14 +334,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final textColor = isDark ? Colors.white : Colors.black87;
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context)
+          .unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
           backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
           appBar: AppBar(
             backgroundColor: cardBg,
-            title: const Text('تأكيد الطلب وتحديد الموقع 🚀', style: TextStyle(color: Colors.amber, fontSize: 16)),
+            title: const Text('تأكيد الطلب وتحديد الموقع 🚀',
+                style: TextStyle(color: Colors.amber, fontSize: 16)),
             iconTheme: const IconThemeData(color: Colors.amber),
           ),
           body: ListView(
@@ -319,13 +362,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('بيانات المستلم', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                        const Text('بيانات المستلم',
+                            style: TextStyle(
+                                color: Colors.amber,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
                         // 📍 زر اختيار من العناوين المحفوظة
                         TextButton.icon(
-                          style: TextButton.styleFrom(foregroundColor: Colors.amber),
+                          style:
+                              TextButton.styleFrom(foregroundColor: Colors.amber),
                           icon: const Icon(Icons.bookmarks, size: 16),
-                          label: const Text('عناويني المحفوظة', style: TextStyle(fontSize: 12)),
-                          onPressed: () => _showAddressBookBottomSheet(context, cardBg, textColor),
+                          label: const Text('عناويني المحفوظة',
+                              style: TextStyle(fontSize: 12)),
+                          onPressed: () => _showAddressBookBottomSheet(
+                              context, cardBg, textColor),
                         ),
                       ],
                     ),
@@ -343,8 +393,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         labelText: 'الاسم الكامل',
                         labelStyle: const TextStyle(color: Colors.grey),
                         filled: true,
-                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        fillColor: isDark
+                            ? const Color(0xFF121212)
+                            : Colors.grey[100],
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -362,8 +415,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         labelText: 'رقم الهاتف',
                         labelStyle: const TextStyle(color: Colors.grey),
                         filled: true,
-                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        fillColor: isDark
+                            ? const Color(0xFF121212)
+                            : Colors.grey[100],
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -378,8 +434,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         labelText: 'تفاصيل العنوان (شارع، معلم قريب...)',
                         labelStyle: const TextStyle(color: Colors.grey),
                         filled: true,
-                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        fillColor: isDark
+                            ? const Color(0xFF121212)
+                            : Colors.grey[100],
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                   ],
@@ -398,7 +457,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('طريقة الدفع 💳', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+                    const Text('طريقة الدفع 💳',
+                        style: TextStyle(
+                            color: Colors.amber,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15)),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: _selectedPaymentMethod,
@@ -406,11 +469,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       style: TextStyle(color: textColor),
                       decoration: InputDecoration(
                         filled: true,
-                        fillColor: isDark ? const Color(0xFF121212) : Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        fillColor: isDark
+                            ? const Color(0xFF121212)
+                            : Colors.grey[100],
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'cash', child: Text('💵 الدفع نقداً عند الاستلام')),
+                        DropdownMenuItem(
+                            value: 'cash',
+                            child: Text('💵 الدفع نقداً عند الاستلام')),
                       ],
                       onChanged: (val) {
                         setState(() {
@@ -424,7 +492,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: 20),
 
               // الخريطة التفاعلية
-              const Text('حدد موقعك بدقة على الخريطة 📍', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15)),
+              const Text('حدد موقعك بدقة على الخريطة 📍',
+                  style: TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15)),
               const SizedBox(height: 8),
               Container(
                 height: 250,
@@ -449,10 +521,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                         children: [
                           TileLayer(
-                            urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                            urlTemplate:
+                                'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                            fallbackUrl:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             subdomains: const ['a', 'b', 'c', 'd'],
                             userAgentPackageName: 'com.fast.taiz',
                             tileProvider: NetworkTileProvider(),
+                            errorTileCallback: (tile, error, stackTrace) {},
                           ),
                           MarkerLayer(
                             markers: [
@@ -460,7 +536,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 point: _selectedLocation,
                                 width: 80,
                                 height: 80,
-                                child: const Icon(Icons.location_pin, color: Colors.red, size: 45),
+                                child: const Icon(Icons.location_pin,
+                                    color: Colors.red, size: 45),
                               ),
                             ],
                           ),
@@ -469,7 +546,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       if (_isLoadingLocation)
                         Container(
                           color: Colors.black54,
-                          child: const Center(child: CircularProgressIndicator(color: Colors.amber)),
+                          child: const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.amber)),
                         ),
                       Positioned(
                         bottom: 10,
@@ -477,7 +556,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         child: FloatingActionButton.small(
                           backgroundColor: Colors.amber,
                           onPressed: _determinePosition,
-                          child: const Icon(Icons.my_location, color: Colors.black),
+                          child: const Icon(Icons.my_location,
+                              color: Colors.black),
                         ),
                       ),
                     ],
@@ -496,8 +576,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('إجمالي المنتجات:', style: TextStyle(color: textColor, fontSize: 15)),
-                    Text('${appState.totalAmount} ر.ي', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('إجمالي المنتجات:',
+                        style: TextStyle(color: textColor, fontSize: 15)),
+                    Text('${appState.totalAmount} ر.ي',
+                        style: const TextStyle(
+                            color: Colors.amber,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16)),
                   ],
                 ),
               ),
@@ -508,10 +593,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber,
                   minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () => _submitOrder(appState),
-                child: const Text('تأكيد وإرسال الطلب للمشرف 🚀', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                child: const Text('تأكيد وإرسال الطلب للمشرف 🚀',
+                    style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16)),
               ),
             ],
           ),
