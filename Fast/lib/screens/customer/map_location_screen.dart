@@ -464,9 +464,9 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                           children: [
                             TileLayer(
                               urlTemplate:
-                                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                              fallbackUrl:
                                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              fallbackUrl:
+                                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                               userAgentPackageName: 'com.fast.taiz',
                               maxZoom: 19,
                               errorTileCallback: (tile, error, stackTrace) {},
