@@ -30,7 +30,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     _nameController = TextEditingController(text: profile?['name'] ?? '');
     _phoneController = TextEditingController(text: profile?['phone'] ?? '');
-    _addressController = TextEditingController(text: profile?['address'] ?? 'تعز - ديلوكس');
+    _addressController =
+        TextEditingController(text: profile?['address'] ?? 'تعز - ديلوكس');
   }
 
   @override
@@ -47,13 +48,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // 🚀 دالة حفظ التعديلات الموحدة
   Future<void> _saveProfile() async {
     final appState = context.read<AppState>();
-    
+
     // 1. حفظ تفاصيل الملف الشخصي
     await appState.saveUserProfileDetails(
       _nameController.text.trim(),
       _addressController.text.trim(),
     );
-    
+
     // 2. تحديث الاسم ورقم الهاتف في الجلسة المحلية
     await appState.updateUser(
       name: _nameController.text.trim(),
@@ -70,13 +71,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
+      onTap: () => FocusScope.of(context)
+          .unfocus(), // إغلاق الكيبورد بسلاسة عند الضغط خارج الحقول
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
           backgroundColor: const Color(0xFF121212),
           appBar: AppBar(
-            title: Text('تعديل الحساب الشخصي ⚙️', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+            title: Text('تعديل الحساب الشخصي ⚙️',
+                style: TextStyle(
+                    color: AppConstants.gold,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
             backgroundColor: const Color(0xFF1E1E1E),
             iconTheme: IconThemeData(color: AppConstants.gold),
           ),
@@ -98,7 +104,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     labelText: 'الاسم الشخصي',
                     labelStyle: const TextStyle(color: Colors.grey),
                     prefixIcon: Icon(Icons.person, color: AppConstants.gold),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
                   ),
@@ -119,7 +126,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     labelText: 'رقم الهاتف',
                     labelStyle: const TextStyle(color: Colors.grey),
                     prefixIcon: Icon(Icons.phone, color: AppConstants.gold),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
                   ),
@@ -137,7 +145,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     labelText: 'العنوان (مثال: ديلوكس، شارع جمال...)',
                     labelStyle: const TextStyle(color: Colors.grey),
                     prefixIcon: Icon(Icons.home, color: AppConstants.gold),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: const Color(0xFF1E1E1E),
                   ),
@@ -147,7 +156,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 // 🗺️ قسم الخريطة التفاعلية لتحديد الموقع بدقة
                 Text(
                   'تحديد الموقع الجغرافي على الخريطة 🗺️',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppConstants.gold),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppConstants.gold),
                 ),
                 const SizedBox(height: 5),
                 const Text(
@@ -176,9 +188,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             // 🎯 تنسيق الإحداثيات بشكل مرتب ومنظم تماماً
                             final lat = latLng.latitude;
                             final lng = latLng.longitude;
-                            final formattedCoords = '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
-                            
-                            _addressController.text = '$address (الإحداثيات: $formattedCoords)';
+                            final formattedCoords =
+                                '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
+
+                            _addressController.text =
+                                '$address (الإحداثيات: $formattedCoords)';
                           } else {
                             _addressController.text = address;
                           }
@@ -187,7 +201,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('تم تحديث العنوان والإحداثيات بنجاح! 📍')),
+                          const SnackBar(
+                              content: Text(
+                                  'تم تحديث العنوان والإحداثيات بنجاح! 📍')),
                         );
                       }
                     }
@@ -210,22 +226,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             const SizedBox(height: 8),
                             const Text(
                               'اضغط هنا لفتح خريطة جوجل التفاعلية 📍',
-                              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13),
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13),
                             ),
                           ],
                         ),
                         Positioned(
                           bottom: 12,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
                             decoration: BoxDecoration(
                               color: Colors.black87,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppConstants.gold.withOpacity(0.5)),
+                              border: Border.all(
+                                  color: AppConstants.gold.withOpacity(0.5)),
                             ),
                             child: Text(
                               'تحديد الدبوس على موقعك في تعز',
-                              style: TextStyle(fontSize: 11, color: AppConstants.gold, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppConstants.gold,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
@@ -243,12 +267,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppConstants.gold,
                       foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _saveProfile,
                     child: const Text(
                       'حفظ التعديلات 🚀',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
