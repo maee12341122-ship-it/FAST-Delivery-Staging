@@ -23,6 +23,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final FocusNode _passwordFocus = FocusNode();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -47,8 +48,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       final bool success =
           await appState.loginAdminFromSupabase(username, password);
 
+      if (!mounted) return;
+
       if (!success || !appState.isAdminLoggedIn) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -78,6 +80,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => const AdminDashboard(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ خطأ أثناء تسجيل دخول المشرف: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('حدث خطأ أثناء الاتصال بالخادم، حاول مرة أخرى ⚠️'),
         ),
       );
     } finally {
@@ -170,17 +180,30 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                       TextFormField(
                         controller: _passwordController,
                         focusNode: _passwordFocus,
-                        obscureText: true,
+                        obscureText: _obscurePassword,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _login(),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'كلمة المرور',
-                          labelStyle: TextStyle(color: Colors.grey),
-                          border: OutlineInputBorder(),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          border: const OutlineInputBorder(),
                           filled: true,
-                          fillColor: Color(0xFF1E1E1E),
-                          prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
+                          fillColor: const Color(0xFF1E1E1E),
+                          prefixIcon:
+                              const Icon(Icons.lock, color: AppConstants.gold),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.grey,
+                            ),
+                            onPressed: () {
+                              setState(
+                                  () => _obscurePassword = !_obscurePassword);
+                            },
+                          ),
                         ),
                         validator: Validators.requiredText,
                       ),
