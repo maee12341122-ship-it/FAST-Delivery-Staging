@@ -32,6 +32,12 @@ class ApiService {
     defaultValue: 'http://10.0.2.2:3000',
   );
 
+  // رابط Supabase (يمكن تمريره عبر --dart-define=SUPABASE_URL=... أو استنتاجه من baseUrl لـ _supabase)
+  static const String supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: '',
+  );
+
   static Uri _buildUri(String path, [Map<String, String>? queryParams]) {
     final normalizedBase = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
@@ -249,8 +255,6 @@ class ApiService {
         final isCustomItem =
             rawProductId.startsWith('custom_') || item['is_custom'] == true;
 
-        // السعر المقترح يُرسل فقط كمرجع للمنتجات الخاصة (custom_) أو ذات السعر المتغير؛
-        // ويقوم Node.js Backend بالتحقق الفعلي وحساب الإجمالي والخصم ورسوم التوصيل.
         final parsedPrice = double.tryParse(
           (item['unit_price'] ?? item['price'] ?? item['custom_price'] ?? '')
               .toString(),
@@ -503,6 +507,121 @@ class ApiService {
     } catch (e) {
       debugPrint('❌ خطأ في تحديث موقع المندوب: $e');
       rethrow;
+    }
+  }
+
+  // 11. إرسال رمز تحقق OTP عبر واتساب (عبر Supabase Edge Function: whatsapp-otp)
+  static Future<JsonMap> sendWhatsappOtp({
+    required String phoneNumber,
+  }) async {
+    try {
+      final cleanedPhone = phoneNumber.trim();
+      if (cleanedPhone.isEmpty) {
+        throw ApiException('يرجى إدخال رقم الهاتف.');
+      }
+
+      final FunctionResponse res = await _supabase.functions
+          .invoke(
+            'whatsapp-otp',
+            body: {
+              'action': 'send',
+              'phone_number': cleanedPhone,
+            },
+          )
+          .timeout(_requestTimeout);
+
+      final dynamic payload = res.data;
+      if (payload is Map<String, dynamic>) {
+        if (payload['ok'] == false) {
+          throw ApiException(
+            (payload['error'] ?? 'تعذر إرسال رمز التحقق عبر واتساب').toString(),
+          );
+        }
+        return payload;
+      }
+
+      if (payload is String && payload.trim().isNotEmpty) {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['ok'] == false) {
+            throw ApiException(
+              (decoded['error'] ?? 'تعذر إرسال رمز التحقق عبر واتساب')
+                  .toString(),
+            );
+          }
+          return decoded;
+        }
+      }
+
+      return {'ok': true, 'message': 'تم إرسال رمز التحقق بنجاح'};
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw ApiException(
+        'انتهت مهلة إرسال رمز التحقق، يرجى المحاولة مرة أخرى.',
+      );
+    } catch (e) {
+      debugPrint('❌ خطأ في إرسال OTP واتساب: $e');
+      throw ApiException('تعذر إرسال رمز التحقق: $e');
+    }
+  }
+
+  // 12. التحقق من رمز OTP المدخل (عبر Supabase Edge Function: whatsapp-otp)
+  static Future<JsonMap> verifyWhatsappOtp({
+    required String phoneNumber,
+    required String otpCode,
+  }) async {
+    try {
+      final cleanedPhone = phoneNumber.trim();
+      final cleanedCode = otpCode.trim();
+
+      if (cleanedPhone.isEmpty || cleanedCode.isEmpty) {
+        throw ApiException('يرجى إدخال رقم الهاتف ورمز التحقق.');
+      }
+
+      final FunctionResponse res = await _supabase.functions
+          .invoke(
+            'whatsapp-otp',
+            body: {
+              'action': 'verify',
+              'phone_number': cleanedPhone,
+              'otp_code': cleanedCode,
+            },
+          )
+          .timeout(_requestTimeout);
+
+      final dynamic payload = res.data;
+      if (payload is Map<String, dynamic>) {
+        if (payload['ok'] == false || payload['verified'] == false) {
+          throw ApiException(
+            (payload['error'] ?? 'رمز التحقق غير صحيح').toString(),
+          );
+        }
+        return payload;
+      }
+
+      if (payload is String && payload.trim().isNotEmpty) {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['ok'] == false || decoded['verified'] == false) {
+            throw ApiException(
+              (decoded['error'] ?? 'رمز التحقق غير صحيح').toString(),
+            );
+          }
+          return decoded;
+        }
+      }
+
+      throw ApiException('استجابة غير متوقعة أثناء التحقق من الرمز.');
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw ApiException(
+        'انتهت مهلة التحقق من الرمز، يرجى المحاولة مرة أخرى.',
+      );
+    } catch (e) {
+      debugPrint('❌ خطأ في التحقق من OTP واتساب: $e');
+      throw ApiException('تعذر التحقق من رمز التحقق: $e');
     }
   }
 }
