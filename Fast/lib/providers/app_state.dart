@@ -233,7 +233,6 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      // 1. البحث برقم الهاتف إن وجد في حساب Auth
       final phone = _normalizePhone(user.phone ?? '');
       if (phone.isNotEmpty) {
         final formattedPhone = '+967$phone';
@@ -247,7 +246,6 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // 2. البحث باسم المستخدم أو البريد المدخل في جدول admins
       final email = (user.email ?? '').trim().toLowerCase();
       final emailPrefix =
           email.contains('@') ? email.split('@').first.trim() : email;
@@ -274,9 +272,9 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // 3. في حال كان حساب المشرف مسجلاً ببريد حقيقي (مثل Gmail) في Supabase Auth ولم يُكتب البريد الكامل في username،
-      // نتحقق ألا يكون مندوباً، وإذا وُجد سجل في جدول admins نسمح له بالدخول كمشرف موثق من Supabase Auth
-      if (!_isCourierSession(user) && email.isNotEmpty && !email.endsWith('@courier.fast.local')) {
+      if (!_isCourierSession(user) &&
+          email.isNotEmpty &&
+          !email.endsWith('@courier.fast.local')) {
         final anyAdmin = await supabase
             .from('admins')
             .select('id, username, phone')
@@ -690,7 +688,6 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // التحقق التلقائي من جدول coupons في Supabase
     try {
       final coupon = await supabase
           .from('coupons')
@@ -1617,7 +1614,6 @@ class AppState extends ChangeNotifier {
 
   bool isAdminLoggedIn = false;
 
-  // دخول المشرف التلقائي عبر Supabase Auth + التحقق التلقائي من جدول admins
   Future<bool> loginAdminFromSupabase(String username, String password) async {
     try {
       final raw = username.trim().toLowerCase();
@@ -1806,59 +1802,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // طلب OTP التلقائي: يحاول Node.js Backend أولاً، وإذا لم يكن مفعلاً يعمل تلقائياً من قاعدة البيانات Supabase
+  // طلب OTP عبر WhatsApp Edge Function مع الحفاظ على التوافق مع بقية المشروع
   Future<JsonMap> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) {
       throw Exception('الرجاء إدخال رقم هاتف صحيح.');
     }
 
-    if (_hasConfiguredBackend) {
-      try {
-        final response = await _postBackend('/api/auth/otp/request', {
-          'phone': cleanPhone,
-          'channel': _useSandboxOtpProvider ? 'sandbox' : 'whatsapp',
-        });
-
-        final existsInDb = response['exists'] == true;
-        if (existsInDb) {
-          try {
-            await fetchCustomerRecordByPhone(cleanPhone);
-            await restoreLastCustomerOrder();
-          } catch (_) {}
-        }
-
-        notifyListeners();
-        return {
-          'exists': existsInDb,
-          'provider': response['provider']?.toString() ??
-              (_useSandboxOtpProvider ? 'sandbox' : 'whatsapp'),
-          'is_sandbox': response['is_sandbox'] ?? _useSandboxOtpProvider,
-          'message': response['message']?.toString() ??
-              'تم إرسال رمز التحقق بنجاح.',
-        };
-      } catch (e) {
-        debugPrint('تعذر الاتصال بـ Node.js لطلب OTP، التحويل لقاعدة البيانات: $e');
-      }
-    }
-
-    // التحقق التلقائي من قاعدة البيانات مباشرة (Supabase)
-    final generatedCode = (1000 + Random().nextInt(9000)).toString();
-    _localFallbackOtps[cleanPhone] = generatedCode;
-
-    try {
-      await supabase.from('otp_codes').insert({
-        'phone_number': cleanPhone,
-        'otp_code': generatedCode,
-        'expires_at': DateTime.now()
-            .toUtc()
-            .add(const Duration(minutes: 10))
-            .toIso8601String(),
-        'is_used': false,
-      });
-    } catch (e) {
-      debugPrint('ملاحظة: تعذر حفظ OTP في otp_codes (سيُستخدم الرمز المؤقت): $e');
-    }
+    final internationalPhone = '967$cleanPhone';
 
     final existingRecord = await fetchCustomerRecordByPhone(cleanPhone);
     final existsInDb = existingRecord != null;
@@ -1866,102 +1817,57 @@ class AppState extends ChangeNotifier {
       await restoreLastCustomerOrder();
     }
 
-    notifyListeners();
-    return {
-      'exists': existsInDb,
-      'provider': 'database_direct',
-      'is_sandbox': true,
-      'otp_code': generatedCode,
-      'message': 'رمز التحقق التجريبي الخاص بك هو: $generatedCode',
-    };
+    try {
+      final res =
+          await ApiService.sendWhatsappOtp(phoneNumber: internationalPhone);
+      notifyListeners();
+      return {
+        'exists': existsInDb,
+        'provider': 'whatsapp_cloud_api',
+        'is_sandbox': false,
+        'message': res['message']?.toString().isNotEmpty == true
+            ? res['message'].toString()
+            : 'تم إرسال رمز التحقق عبر واتساب إلى +$internationalPhone',
+      };
+    } catch (e) {
+      // في حال عدم توفر الاتصال بالدالة السحابية، نولّد رمزاً احتياطياً محلياً
+      final generatedCode = (1000 + Random().nextInt(9000)).toString();
+      _localFallbackOtps[cleanPhone] = generatedCode;
+      notifyListeners();
+      return {
+        'exists': existsInDb,
+        'provider': 'fallback',
+        'is_sandbox': true,
+        'otp_code': generatedCode,
+        'message': e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), ''),
+      };
+    }
   }
 
-  // التحقق من OTP التلقائي: يحاول Node.js أولاً، وإلا يتحقق مباشرة من جدول otp_codes و customers في Supabase
+  // التحقق من OTP عبر WhatsApp Edge Function أو الرمز الاحتياطي المحلي
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     final code = enteredOtp.trim();
     if (code.isEmpty) return false;
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) return false;
 
-    if (_hasConfiguredBackend) {
-      try {
-        final response = await _postBackend('/api/auth/otp/verify', {
-          'phone': cleanPhone,
-          'otp_code': code,
-        });
-
-        final verified =
-            response['verified'] == true || response['success'] == true;
-        if (verified) {
-          if (response['session'] is Map) {
-            final sessionMap = response['session'] as Map;
-            final refreshToken = sessionMap['refresh_token']?.toString();
-            if (refreshToken != null && refreshToken.isNotEmpty) {
-              try {
-                await supabase.auth.setSession(refreshToken);
-              } catch (_) {}
-            }
-          }
-
-          final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
-          if (dbRecord != null) {
-            await restoreLastCustomerOrder();
-            return true;
-          }
-
-          userProfile = {
-            'phone': cleanPhone,
-            'name': response['name']?.toString() ?? '',
-            'address': response['address']?.toString() ?? '',
-            'city': currentCity,
-          };
-          await _persistUserSessionToPrefs(userProfile!);
-          await fetchUserAddressesFromSupabase();
-          notifyListeners();
-          return true;
-        }
-      } catch (e) {
-        debugPrint('تعذر التحقق عبر Node.js، التحويل لقاعدة البيانات: $e');
-      }
-    }
-
-    // التحقق التلقائي من قاعدة البيانات مباشرة (Supabase)
+    final internationalPhone = '967$cleanPhone';
     var isValid = false;
 
-    if (_localFallbackOtps[cleanPhone] == code) {
-      isValid = true;
-    }
-
-    if (!isValid) {
-      try {
-        final otpRow = await supabase
-            .from('otp_codes')
-            .select()
-            .eq('phone_number', cleanPhone)
-            .eq('otp_code', code)
-            .eq('is_used', false)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-
-        if (otpRow != null) {
-          final expiresAt =
-              DateTime.tryParse(otpRow['expires_at']?.toString() ?? '');
-          if (expiresAt == null || DateTime.now().toUtc().isBefore(expiresAt)) {
-            isValid = true;
-            await supabase
-                .from('otp_codes')
-                .update({'is_used': true})
-                .eq('id', otpRow['id']);
-          }
-        }
-      } catch (e) {
-        debugPrint('خطأ في قراءة otp_codes: $e');
+    try {
+      final verifyRes = await ApiService.verifyWhatsappOtp(
+        phoneNumber: internationalPhone,
+        otpCode: code,
+      );
+      isValid = verifyRes['verified'] == true || verifyRes['ok'] == true;
+    } catch (e) {
+      debugPrint('تعذر التحقق عبر دالة واتساب، التحقق من الاحتياطي: $e');
+      if (_localFallbackOtps[cleanPhone] == code) {
+        isValid = true;
       }
     }
 
-    // في وضع التشغيل المباشر بدون خادم واتساب خارجي، إذا أُرسل رمز للرقم ولم يكن هناك كود مخزن، نسمح بالتحقق التجريبي السلس
-    if (!isValid && !_hasConfiguredBackend && code.length >= 4) {
+    if (!isValid && _localFallbackOtps[cleanPhone] == code) {
       isValid = true;
     }
 
@@ -2083,7 +1989,6 @@ class AppState extends ChangeNotifier {
     User user, {
     String? usernameInput,
   }) async {
-    // 1. البحث بـ auth_user_id
     final byAuthId = await supabase
         .from('couriers')
         .select()
@@ -2093,7 +1998,6 @@ class AppState extends ChangeNotifier {
       return Map<String, dynamic>.from(byAuthId);
     }
 
-    // 2. البحث باسم المستخدم أو البريد الإلكتروني
     final email = (user.email ?? '').trim().toLowerCase();
     final emailPrefix =
         email.contains('@') ? email.split('@').first.trim() : email;
@@ -2115,7 +2019,6 @@ class AppState extends ChangeNotifier {
           .ilike('username', candidate)
           .maybeSingle();
       if (byUsername != null) {
-        // ربط auth_user_id تلقائياً في قاعدة البيانات للمرات القادمة
         try {
           await supabase
               .from('couriers')
@@ -2325,7 +2228,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // دخول المندوب التلقائي عبر Supabase Auth + جدول couriers مباشرة
   Future<bool> loginCourier(String username, String password) async {
     try {
       final raw = username.trim().toLowerCase();
@@ -2853,7 +2755,6 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // الإدراج المباشر في جدول orders في Supabase إذا لم يكن الـ Backend مفعلاً
       if (order.isEmpty) {
         trackingCode = 'FST-${100000 + Random().nextInt(900000)}';
         final netProductsTotal =
