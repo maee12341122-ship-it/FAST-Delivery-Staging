@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/address_model.dart';
 import '../providers/app_state.dart';
+import '../services/api_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'location_picker_screen.dart';
@@ -26,6 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _isOtpSent = false;
   bool _isLoading = false;
+  String _formattedInternationalPhone = '';
 
   String _selectedArea = 'شارع جمال';
   LatLng? _selectedPoint;
@@ -74,6 +75,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  String _toInternationalYemeniPhone(String rawPhone) {
+    String clean = rawPhone.trim().replaceAll(RegExp(r'[\s\-\+]'), '');
+    if (clean.startsWith('00967')) clean = clean.substring(5);
+    if (clean.startsWith('0')) clean = clean.substring(1);
+    if (!clean.startsWith('967')) clean = '967$clean';
+    return clean;
+  }
+
   Future<void> _chooseLocation() async {
     final point = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
@@ -85,90 +94,117 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  Future<void> _sendOtpViaWhatsApp(String phone, String otpCode) async {
-    final message = Uri.encodeComponent(
-        '🌟 تطبيق FAST - تعز 🌟\n\n'
-            'أهلاً بك يا بطل!\n'
-            'رمز التحقق الخاص بك هو: *$otpCode*\n\n'
-            'لا تشارك هذا الرمز مع أي شخص حفاظاً على أمان حسابك. 🚀'
-    );
-
-    String formattedPhone = phone.trim();
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '967${formattedPhone.substring(1)}';
-    } else if (!formattedPhone.startsWith('967')) {
-      formattedPhone = '967$formattedPhone';
-    }
-
-    final whatsappUrl = Uri.parse('https://wa.me/$formattedPhone?text=$message');
-
-    if (await canLaunchUrl(whatsappUrl)) {
-      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر فتح تطبيق الواتساب')),
-        );
-      }
-    }
-  }
-
   Future<void> _requestAndSendOtp() async {
     if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
       return;
     }
 
     setState(() => _isLoading = true);
-    final appState = context.read<AppState>();
-    final phone = _phoneController.text.trim();
 
-    appState.requestOtpForPhone(phone);
+    try {
+      final phone = _phoneController.text.trim();
+      final intlPhone = _toInternationalYemeniPhone(phone);
+      _formattedInternationalPhone = intlPhone;
+      _otpController.clear();
 
-    if (appState.generatedDynamicOtp != null) {
-      await _sendOtpViaWhatsApp(phone, appState.generatedDynamicOtp!);
-    }
+      final res = await ApiService.sendWhatsappOtp(phoneNumber: intlPhone);
+      final msg = res['message']?.toString().isNotEmpty == true
+          ? res['message'].toString()
+          : 'تم إرسال رمز التحقق عبر واتساب إلى +$intlPhone';
 
-    setState(() {
-      _isLoading = false;
-      _isOtpSent = true;
-    });
+      if (mounted) {
+        setState(() {
+          _isOtpSent = true;
+        });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم فتح رسالة FAST في واتساب. أرسلها بنفسك؛ لا يوجد تحقق آلي من الرقم.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ في إرسال OTP من RegisterScreen: $e');
+      if (mounted) {
+        final rawErr =
+            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              rawErr.isNotEmpty
+                  ? rawErr
+                  : 'تعذر إرسال رمز التحقق عبر واتساب، يرجى المحاولة مرة أخرى',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  void _verifyAndSubmit() {
-    final appState = context.read<AppState>();
-    final phone = _phoneController.text.trim();
-    final isValid = appState.continueWithoutPhoneVerification(phone);
-    if (!isValid) {
+  Future<void> _verifyAndSubmit() async {
+    if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final otpCode = _otpController.text.trim();
+    if (otpCode.isEmpty || otpCode.length < 4) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('رقم الهاتف غير صالح.')),
+        const SnackBar(
+          content: Text('الرجاء إدخال رمز التحقق المرسل إلى واتساب'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    final double finalLat = _selectedPoint?.latitude ?? 13.58874;
-    final double finalLng = _selectedPoint?.longitude ?? 44.01809;
-
-    final address = AddressModel(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      title: 'العنوان الرئيسي',
-      area: _selectedArea,
-      details: _addressController.text.trim().isNotEmpty
-          ? _addressController.text.trim()
-          : 'شارع جمال',
-      latitude: finalLat,
-      longitude: finalLng,
-    );
+    setState(() => _isLoading = true);
 
     try {
+      final appState = context.read<AppState>();
+      final phone = _phoneController.text.trim();
+      final intlPhone = _formattedInternationalPhone.isNotEmpty
+          ? _formattedInternationalPhone
+          : _toInternationalYemeniPhone(phone);
+
+      final verifyRes = await ApiService.verifyWhatsappOtp(
+        phoneNumber: intlPhone,
+        otpCode: otpCode,
+      );
+
+      final isVerified =
+          verifyRes['verified'] == true || verifyRes['ok'] == true;
+      if (!isVerified) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('رمز التحقق غير صحيح أو انتهت صلاحيته ❌'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final double finalLat = _selectedPoint?.latitude ?? 13.58874;
+      final double finalLng = _selectedPoint?.longitude ?? 44.01809;
+
+      final address = AddressModel(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: 'العنوان الرئيسي',
+        area: _selectedArea,
+        details: _addressController.text.trim().isNotEmpty
+            ? _addressController.text.trim()
+            : 'شارع جمال',
+        latitude: finalLat,
+        longitude: finalLng,
+      );
+
       appState.setUser(
         name: _nameController.text.trim(),
         phone: phone,
@@ -182,13 +218,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error during submit: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('حدث خطأ أثناء حفظ البيانات: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('❌ خطأ أثناء التحقق وحفظ البيانات: $e');
+      if (mounted) {
+        final rawErr =
+            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              rawErr.isNotEmpty
+                  ? rawErr
+                  : 'تعذر التحقق من الرمز أو حفظ البيانات',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -201,7 +249,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
           elevation: 2,
-          title: const Text('تسجيل بيانات العميل والتحقق', style: TextStyle(color: AppConstants.gold, fontWeight: FontWeight.bold, fontSize: 16)),
+          title: const Text(
+            'تسجيل بيانات العميل والتحقق',
+            style: TextStyle(
+                color: AppConstants.gold,
+                fontWeight: FontWeight.bold,
+                fontSize: 16),
+          ),
           centerTitle: true,
         ),
         body: SingleChildScrollView(
@@ -213,9 +267,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.verified_user_outlined, color: AppConstants.gold, size: 24),
+                    Icon(Icons.verified_user_outlined,
+                        color: AppConstants.gold, size: 24),
                     SizedBox(width: 8),
-                    Text('مرحباً بك في تطبيق FAST', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(
+                      'مرحباً بك في تطبيق FAST',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -239,7 +300,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     fillColor: Color(0xFF1E1E1E),
                   ),
                   validator: (value) {
-                    final required = Validators.requiredText(value, message: 'يرجى إدخال الاسم');
+                    final required = Validators.requiredText(value,
+                        message: 'يرجى إدخال الاسم');
                     if (required != null) return required;
                     if (value!.trim().length < 2) return 'الاسم قصير جداً';
                     return null;
@@ -272,19 +334,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   decoration: const InputDecoration(
                     labelText: 'المنطقة في تعز',
                     labelStyle: TextStyle(color: Colors.grey),
-                    prefixIcon: Icon(Icons.location_city, color: AppConstants.gold),
+                    prefixIcon:
+                        Icon(Icons.location_city, color: AppConstants.gold),
                     border: OutlineInputBorder(),
                     filled: true,
                     fillColor: Color(0xFF1E1E1E),
                   ),
                   items: _areas
-                      .map((area) => DropdownMenuItem(value: area, child: Text(area, style: const TextStyle(color: Colors.white))))
+                      .map((area) => DropdownMenuItem(
+                            value: area,
+                            child: Text(area,
+                                style: const TextStyle(color: Colors.white)),
+                          ))
                       .toList(),
-                  onChanged: _isOtpSent ? null : (value) {
-                    if (value != null) {
-                      setState(() => _selectedArea = value);
-                    }
-                  },
+                  onChanged: _isOtpSent
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            setState(() => _selectedArea = value);
+                          }
+                        },
                 ),
                 const SizedBox(height: 14),
 
@@ -301,19 +370,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     fillColor: Color(0xFF1E1E1E),
                     alignLabelWithHint: true,
                   ),
-                  validator: (value) =>
-                      Validators.requiredText(value, message: 'يرجى كتابة العنوان التفصيلي'),
+                  validator: (value) => Validators.requiredText(value,
+                      message: 'يرجى كتابة العنوان التفصيلي'),
                 ),
                 const SizedBox(height: 16),
 
                 OutlinedButton.icon(
                   onPressed: _chooseLocation,
-                  icon: const Icon(Icons.map_outlined, color: AppConstants.gold),
+                  icon:
+                      const Icon(Icons.map_outlined, color: AppConstants.gold),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppConstants.gold,
                     side: BorderSide(color: AppConstants.gold.withOpacity(0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   label: Text(
                     _selectedPoint == null
@@ -340,14 +411,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: AppConstants.gold,
                         foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: _isLoading ? null : _requestAndSendOtp,
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.black)
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                  color: Colors.black, strokeWidth: 2),
+                            )
                           : const Text(
                               'إرسال رمز التحقق عبر الواتساب 📩',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16),
                             ),
                     ),
                   ),
@@ -361,10 +439,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     child: Column(
                       children: [
-                        const Text(
-                          'تم فتح محادثة FAST في واتساب برسالة جاهزة. أرسلها بنفسك، ثم يمكنك المتابعة كضيف. لا يتم توثيق ملكية الرقم بهذه الخطوة.',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        Text(
+                          'تم إرسال رمز التحقق إلى واتساب (+$_formattedInternationalPhone). أدخل الرمز لتأكيد رقمك:',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
                           textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: _otpController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          maxLength: 6,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              letterSpacing: 8),
+                          decoration: const InputDecoration(
+                            labelText: 'رمز التحقق (6 أرقام)',
+                            labelStyle:
+                                TextStyle(color: Colors.grey, letterSpacing: 0),
+                            prefixIcon: Icon(Icons.lock_clock_outlined,
+                                color: AppConstants.gold),
+                            border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: Color(0xFF121212),
+                          ),
                         ),
                       ],
                     ),
@@ -374,27 +476,44 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     height: 50,
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green, 
+                        backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _verifyAndSubmit,
-                      icon: const Icon(Icons.check_circle_outline),
+                      onPressed: _isLoading ? null : _verifyAndSubmit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check_circle_outline),
                       label: const Text(
-                        'متابعة كضيف إلى التطبيق 🚀',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        'تأكيد الرمز وحفظ البيانات 🚀',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
-                    onPressed: () => setState(() => _isOtpSent = false),
-                    child: const Text('تغيير رقم الهاتف أو إعادة الإرسال', style: TextStyle(color: AppConstants.gold)),
+                    onPressed: _isLoading
+                        ? null
+                        : () => setState(() {
+                              _isOtpSent = false;
+                              _otpController.clear();
+                            }),
+                    child: const Text(
+                      'تغيير رقم الهاتف أو إعادة الإرسال',
+                      style: TextStyle(color: AppConstants.gold),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 16),
                 const Text(
-                  'ملاحظة: خدمة إرسال الرمز مجانية وتعمل بالربط المباشر مع الواتساب لضمان الوصول السريع.',
+                  'ملاحظة: يتم إرسال رمز التحقق تلقائياً إلى رقمك على واتساب لتأكيد ملكية الرقم.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey, fontSize: 11, height: 1.5),
                 ),
