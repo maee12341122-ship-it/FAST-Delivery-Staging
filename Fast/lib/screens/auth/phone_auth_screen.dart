@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/app_state.dart';
+import '../../services/api_service.dart';
 import '../../services/notification_service.dart';
 import '../customer/map_location_screen.dart';
 import '../admin_screen.dart';
@@ -245,7 +246,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 1️⃣ طلب إرسال كود OTP عبر الخادم وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
+  // 1️⃣ طلب إرسال كود OTP عبر واتساب وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -326,11 +327,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'customer_new';
       }
 
-      // طلب توليد وإرسال OTP عبر AppState (يدعم الرمز التجريبي حالياً والربط الحقيقي لاحقاً)
-      final reqResult = await appState.requestOtpForPhone(_cleanPhoneInput);
-      final msg = reqResult['message']?.toString().isNotEmpty == true
-          ? reqResult['message'].toString()
-          : 'تم طلب إرسال رمز التحقق إلى $_formattedPhone 💬';
+      // إرسال OTP الحقيقي عبر دالة whatsapp-otp في Supabase باستخدام الصيغة الدولية 967...
+      final internationalPhone = '967$_cleanPhoneInput';
+      final otpRes =
+          await ApiService.sendWhatsappOtp(phoneNumber: internationalPhone);
+
+      final msg = otpRes['message']?.toString().isNotEmpty == true
+          ? otpRes['message'].toString()
+          : 'تم إرسال رمز التحقق إلى $_formattedPhone 💬';
 
       if (mounted) {
         setState(() {
@@ -347,11 +351,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الرمز: $e');
       if (mounted) {
+        final rawErr = e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              e.toString().replaceAll('Exception: ', '').isNotEmpty
-                  ? e.toString().replaceAll('Exception: ', '')
+              rawErr.isNotEmpty
+                  ? rawErr
                   : 'تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً',
             ),
           ),
@@ -377,8 +382,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final bool isValid =
-          await appState.verifyOtpAndLogin(_cleanPhoneInput, otpCode);
+      final internationalPhone = '967$_cleanPhoneInput';
+      final verifyRes = await ApiService.verifyWhatsappOtp(
+        phoneNumber: internationalPhone,
+        otpCode: otpCode,
+      );
+
+      final bool isValid = verifyRes['verified'] == true || verifyRes['ok'] == true;
 
       if (isValid) {
         // إعادة التحقق من قاعدة البيانات لضمان جلب أحدث بيانات العميل حتى لو لم تكن محمّلة مسبقاً
@@ -462,8 +472,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من OTP: $e');
       if (mounted) {
+        final rawErr = e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('حدث خطأ أثناء التحقق من الرمز')),
+          SnackBar(
+            content: Text(
+              rawErr.isNotEmpty
+                  ? rawErr
+                  : 'رمز التحقق غير صحيح أو انتهت صلاحيته ❌',
+            ),
+          ),
         );
       }
     } finally {
