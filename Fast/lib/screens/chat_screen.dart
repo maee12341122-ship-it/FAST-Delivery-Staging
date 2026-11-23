@@ -7,13 +7,13 @@ import 'order_tracking_screen.dart';
 class ChatScreen extends StatefulWidget {
   final String orderId;
   final String userRole; // 'customer', 'admin', 'courier'
-  final String targetChat; // 'admin_customer', 'admin_courier', 'courier_customer'
+  final String targetChat; // موحد لكل أطراف الطلب
 
   const ChatScreen({
     super.key,
     required this.orderId,
     required this.userRole,
-    required this.targetChat,
+    this.targetChat = 'unified_order_chat',
   });
 
   @override
@@ -49,13 +49,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _buildChatTitle() {
-    if (widget.targetChat == 'admin_courier') {
-      return 'المشرف ↔ المندوب • طلب #${widget.orderId}';
+    return 'محادثة الطلب الموحدة • طلب #${widget.orderId}';
+  }
+
+  Color _getSenderBadgeColor(String senderType) {
+    switch (senderType) {
+      case 'admin':
+        return Colors.amberAccent;
+      case 'courier':
+        return Colors.lightBlueAccent;
+      default:
+        return Colors.greenAccent;
     }
-    if (widget.targetChat == 'courier_customer') {
-      return 'المندوب ↔ العميل • طلب #${widget.orderId}';
-    }
-    return 'المشرف ↔ العميل • طلب #${widget.orderId}';
   }
 
   Future<void> _sendMessage() async {
@@ -71,7 +76,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await appState.sendChatMessage(
         widget.orderId,
         widget.userRole,
-        widget.targetChat,
+        'unified_order_chat',
         text,
       );
 
@@ -81,20 +86,38 @@ class _ChatScreenState extends State<ChatScreen> {
       _msgFocus.requestFocus();
 
       try {
-        final String? receiverPlayerId =
-            await appState.getReceiverPlayerIdForChat(
-          orderId: widget.orderId,
-          senderRole: widget.userRole,
-          targetChat: widget.targetChat,
-        );
-
         final String senderName = widget.userRole == 'admin'
             ? 'الإدارة'
             : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
 
-        if (receiverPlayerId != null && receiverPlayerId.isNotEmpty) {
+        final Set<String> targetPlayerIds = {};
+
+        final customerOrOtherId = await appState.getReceiverPlayerIdForChat(
+          orderId: widget.orderId,
+          senderRole: widget.userRole,
+          targetChat: 'admin_customer',
+        );
+        if (customerOrOtherId != null && customerOrOtherId.isNotEmpty) {
+          targetPlayerIds.add(customerOrOtherId);
+        }
+
+        final courierId = await appState.getReceiverPlayerIdForChat(
+          orderId: widget.orderId,
+          senderRole: widget.userRole,
+          targetChat: 'admin_courier',
+        );
+        if (courierId != null && courierId.isNotEmpty) {
+          targetPlayerIds.add(courierId);
+        }
+
+        if (widget.userRole != 'admin') {
+          final adminIds = await appState.getAllAdminPlayerIds();
+          targetPlayerIds.addAll(adminIds.where((id) => id.isNotEmpty));
+        }
+
+        for (final playerId in targetPlayerIds) {
           await appState.sendAutoNotification(
-            targetPlayerId: receiverPlayerId,
+            targetPlayerId: playerId,
             title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
             body: '$senderName: $text',
           );
@@ -111,11 +134,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildLinkedOrderBanner(BuildContext context, AppState appState) {
     final matched = appState.orders.where(
-      (o) => o is Map && o['id']?.toString() == widget.orderId,
+      (o) => o['id']?.toString() == widget.orderId,
     );
     if (matched.isEmpty) return const SizedBox.shrink();
 
-    final order = Map<String, dynamic>.from(matched.first as Map);
+    final order = Map<String, dynamic>.from(matched.first);
     final statusRaw = order['status']?.toString() ?? '';
     final statusLabel =
         statusRaw.isNotEmpty ? appState.getArabicStatus(statusRaw) : '';
@@ -194,6 +217,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context, listen: false);
+    final parsedOrderId = int.tryParse(widget.orderId) ?? widget.orderId;
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -203,9 +227,18 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: const Color(0xFF121212),
           appBar: AppBar(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: Text(
-              _buildChatTitle(),
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _buildChatTitle(),
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                const Text(
+                  'تجمع المشرف والعميل والمندوب',
+                  style: TextStyle(color: Colors.amber, fontSize: 10),
+                ),
+              ],
             ),
             iconTheme: const IconThemeData(color: Colors.amber),
           ),
@@ -213,11 +246,17 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               _buildLinkedOrderBanner(context, appState),
               Expanded(
-                child: StreamBuilder(
-                  stream: appState.getMessagesForOrder(
-                    widget.orderId,
-                    widget.targetChat,
-                  ),
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: appState.supabase
+                      .from('messages')
+                      .stream(primaryKey: ['id'])
+                      .eq('order_id', parsedOrderId)
+                      .order('created_at', ascending: true)
+                      .map(
+                        (rows) => rows
+                            .map((row) => Map<String, dynamic>.from(row))
+                            .toList(),
+                      ),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData &&
                         snapshot.connectionState == ConnectionState.waiting) {
@@ -235,7 +274,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     }
 
-                    final messages = (snapshot.data as List?) ?? [];
+                    final messages = snapshot.data ?? [];
 
                     if (messages.isEmpty) {
                       _lastMessageCount = 0;
@@ -254,10 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       padding: const EdgeInsets.all(12),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
-                        final raw = messages[index];
-                        final msg = raw is Map
-                            ? Map<String, dynamic>.from(raw)
-                            : <String, dynamic>{};
+                        final msg = messages[index];
                         final String senderType =
                             msg['sender_type']?.toString() ?? '';
                         final String messageText =
@@ -290,8 +326,10 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: [
                                 Text(
                                   senderLabel,
-                                  style: const TextStyle(
-                                    color: Colors.white70,
+                                  style: TextStyle(
+                                    color: isMe
+                                        ? Colors.white
+                                        : _getSenderBadgeColor(senderType),
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -327,7 +365,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         onSubmitted: (_) => _sendMessage(),
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          hintText: 'اكتب رسالتك هنا...',
+                          hintText: 'اكتب رسالتك للجميع هنا...',
                           hintStyle: TextStyle(color: Colors.grey),
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(horizontal: 10),
