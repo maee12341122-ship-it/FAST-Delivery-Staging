@@ -153,71 +153,13 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   void _openAdminChatPicker(BuildContext context, String orderId) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'محادثات الطلب #$orderId',
-                style: const TextStyle(
-                  color: Colors.amber,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.person, color: Colors.amber),
-                title: const Text('محادثة المشرف مع العميل',
-                    style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: const Text('التواصل مع صاحب الطلب',
-                    style: TextStyle(color: Colors.grey, fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(
-                        orderId: orderId,
-                        userRole: 'admin',
-                        targetChat: 'admin_customer',
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.two_wheeler, color: Colors.greenAccent),
-                title: const Text('محادثة المشرف مع المندوب',
-                    style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: const Text('التواصل مع مندوب التوصيل الخاص بالطلب',
-                    style: TextStyle(color: Colors.grey, fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(
-                        orderId: orderId,
-                        userRole: 'admin',
-                        targetChat: 'admin_courier',
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          orderId: orderId,
+          userRole: 'admin',
+          targetChat: 'unified_order_chat',
         ),
       ),
     );
