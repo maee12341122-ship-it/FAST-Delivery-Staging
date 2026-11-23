@@ -7,6 +7,18 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../utils/constants.dart';
 
+class _TaizLandmark {
+  final String name;
+  final LatLng point;
+  final List<String> aliases;
+
+  const _TaizLandmark({
+    required this.name,
+    required this.point,
+    this.aliases = const [],
+  });
+}
+
 class MapLocationScreen extends StatefulWidget {
   final LatLng? initialPoint;
   const MapLocationScreen({Key? key, this.initialPoint}) : super(key: key);
@@ -18,6 +30,81 @@ class MapLocationScreen extends StatefulWidget {
 class _MapLocationScreenState extends State<MapLocationScreen> {
   static const LatLng _taizCenter = LatLng(13.5795, 44.0209);
   final MapController _mapController = MapController();
+
+  // مصادر بلاطات مرتبة بحيث تبدأ بمصدر أكثر توافقاً وتبدّل تلقائياً عند الفشل
+  static const List<String> _tileUrls = [
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  ];
+
+  // مرجع محلي سريع لأحياء ومناطق تعز ليعمل البحث والتحديد بدون الاعتماد الكلي على Nominatim
+  static const List<_TaizLandmark> _taizLandmarks = [
+    _TaizLandmark(
+      name: 'شارع جمال',
+      point: LatLng(13.5795, 44.0209),
+      aliases: ['جمال', 'وسط المدينة', 'شارع جمال تعز'],
+    ),
+    _TaizLandmark(
+      name: 'التحرير الأسفل / شارع التحرير',
+      point: LatLng(13.5778, 44.0122),
+      aliases: ['التحرير', 'التحرير الاسفل', 'التحرير الأعلى', 'شارع التحرير'],
+    ),
+    _TaizLandmark(
+      name: 'منطقة دي لوكس',
+      point: LatLng(13.5725, 44.0025),
+      aliases: ['دي لوكس', 'ديلوكس'],
+    ),
+    _TaizLandmark(
+      name: 'حي المسبح',
+      point: LatLng(13.5685, 44.0190),
+      aliases: ['المسبح', 'حي المسبح تعز'],
+    ),
+    _TaizLandmark(
+      name: 'حي الروضة',
+      point: LatLng(13.5885, 44.0285),
+      aliases: ['الروضة', 'حي الروضة تعز'],
+    ),
+    _TaizLandmark(
+      name: 'منطقة الحصب',
+      point: LatLng(13.5840, 43.9865),
+      aliases: ['الحصب', 'الحصب تعز'],
+    ),
+    _TaizLandmark(
+      name: 'منطقة نقطة الرابع',
+      point: LatLng(13.5610, 44.0125),
+      aliases: ['نقطة الرابع', 'الرابع'],
+    ),
+    _TaizLandmark(
+      name: 'بير باشا',
+      point: LatLng(13.5760, 43.9940),
+      aliases: ['بير باشا', 'بئر باشا'],
+    ),
+    _TaizLandmark(
+      name: 'الجحملية',
+      point: LatLng(13.5740, 44.0340),
+      aliases: ['الجحملية', 'جحملية'],
+    ),
+    _TaizLandmark(
+      name: 'عصيفرة',
+      point: LatLng(13.6050, 44.0180),
+      aliases: ['عصيفرة', 'عصيفره'],
+    ),
+    _TaizLandmark(
+      name: 'وادي القاضي',
+      point: LatLng(13.5850, 44.0160),
+      aliases: ['وادي القاضي', 'وادي القاضي تعز'],
+    ),
+    _TaizLandmark(
+      name: 'جولة سنان',
+      point: LatLng(13.5665, 44.0055),
+      aliases: ['جولة سنان', 'سنان'],
+    ),
+  ];
+
+  int _tileUrlIndex = 0;
+  int _tileErrorStreak = 0;
+  Key _tileLayerKey = const ValueKey('tile_layer_0');
 
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
@@ -41,6 +128,26 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkInitialLocationStatus();
     });
+  }
+
+  void _switchToNextTileSource() {
+    if (!mounted) return;
+    if (_tileUrlIndex + 1 < _tileUrls.length) {
+      setState(() {
+        _tileUrlIndex++;
+        _tileErrorStreak = 0;
+        _tileLayerKey = ValueKey('tile_layer_$_tileUrlIndex');
+      });
+    }
+  }
+
+  void _handleTileError(TileImage tile, Object error, StackTrace? stackTrace) {
+    _tileErrorStreak++;
+    if (_tileErrorStreak >= 4 && _tileUrlIndex + 1 < _tileUrls.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _switchToNextTileSource();
+      });
+    }
   }
 
   Future<void> _checkInitialLocationStatus() async {
@@ -100,9 +207,43 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         lng >= 44.005 &&
         lng <= 44.020) {
       return 'منطقة نقطة الرابع 📍';
+    } else if (lat >= 13.570 &&
+        lat <= 13.582 &&
+        lng >= 43.989 &&
+        lng <= 44.000) {
+      return 'بير باشا 📍';
+    } else if (lat >= 13.568 &&
+        lat <= 13.580 &&
+        lng >= 44.028 &&
+        lng <= 44.042) {
+      return 'الجحملية 📍';
+    } else if (lat >= 13.596 &&
+        lat <= 13.615 &&
+        lng >= 44.010 &&
+        lng <= 44.028) {
+      return 'عصيفرة 📍';
     } else {
       return 'تعز - منطقة معتمدة 📍';
     }
+  }
+
+  _TaizLandmark? _findLocalTaizMatch(String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+
+    for (final item in _taizLandmarks) {
+      if (item.name.toLowerCase().contains(normalized) ||
+          normalized.contains(item.name.toLowerCase())) {
+        return item;
+      }
+      for (final alias in item.aliases) {
+        final a = alias.toLowerCase();
+        if (a.contains(normalized) || normalized.contains(a)) {
+          return item;
+        }
+      }
+    }
+    return null;
   }
 
   Future<void> _reverseGeocodePoint(
@@ -115,8 +256,11 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       );
       final res = await http.get(
         uri,
-        headers: {'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)'},
-      ).timeout(const Duration(seconds: 6));
+        headers: {
+          'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
 
       if (!mounted) return;
       if (res.statusCode == 200) {
@@ -168,7 +312,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         }
       }
     } catch (_) {
-      // يبقي على اسم المنطقة المحلي في تعز دون تعطيل الخريطة
+      // في حال حظر أو بطء Nominatim على بعض الشبكات يبقى على اسم المنطقة المحلي في تعز
+      if (mounted) {
+        final localLabel = getTaizAreaName(point);
+        setState(() {
+          _detectedAreaLabel = localLabel;
+        });
+      }
     }
   }
 
@@ -176,17 +326,25 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
 
+    FocusScope.of(context).unfocus();
     setState(() => _searchingPlace = true);
+
     try {
-      final searchQuery =
-          query.contains('تعز') || query.contains('اليمن') ? query : '$query تعز';
+      // أولاً: محاولة البحث عبر Nominatim مع مهلة قصيرة حتى لا ينتظر المستخدم طويلاً إذا كان محجوباً على الشبكة
+      final searchQuery = query.contains('تعز') || query.contains('اليمن')
+          ? query
+          : '$query تعز';
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ar&q=${Uri.encodeComponent(searchQuery)}',
       );
+
       final res = await http.get(
         uri,
-        headers: {'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)'},
-      ).timeout(const Duration(seconds: 8));
+        headers: {
+          'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 4));
 
       if (!mounted) return;
       if (res.statusCode == 200) {
@@ -197,8 +355,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           final lon = double.tryParse(first['lon']?.toString() ?? '');
           if (lat != null && lon != null) {
             final target = LatLng(lat, lon);
-            final display =
-                (first['display_name']?.toString() ?? query).split(',').first.trim();
+            final display = (first['display_name']?.toString() ?? query)
+                .split(',')
+                .first
+                .trim();
             setState(() {
               _selectedPoint = target;
               _detectedAreaLabel = '$display 📍';
@@ -211,24 +371,35 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           }
         }
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('لم يتم العثور على الموقع، جرّب اسم منطقة أو شارع آخر.'),
-          ),
-        );
-      }
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تعذر البحث عن الموقع حالياً، يمكنك سحب الدبوس مباشرة.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _searchingPlace = false);
+      // ننتقل مباشرة للبحث المحلي في تعز عند تعذر الاتصال بالخدمة الخارجية
+    }
+
+    if (!mounted) return;
+
+    // ثانياً: البحث المحلي الفوري في مناطق تعز
+    final localMatch = _findLocalTaizMatch(query);
+    if (localMatch != null) {
+      setState(() {
+        _selectedPoint = localMatch.point;
+        _detectedAreaLabel = '${localMatch.name} 📍';
+        if (_customAddressController.text.trim().isEmpty) {
+          _customAddressController.text = localMatch.name;
+        }
+      });
+      _mapController.move(localMatch.point, 16.5);
+      setState(() => _searchingPlace = false);
+      return;
+    }
+
+    setState(() => _searchingPlace = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'تعذر الوصول لخدمة البحث الخارجية؛ جرّب اسم منطقة في تعز أو حرّك الخريطة مباشرة.'),
+        ),
+      );
     }
   }
 
@@ -474,6 +645,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   Widget build(BuildContext context) {
     const cardColor = Color(0xFF1E1E1E);
     const backgroundColor = Color(0xFF121212);
+    final currentTileUrl = _tileUrls[_tileUrlIndex];
+    final nextTileUrl = _tileUrlIndex + 1 < _tileUrls.length
+        ? _tileUrls[_tileUrlIndex + 1]
+        : null;
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -494,6 +669,19 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
               icon: const Icon(Icons.arrow_forward, color: AppConstants.gold),
               onPressed: _saveAndReturn,
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.layers_outlined, color: AppConstants.gold),
+                tooltip: 'تبديل مصدر الخريطة',
+                onPressed: () {
+                  setState(() {
+                    _tileUrlIndex = (_tileUrlIndex + 1) % _tileUrls.length;
+                    _tileErrorStreak = 0;
+                    _tileLayerKey = ValueKey('tile_layer_$_tileUrlIndex');
+                  });
+                },
+              ),
+            ],
           ),
           body: Column(
             children: [
@@ -687,14 +875,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                           ),
                           children: [
                             TileLayer(
-                              urlTemplate:
-                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              fallbackUrl:
-                                  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                              key: _tileLayerKey,
+                              urlTemplate: currentTileUrl,
+                              fallbackUrl: nextTileUrl,
                               userAgentPackageName: 'com.fast.taiz',
                               tileProvider: NetworkTileProvider(),
                               maxZoom: 19,
-                              errorTileCallback: (tile, error, stackTrace) {},
+                              errorTileCallback: _handleTileError,
                             ),
                           ],
                         ),
