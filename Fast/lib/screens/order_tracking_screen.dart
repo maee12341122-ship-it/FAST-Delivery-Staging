@@ -739,6 +739,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         order['assigned_courier']?.toString() ?? 'مندوب عام';
     final bool isManagerOrCourier =
         appState.isAdminLoggedIn || appState.currentCourier != null;
+    final String areaDisplay = (order['address']?.toString().trim().isNotEmpty == true)
+        ? order['address'].toString().trim()
+        : 'تعز';
     final double? restaurantRatingVal = _restaurantRatingData != null
         ? double.tryParse(_restaurantRatingData!['rating']?.toString() ?? '')
         : null;
@@ -852,10 +855,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         children: [
                           TileLayer(
                             urlTemplate:
-                                'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                            fallbackUrl:
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            fallbackUrl:
+                                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                             userAgentPackageName: 'com.fast.taiz',
+                            tileProvider: NetworkTileProvider(),
+                            maxZoom: 19,
                             errorTileCallback: (tile, error, stackTrace) {},
                           ),
                           MarkerLayer(
@@ -917,8 +922,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 _courierPosition != null
-                                    ? 'تتبع حي للمندوب ($courierName)'
-                                    : 'بانتظار إشارة موقع المندوب ($courierName)',
+                                    ? 'تتبع حي للمندوب ($courierName) • $areaDisplay'
+                                    : 'بانتظار إشارة موقع المندوب ($courierName) • $areaDisplay',
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
