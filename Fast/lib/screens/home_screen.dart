@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   final TextEditingController _customItemNameController = TextEditingController();
   final TextEditingController _customItemPriceController = TextEditingController();
+  final TextEditingController _customItemNotesController = TextEditingController();
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -168,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
     _searchController.dispose();
     _customItemNameController.dispose();
     _customItemPriceController.dispose();
+    _customItemNotesController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _addressDescriptionController.dispose();
@@ -2644,6 +2646,15 @@ class _HomeScreenState extends State<HomeScreen>
                     decoration: const InputDecoration(
                         labelText: 'السعر التقديري (ر.ي)', isDense: true),
                   ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _customItemNotesController,
+                    style: TextStyle(color: textColor),
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                        labelText: 'وصف الطلب للمندوب (اختياري)',
+                        isDense: true),
+                  ),
                   const SizedBox(height: 12),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -2655,11 +2666,17 @@ class _HomeScreenState extends State<HomeScreen>
                         final price =
                             double.tryParse(_customItemPriceController.text) ??
                                 1000.0;
+                        final nameText = _customItemNameController.text.trim();
+                        final notesText = _customItemNotesController.text.trim();
+                        final combinedName = notesText.isNotEmpty
+                            ? '$nameText — ملاحظة للمندوب: $notesText'
+                            : nameText;
                         appState.addCustomOrderToCart(
-                            customName: _customItemNameController.text,
+                            customName: combinedName,
                             estimatedPrice: price);
                         _customItemNameController.clear();
                         _customItemPriceController.clear();
+                        _customItemNotesController.clear();
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content:
