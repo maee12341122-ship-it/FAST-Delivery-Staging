@@ -1346,13 +1346,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream<JsonList> getMessagesForOrder(dynamic orderId, String targetChat) {
+  Stream<JsonList> getMessagesForOrder(dynamic orderId, [String? targetChat]) {
     final parsedId = int.tryParse(orderId.toString()) ?? orderId;
     return supabase
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('order_id', parsedId)
-        .eq('target_chat', targetChat)
         .order('created_at', ascending: true)
         .map((rows) {
           return rows.map((row) => Map<String, dynamic>.from(row)).toList();
@@ -1371,7 +1370,7 @@ class AppState extends ChangeNotifier {
     final newMessage = {
       'order_id': parsedId,
       'sender_type': senderRole,
-      'target_chat': targetChat,
+      'target_chat': 'unified_order_chat',
       'message_text': messageText.trim(),
     };
 
