@@ -60,6 +60,16 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     return clean;
   }
 
+  String _resolveLoginEmailFromRecord(Map<String, dynamic>? record, String rawInput) {
+    final directEmail = (record?['email'] ?? '').toString().trim();
+    if (directEmail.contains('@')) return directEmail;
+
+    final candidate =
+        (record?['username'] ?? rawInput).toString().trim().toLowerCase();
+    if (candidate.isEmpty) return '';
+    return candidate.contains('@') ? candidate : '$candidate@fast.com';
+  }
+
   // ربط بيانات المشرف في الحساب الشخصي (appState.userProfile) برقم هاتفه
   Future<void> _syncAdminUserSession(
     AppState appState, {
@@ -275,14 +285,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (adminRes != null) {
         _detectedRole = 'admin';
         _pendingUserRecord = Map<String, dynamic>.from(adminRes);
-        _loginUsernameController.text = adminRes['username']?.toString() ?? '';
+        _loginUsernameController.text =
+            _resolveLoginEmailFromRecord(_pendingUserRecord, '');
         if (mounted) {
           setState(() => _currentStep = 3);
         }
         return;
       }
 
-      // 2. فحص هل الرقم يتبع للمناديب (couriers)
+      // 2. فحص هل الرقم يتبع للمناديب (couriers) وربطه ببريده الإلكتروني تلقائياً
       final courierRes = await _supabase
           .from('couriers')
           .select('id, username, name, phone, status')
@@ -293,7 +304,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'courier';
         _pendingUserRecord = Map<String, dynamic>.from(courierRes);
         _loginUsernameController.text =
-            courierRes['username']?.toString() ?? '';
+            _resolveLoginEmailFromRecord(_pendingUserRecord, '');
         if (mounted) {
           setState(() => _currentStep = 3);
         }
@@ -351,7 +362,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الرمز: $e');
       if (mounted) {
-        final rawErr = e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
+        final rawErr =
+            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -388,10 +400,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         otpCode: otpCode,
       );
 
-      final bool isValid = verifyRes['verified'] == true || verifyRes['ok'] == true;
+      final bool isValid = verifyRes['verified'] == true ||
+          verifyRes['ok'] == true ||
+          verifyRes['success'] == true;
 
       if (isValid) {
-        // إعادة التحقق من قاعدة البيانات لضمان جلب أحدث بيانات العميل حتى لو لم تكن محمّلة مسبقاً
         Map<String, dynamic>? customerRow = _pendingUserRecord;
         if (customerRow == null) {
           final fetched = await _supabase
@@ -403,7 +416,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             customerRow = Map<String, dynamic>.from(fetched);
             _pendingUserRecord = customerRow;
             final savedName = (customerRow['name'] ?? '').toString().trim();
-            final savedAddress = (customerRow['address'] ?? '').toString().trim();
+            final savedAddress =
+                (customerRow['address'] ?? '').toString().trim();
             if (mounted) {
               _nameController.text = savedName;
               _addressController.text = savedAddress;
@@ -426,8 +440,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           final finalRow = latestRecord ?? customerRow;
           final String customerName =
               (finalRow['name'] ?? '').toString().trim();
-          final String customerPhone =
-              _normalizePhone((finalRow['phone'] ?? dbPhone).toString().trim());
+          final String customerPhone = _normalizePhone(
+              (finalRow['phone'] ?? dbPhone).toString().trim());
           final String customerAddress =
               (finalRow['address'] ?? '').toString().trim();
 
@@ -457,7 +471,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         } else {
           if (mounted) {
             setState(() {
-              _currentStep = 2; // استكمال بيانات العميل الجديد أو الناقصة
+              _currentStep = 2;
             });
           }
         }
@@ -472,7 +486,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من OTP: $e');
       if (mounted) {
-        final rawErr = e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
+        final rawErr =
+            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -490,26 +505,30 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 3️⃣ التحقق من اسم المستخدم وكلمة المرور الخاصة بالأدمن أو المندوب
+  // 3️⃣ التحقق من البريد أو اسم المستخدم وكلمة المرور الخاصة بالأدمن أو المندوب
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
-    final username = _loginUsernameController.text.trim();
+    final rawLogin = _loginUsernameController.text.trim();
     final password = _loginPasswordController.text.trim();
 
-    if (username.isEmpty || password.isEmpty) {
+    if (rawLogin.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال اسم المستخدم وكلمة المرور')),
+        const SnackBar(
+            content: Text('الرجاء إدخال البريد الإلكتروني أو اسم المستخدم وكلمة المرور')),
       );
       return;
     }
+
+    final resolvedEmail =
+        _resolveLoginEmailFromRecord(_pendingUserRecord, rawLogin);
 
     setState(() => _isLoading = true);
 
     try {
       if (_detectedRole == 'admin' || _detectedRole.isEmpty) {
         bool adminSuccess =
-            await appState.loginAdminFromSupabase(username, password);
+            await appState.loginAdminFromSupabase(resolvedEmail, password);
         if (adminSuccess) {
-          await _syncAdminUserSession(appState, username: username);
+          await _syncAdminUserSession(appState, username: rawLogin);
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -522,7 +541,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
       }
 
-      bool courierSuccess = await appState.loginCourier(username, password);
+      bool courierSuccess =
+          await appState.loginCourier(resolvedEmail, password);
       if (courierSuccess) {
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -545,6 +565,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
     } catch (e) {
       debugPrint('❌ خطأ في تسجيل الدخول: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تعذر إتمام تسجيل الدخول: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -582,8 +610,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           .maybeSingle();
 
       final finalName = (savedRecord?['name'] ?? name).toString().trim();
-      final finalPhone =
-          _normalizePhone((savedRecord?['phone'] ?? cleanPhone).toString().trim());
+      final finalPhone = _normalizePhone(
+          (savedRecord?['phone'] ?? cleanPhone).toString().trim());
       final finalAddress =
           (savedRecord?['address'] ?? address).toString().trim();
 
@@ -875,7 +903,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         keyboardType: TextInputType.emailAddress,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'اسم المستخدم أو البريد الإلكتروني',
+                          labelText: 'البريد الإلكتروني أو اسم المستخدم',
                           labelStyle: const TextStyle(color: Colors.grey),
                           prefixIcon: const Icon(Icons.person_outline,
                               color: primaryGold),
