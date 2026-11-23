@@ -26,13 +26,12 @@ class ApiService {
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
-  // ملاحظة: على جهاز أندرويد حقيقي، يجب تمرير --dart-define=BACKEND_URL=https://your-backend-domain
   static const String baseUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'http://10.0.2.2:3000',
   );
 
-  // رابط Supabase (يمكن تمريره عبر --dart-define=SUPABASE_URL=... أو استنتاجه من baseUrl لـ _supabase)
+  // رابط Supabase (يمكن تمريره عبر --dart-define=SUPABASE_URL=...)
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: '',
@@ -159,6 +158,25 @@ class ApiService {
     }
   }
 
+  static JsonMap _parseFunctionPayload(dynamic rawData) {
+    if (rawData is Map<String, dynamic>) {
+      return rawData;
+    }
+    if (rawData is Map) {
+      return Map<String, dynamic>.from(rawData);
+    }
+    if (rawData is String && rawData.trim().isNotEmpty) {
+      final decoded = jsonDecode(rawData);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    }
+    return <String, dynamic>{};
+  }
+
   // 1. جلب الكتالوج العام من جدول products في Supabase
   static Future<JsonMap> fetchCatalog() async {
     try {
@@ -225,7 +243,7 @@ class ApiService {
     }
   }
 
-  // 3. إنشاء الطلب حصرياً عبر Node.js Backend (السعر والإجمالي والخصم ورمز التتبع من الخادم)
+  // 3. إنشاء الطلب حصرياً عبر Node.js Backend
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -325,7 +343,7 @@ class ApiService {
     }
   }
 
-  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend (يعتمد على الجلسة الموثقة على الخادم)
+  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
   static Future<List<dynamic>> fetchMyOrders({String? token}) async {
     try {
       final data = await _sendJsonRequest(
@@ -530,32 +548,30 @@ class ApiService {
           )
           .timeout(_requestTimeout);
 
-      final dynamic payload = res.data;
-      if (payload is Map<String, dynamic>) {
-        if (payload['ok'] == false) {
-          throw ApiException(
-            (payload['error'] ?? 'تعذر إرسال رمز التحقق عبر واتساب').toString(),
-          );
-        }
-        return payload;
+      final parsed = _parseFunctionPayload(res.data);
+      if (parsed['ok'] == false) {
+        throw ApiException(
+          (parsed['error'] ??
+                  parsed['message'] ??
+                  'تعذر إرسال رمز التحقق عبر واتساب')
+              .toString(),
+          statusCode: res.status,
+        );
       }
 
-      if (payload is String && payload.trim().isNotEmpty) {
-        final decoded = jsonDecode(payload);
-        if (decoded is Map<String, dynamic>) {
-          if (decoded['ok'] == false) {
-            throw ApiException(
-              (decoded['error'] ?? 'تعذر إرسال رمز التحقق عبر واتساب')
-                  .toString(),
-            );
-          }
-          return decoded;
-        }
+      if (parsed.isNotEmpty) {
+        return parsed;
       }
 
       return {'ok': true, 'message': 'تم إرسال رمز التحقق بنجاح'};
     } on ApiException {
       rethrow;
+    } on FunctionException catch (e) {
+      debugPrint('❌ خطأ FunctionException في إرسال OTP: status=${e.status}, details=${e.details}');
+      throw ApiException(
+        'تعذر إرسال رمز التحقق (${e.status}): ${e.details ?? e.reasonPhrase ?? 'خطأ في الدالة'}',
+        statusCode: e.status,
+      );
     } on TimeoutException {
       throw ApiException(
         'انتهت مهلة إرسال رمز التحقق، يرجى المحاولة مرة أخرى.',
@@ -590,31 +606,35 @@ class ApiService {
           )
           .timeout(_requestTimeout);
 
-      final dynamic payload = res.data;
-      if (payload is Map<String, dynamic>) {
-        if (payload['ok'] == false || payload['verified'] == false) {
-          throw ApiException(
-            (payload['error'] ?? 'رمز التحقق غير صحيح').toString(),
-          );
-        }
-        return payload;
+      final parsed = _parseFunctionPayload(res.data);
+      if (parsed.isEmpty) {
+        throw ApiException('استجابة غير متوقعة أثناء التحقق من الرمز.');
       }
 
-      if (payload is String && payload.trim().isNotEmpty) {
-        final decoded = jsonDecode(payload);
-        if (decoded is Map<String, dynamic>) {
-          if (decoded['ok'] == false || decoded['verified'] == false) {
-            throw ApiException(
-              (decoded['error'] ?? 'رمز التحقق غير صحيح').toString(),
-            );
-          }
-          return decoded;
-        }
+      final bool isVerified =
+          parsed['verified'] == true || parsed['ok'] == true || parsed['success'] == true;
+      if (!isVerified) {
+        throw ApiException(
+          (parsed['error'] ??
+                  parsed['message'] ??
+                  'رمز التحقق غير صحيح أو انتهت صلاحيته')
+              .toString(),
+          statusCode: res.status,
+        );
       }
 
-      throw ApiException('استجابة غير متوقعة أثناء التحقق من الرمز.');
+      return {
+        ...parsed,
+        'verified': true,
+      };
     } on ApiException {
       rethrow;
+    } on FunctionException catch (e) {
+      debugPrint('❌ خطأ FunctionException في التحقق من OTP: status=${e.status}, details=${e.details}');
+      throw ApiException(
+        'تعذر التحقق من الرمز (${e.status}): ${e.details ?? e.reasonPhrase ?? 'خطأ في الدالة'}',
+        statusCode: e.status,
+      );
     } on TimeoutException {
       throw ApiException(
         'انتهت مهلة التحقق من الرمز، يرجى المحاولة مرة أخرى.',
