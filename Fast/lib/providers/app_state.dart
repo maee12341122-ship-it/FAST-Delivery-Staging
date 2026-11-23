@@ -209,11 +209,73 @@ class AppState extends ChangeNotifier {
     throw Exception(errorMsg);
   }
 
+  bool _isCourierSession(User? user) {
+    if (user == null) return false;
+    final roleMeta = user.appMetadata['role']?.toString() ??
+        user.userMetadata?['role']?.toString() ??
+        '';
+    final email = (user.email ?? '').toLowerCase();
+    return roleMeta == 'courier' || email.endsWith('@courier.fast.local');
+  }
+
+  Future<bool> _isCourierAccount(
+    User? user, {
+    String? usernameInput,
+  }) async {
+    if (user == null) return false;
+    if (_isCourierSession(user)) return true;
+
+    try {
+      final byAuth = await supabase
+          .from('couriers')
+          .select('id, status')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+      if (byAuth != null && byAuth['status']?.toString() != 'disabled') {
+        return true;
+      }
+
+      final email = (user.email ?? '').trim().toLowerCase();
+      final emailPrefix =
+          email.contains('@') ? email.split('@').first.trim() : email;
+      final cleanInput = (usernameInput ?? '').trim().toLowerCase();
+      final inputPrefix = cleanInput.contains('@')
+          ? cleanInput.split('@').first.trim()
+          : cleanInput;
+
+      final candidates = <String>{
+        if (cleanInput.isNotEmpty) cleanInput,
+        if (inputPrefix.isNotEmpty) inputPrefix,
+        if (emailPrefix.isNotEmpty) emailPrefix,
+      };
+
+      for (final candidate in candidates) {
+        final byUsername = await supabase
+            .from('couriers')
+            .select('id, status')
+            .ilike('username', candidate)
+            .maybeSingle();
+        if (byUsername != null &&
+            byUsername['status']?.toString() != 'disabled') {
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('خطأ في التحقق من حساب المندوب: $e');
+    }
+
+    return false;
+  }
+
   Future<JsonMapNullable> _verifyAdminFromBackendOrSchema(
     User? user, {
     String? loginInput,
   }) async {
     if (user == null) return null;
+
+    if (await _isCourierAccount(user, usernameInput: loginInput)) {
+      return null;
+    }
 
     if (_hasConfiguredBackend) {
       final token = _accessToken;
@@ -268,32 +330,10 @@ class AppState extends ChangeNotifier {
           return Map<String, dynamic>.from(row);
         }
       }
-
-      if (!_isCourierSession(user) &&
-          email.isNotEmpty &&
-          !email.endsWith('@courier.fast.local')) {
-        final anyAdmin = await supabase
-            .from('admins')
-            .select('id, username, phone')
-            .limit(1)
-            .maybeSingle();
-        if (anyAdmin != null) {
-          return Map<String, dynamic>.from(anyAdmin);
-        }
-      }
     } catch (e) {
       debugPrint('خطأ في التحقق من جدول admins: $e');
     }
     return null;
-  }
-
-  bool _isCourierSession(User? user) {
-    if (user == null) return false;
-    final roleMeta = user.appMetadata['role']?.toString() ??
-        user.userMetadata?['role']?.toString() ??
-        '';
-    final email = (user.email ?? '').toLowerCase();
-    return roleMeta == 'courier' || email.endsWith('@courier.fast.local');
   }
 
   Future<void> _syncStaffPhoneToUserProfile({
@@ -388,26 +428,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _applyAuthenticatedUserRole(User? user) async {
+    if (user == null) {
+      isAdminLoggedIn = false;
+      currentCourier = null;
+      return;
+    }
+
+    if (await _isCourierAccount(user)) {
+      isAdminLoggedIn = false;
+      await _loadCourierSession();
+      return;
+    }
+
+    final adminRow = await _verifyAdminFromBackendOrSchema(user);
+    if (adminRow != null) {
+      isAdminLoggedIn = true;
+      currentCourier = null;
+      await _syncAdminProfileFromAuth(
+        user,
+        verifiedAdminRow: adminRow,
+      );
+    } else {
+      isAdminLoggedIn = false;
+      currentCourier = null;
+    }
+  }
+
   void _initAuthListener() {
     _authSub = supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
       if (session != null) {
-        if (_isCourierSession(session.user)) {
-          isAdminLoggedIn = false;
-          await _loadCourierSession();
-        } else {
-          final adminRow = await _verifyAdminFromBackendOrSchema(session.user);
-          if (adminRow != null) {
-            isAdminLoggedIn = true;
-            currentCourier = null;
-            await _syncAdminProfileFromAuth(
-              session.user,
-              verifiedAdminRow: adminRow,
-            );
-          } else {
-            isAdminLoggedIn = false;
-          }
-        }
+        await _applyAuthenticatedUserRole(session.user);
       } else {
         isAdminLoggedIn = false;
         currentCourier = null;
@@ -439,22 +491,7 @@ class AppState extends ChangeNotifier {
   Future<void> _checkInitialSessions() async {
     final session = supabase.auth.currentSession;
     if (session != null) {
-      if (_isCourierSession(session.user)) {
-        isAdminLoggedIn = false;
-        await _loadCourierSession();
-      } else {
-        final adminRow = await _verifyAdminFromBackendOrSchema(session.user);
-        if (adminRow != null) {
-          isAdminLoggedIn = true;
-          currentCourier = null;
-          await _syncAdminProfileFromAuth(
-            session.user,
-            verifiedAdminRow: adminRow,
-          );
-        } else {
-          isAdminLoggedIn = false;
-        }
-      }
+      await _applyAuthenticatedUserRole(session.user);
     } else {
       isAdminLoggedIn = false;
       currentCourier = null;
@@ -1624,9 +1661,11 @@ class AppState extends ChangeNotifier {
         email: email,
         password: password,
       );
-      if (response.user == null || _isCourierSession(response.user)) {
+      if (response.user == null ||
+          await _isCourierAccount(response.user, usernameInput: raw)) {
         await supabase.auth.signOut();
         isAdminLoggedIn = false;
+        currentCourier = null;
         return false;
       }
 
@@ -1637,6 +1676,7 @@ class AppState extends ChangeNotifier {
       if (verifiedAdmin == null) {
         await supabase.auth.signOut();
         isAdminLoggedIn = false;
+        currentCourier = null;
         return false;
       }
 
@@ -2054,6 +2094,7 @@ class AppState extends ChangeNotifier {
     try {
       final row = await _findCourierRecordForUser(user);
       if (row != null && row['status']?.toString() != 'disabled') {
+        isAdminLoggedIn = false;
         currentCourier = Map<String, dynamic>.from(row);
         final courierPhone = row['phone']?.toString() ?? '';
         final courierName = row['name']?.toString() ?? '';
@@ -2265,6 +2306,8 @@ class AppState extends ChangeNotifier {
 
       if (row == null || row['status']?.toString() == 'disabled') {
         await supabase.auth.signOut();
+        isAdminLoggedIn = false;
+        currentCourier = null;
         return false;
       }
 
