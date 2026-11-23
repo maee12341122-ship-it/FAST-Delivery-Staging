@@ -1,35 +1,19 @@
 workflows:
-  fast-taiz-web-pwa:
-    name: FAST Delivery - Web PWA 🌐
-    max_build_duration: 30
+  fast-delivery-android:
+    name: FAST Delivery - Production APK Build 🚀
+    max_build_duration: 60
+    working_directory: Fast
     environment:
-      flutter: stable
+      flutter: 3.19.6
     cache:
       cache_paths: []
     scripts:
-      - name: Check Flutter environment
-        script: |
-          set -e
-          flutter --version
-      - name: Enable Flutter Web
-        script: |
-          set -e
-          flutter config --enable-web
-      - name: Get Flutter packages
+      - name: 1. Get Flutter Packages
         script: flutter pub get
-      - name: Generate App Launcher Icon 🖼️
-        script: |
-          set -e
-          flutter pub run flutter_launcher_icons || true
-      - name: Build Web Release (PWA) 🚀
-        script: |
-          set -e
-          flutter build web --release --pwa-strategy=offline-first
-      - name: Compress Web Artifacts 📦
-        script: |
-          set -e
-          cd build/web
-          zip -r ../web_pwa_release.zip .
+        
+      - name: 2. Build Release APK
+        script: flutter build apk --release --android-skip-build-dependency-validation
+        
     artifacts:
-      - build/web_pwa_release.zip
-      - build/web/**
+      - build/app/outputs/flutter-apk/*.apk
+      - flutter_drive.log
