@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
 import 'order_time_helper.dart';
 import 'order_tracking_screen.dart';
+import 'chat_screen.dart';
 import 'admin/admin_products_screen.dart';
 import 'admin/admin_reports_screen.dart';
 import 'home_screen.dart';
@@ -125,6 +126,101 @@ class _AdminScreenState extends State<AdminScreen>
       default:
         return status;
     }
+  }
+
+  bool _isCourierBusy(AppState appState, Map courier) {
+    final courierName = (courier['name'] ?? courier['full_name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final courierId = courier['id']?.toString().trim() ?? '';
+
+    return appState.orders.any((o) {
+      if (o is! Map) return false;
+      final assigned =
+          (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
+      final nameField =
+          (o['courier_name'] ?? '').toString().trim().toLowerCase();
+      final matchesCourier = (courierName.isNotEmpty &&
+              (assigned == courierName || nameField == courierName)) ||
+          (courierId.isNotEmpty && assigned == courierId);
+      if (!matchesCourier) return false;
+      final status = o['status']?.toString().trim() ?? '';
+      return status == 'onTheWay' ||
+          status == 'arrivedToCustomer' ||
+          status == 'arrived';
+    });
+  }
+
+  void _openAdminChatPicker(BuildContext context, String orderId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'محادثات الطلب #$orderId',
+                style: const TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.person, color: Colors.amber),
+                title: const Text('محادثة المشرف مع العميل',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+                subtitle: const Text('التواصل مع صاحب الطلب',
+                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        orderId: orderId,
+                        userRole: 'admin',
+                        targetChat: 'admin_customer',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.two_wheeler, color: Colors.greenAccent),
+                title: const Text('محادثة المشرف مع المندوب',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+                subtitle: const Text('التواصل مع مندوب التوصيل الخاص بالطلب',
+                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        orderId: orderId,
+                        userRole: 'admin',
+                        targetChat: 'admin_courier',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _handleAdminNotificationTap(
@@ -546,11 +642,15 @@ class _AdminScreenState extends State<AdminScreen>
           itemCount: couriers.length,
           itemBuilder: (context, index) {
             final courier = couriers[index];
-            final courierName = courier['name']?.toString().trim() ??
-                courier['full_name']?.toString().trim() ??
+            final courierMap =
+                courier is Map ? Map<String, dynamic>.from(courier) : <String, dynamic>{};
+            final courierName = courierMap['name']?.toString().trim() ??
+                courierMap['full_name']?.toString().trim() ??
                 '';
-            final courierKey = courier['id']?.toString() ?? '$courierName-$index';
+            final courierKey =
+                courierMap['id']?.toString() ?? '$courierName-$index';
             final isSettlingThis = _settlingCourierKeys.contains(courierKey);
+            final isBusy = _isCourierBusy(appState, courierMap);
 
             final courierUnsettledOrders = appState.orders.where((o) {
               final assigned = o['assigned_courier']?.toString().trim() ?? '';
@@ -593,14 +693,40 @@ class _AdminScreenState extends State<AdminScreen>
                             const Icon(Icons.two_wheeler,
                                 color: Colors.amber, size: 24),
                             const SizedBox(width: 10),
-                            Text(
-                                courierName.isNotEmpty
-                                    ? courierName
-                                    : 'مندوب',
-                                style: const TextStyle(
-                                    color: Colors.amber,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    courierName.isNotEmpty
+                                        ? courierName
+                                        : 'مندوب',
+                                    style: const TextStyle(
+                                        color: Colors.amber,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isBusy
+                                        ? Colors.orange.withOpacity(0.2)
+                                        : Colors.green.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    isBusy ? 'مشغول بطلب' : 'متاح',
+                                    style: TextStyle(
+                                      color: isBusy
+                                          ? Colors.orangeAccent
+                                          : Colors.greenAccent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                         Row(
@@ -614,7 +740,7 @@ class _AdminScreenState extends State<AdminScreen>
                                 border: Border.all(color: Colors.green),
                               ),
                               child: Text(
-                                  '📞 ${courier['phone'] ?? 'غير متوفر'}',
+                                  '📞 ${courierMap['phone'] ?? 'غير متوفر'}',
                                   style: const TextStyle(
                                       color: Colors.greenAccent,
                                       fontSize: 12,
@@ -1577,6 +1703,16 @@ class _AdminScreenState extends State<AdminScreen>
                             },
                           ),
                           const SizedBox(width: 4),
+                          IconButton(
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.blueGrey[800]),
+                            icon: const Icon(Icons.chat,
+                                color: Colors.amber, size: 20),
+                            tooltip: 'محادثة العميل أو المندوب',
+                            onPressed: () =>
+                                _openAdminChatPicker(context, orderId),
+                          ),
+                          const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
@@ -1698,12 +1834,24 @@ class _AdminScreenState extends State<AdminScreen>
                                 ),
                                 items: couriersList
                                     .map<DropdownMenuItem<String>>((courier) {
-                                  final name = courier['name']?.toString() ??
-                                      courier['full_name']?.toString() ??
+                                  final cMap = courier is Map
+                                      ? Map<String, dynamic>.from(courier)
+                                      : <String, dynamic>{};
+                                  final name = cMap['name']?.toString() ??
+                                      cMap['full_name']?.toString() ??
                                       'مندوب';
+                                  final busy = _isCourierBusy(appState, cMap);
                                   return DropdownMenuItem<String>(
                                     value: name,
-                                    child: Text(name),
+                                    child: Text(
+                                      '$name (${busy ? 'مشغول' : 'متاح'})',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: busy
+                                            ? Colors.orangeAccent
+                                            : Colors.greenAccent,
+                                      ),
+                                    ),
                                   );
                                 }).toList(),
                                 onChanged: (val) {
