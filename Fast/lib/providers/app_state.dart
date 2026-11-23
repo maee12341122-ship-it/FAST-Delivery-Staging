@@ -411,6 +411,9 @@ class AppState extends ChangeNotifier {
       } else {
         isAdminLoggedIn = false;
         currentCourier = null;
+        if (userProfile == null) {
+          await _loadUserSession();
+        }
       }
       notifyListeners();
     });
@@ -855,6 +858,7 @@ class AppState extends ChangeNotifier {
   void addOrUpdateAddress(String formattedAddress) {
     if (userProfile != null) {
       _userProfileData!['address'] = formattedAddress;
+      unawaited(_persistUserSessionToPrefs(_userProfileData!));
       notifyListeners();
     }
   }
@@ -1300,6 +1304,7 @@ class AppState extends ChangeNotifier {
     currentCity = city;
     if (_userProfileData != null) {
       _userProfileData!['city'] = city;
+      unawaited(_persistUserSessionToPrefs(_userProfileData!));
     }
     notifyListeners();
   }
@@ -1699,6 +1704,20 @@ class AppState extends ChangeNotifier {
         'city': currentCity,
       };
     }
+
+    if (userProfile != null) {
+      final cleanPhone =
+          _normalizePhone(userProfile!['phone']?.toString() ?? '');
+      if (cleanPhone.isNotEmpty) {
+        userProfile = {
+          ...userProfile!,
+          'phone': cleanPhone,
+          'city': (userProfile!['city'] ?? currentCity).toString(),
+        };
+        unawaited(_persistUserSessionToPrefs(userProfile!));
+      }
+    }
+
     notifyListeners();
   }
 
@@ -1748,6 +1767,15 @@ class AppState extends ChangeNotifier {
 
     if (phone != null && phone.isNotEmpty) {
       final cleanPhone = _normalizePhone(phone);
+      userProfile = {
+        'phone': cleanPhone,
+        'name': name ?? '',
+        'city': city,
+        'address': address ?? '',
+      };
+      await fetchUserAddressesFromSupabase();
+      notifyListeners();
+
       try {
         final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
         if (dbRecord != null) {
@@ -1758,14 +1786,6 @@ class AppState extends ChangeNotifier {
         debugPrint('خطأ في جلب بيانات العميل: $e');
       }
 
-      userProfile = {
-        'phone': cleanPhone,
-        'name': name ?? '',
-        'city': city,
-        'address': address ?? '',
-      };
-      await fetchUserAddressesFromSupabase();
-      notifyListeners();
       await restoreLastCustomerOrder();
     }
   }
