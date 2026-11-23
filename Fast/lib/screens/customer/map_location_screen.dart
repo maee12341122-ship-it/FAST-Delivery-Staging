@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../utils/constants.dart';
@@ -19,17 +21,23 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
   LatLng? _selectedPoint;
   bool _gettingLocation = false;
+  bool _searchingPlace = false;
   String? _error;
   bool _isServiceDisabled = false;
   bool _isPermissionDeniedForever = false;
+  String _detectedAreaLabel = 'تعز - منطقة معتمدة 📍';
+  Timer? _geocodeDebounce;
 
   final TextEditingController _customAddressController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   final FocusNode _addressFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _selectedPoint = widget.initialPoint ?? _taizCenter;
+    _detectedAreaLabel = getTaizAreaName(_selectedPoint!);
+    unawaited(_reverseGeocodePoint(_selectedPoint!, autoFillIfEmpty: false));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkInitialLocationStatus();
     });
@@ -94,6 +102,133 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       return 'منطقة نقطة الرابع 📍';
     } else {
       return 'تعز - منطقة معتمدة 📍';
+    }
+  }
+
+  Future<void> _reverseGeocodePoint(
+    LatLng point, {
+    bool autoFillIfEmpty = true,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point.latitude}&lon=${point.longitude}&accept-language=ar',
+      );
+      final res = await http.get(
+        uri,
+        headers: {'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)'},
+      ).timeout(const Duration(seconds: 6));
+
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) {
+          final addr = data['address'];
+          String placeTitle = '';
+          if (addr is Map<String, dynamic>) {
+            final parts = <String>[
+              if ((addr['suburb'] ?? addr['neighbourhood'] ?? addr['quarter'])
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ==
+                  true)
+                (addr['suburb'] ?? addr['neighbourhood'] ?? addr['quarter'])
+                    .toString()
+                    .trim(),
+              if ((addr['road'] ?? addr['street'])
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ==
+                  true)
+                (addr['road'] ?? addr['street']).toString().trim(),
+              if ((addr['city'] ?? addr['town'] ?? addr['county'])
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ==
+                  true)
+                (addr['city'] ?? addr['town'] ?? addr['county'])
+                    .toString()
+                    .trim(),
+            ];
+            placeTitle = parts.join(' - ');
+          }
+          if (placeTitle.isEmpty && data['display_name'] != null) {
+            final fullName = data['display_name'].toString();
+            placeTitle = fullName.split(',').take(2).join(' - ').trim();
+          }
+
+          if (placeTitle.isNotEmpty) {
+            setState(() {
+              _detectedAreaLabel = '$placeTitle 📍';
+              if (autoFillIfEmpty &&
+                  _customAddressController.text.trim().isEmpty) {
+                _customAddressController.text = placeTitle;
+              }
+            });
+          }
+        }
+      }
+    } catch (_) {
+      // يبقي على اسم المنطقة المحلي في تعز دون تعطيل الخريطة
+    }
+  }
+
+  Future<void> _searchPlaceOnMap() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
+
+    setState(() => _searchingPlace = true);
+    try {
+      final searchQuery =
+          query.contains('تعز') || query.contains('اليمن') ? query : '$query تعز';
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ar&q=${Uri.encodeComponent(searchQuery)}',
+      );
+      final res = await http.get(
+        uri,
+        headers: {'User-Agent': 'FastDeliveryTaizApp/1.0 (com.fast.taiz)'},
+      ).timeout(const Duration(seconds: 8));
+
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body);
+        if (list is List && list.isNotEmpty) {
+          final first = list.first as Map<String, dynamic>;
+          final lat = double.tryParse(first['lat']?.toString() ?? '');
+          final lon = double.tryParse(first['lon']?.toString() ?? '');
+          if (lat != null && lon != null) {
+            final target = LatLng(lat, lon);
+            final display =
+                (first['display_name']?.toString() ?? query).split(',').first.trim();
+            setState(() {
+              _selectedPoint = target;
+              _detectedAreaLabel = '$display 📍';
+              if (_customAddressController.text.trim().isEmpty) {
+                _customAddressController.text = display;
+              }
+            });
+            _mapController.move(target, 16.5);
+            return;
+          }
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('لم يتم العثور على الموقع، جرّب اسم منطقة أو شارع آخر.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر البحث عن الموقع حالياً، يمكنك سحب الدبوس مباشرة.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _searchingPlace = false);
     }
   }
 
@@ -184,8 +319,11 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       return;
     }
 
-    final areaName = getTaizAreaName(_selectedPoint!);
-    final finalFullAddress = '$addressText - $areaName';
+    final areaName = _detectedAreaLabel.isNotEmpty
+        ? _detectedAreaLabel
+        : getTaizAreaName(_selectedPoint!);
+    final finalFullAddress =
+        addressText.contains(areaName) ? addressText : '$addressText - $areaName';
 
     Navigator.pop(context, {
       'address': finalFullAddress,
@@ -273,10 +411,12 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
       setState(() {
         _selectedPoint = point;
+        _detectedAreaLabel = getTaizAreaName(point);
         _error = null;
       });
 
       _mapController.move(point, 17.5);
+      unawaited(_reverseGeocodePoint(point, autoFillIfEmpty: true));
     } catch (error) {
       try {
         final lastKnown = await Geolocator.getLastKnownPosition();
@@ -284,6 +424,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           final fallbackPoint = LatLng(lastKnown.latitude, lastKnown.longitude);
           setState(() {
             _selectedPoint = fallbackPoint;
+            _detectedAreaLabel = getTaizAreaName(fallbackPoint);
             _error =
                 'تم جلب آخر موقع معروف؛ يمكنك تحريك الدبوس لتعديل الموضع بدقة.';
           });
@@ -311,13 +452,20 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         (prev.longitude - center.longitude).abs() > 0.00015) {
       setState(() {
         _selectedPoint = center;
+        _detectedAreaLabel = getTaizAreaName(center);
+      });
+      _geocodeDebounce?.cancel();
+      _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
+        unawaited(_reverseGeocodePoint(center, autoFillIfEmpty: false));
       });
     }
   }
 
   @override
   void dispose() {
+    _geocodeDebounce?.cancel();
     _customAddressController.dispose();
+    _searchController.dispose();
     _addressFocus.dispose();
     super.dispose();
   }
@@ -362,6 +510,52 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: (_) => _searchPlaceOnMap(),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 12),
+                              decoration: InputDecoration(
+                                hintText: 'ابحث عن حي أو شارع أو معلم...',
+                                hintStyle: const TextStyle(color: Colors.grey),
+                                isDense: true,
+                                filled: true,
+                                fillColor: backgroundColor,
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                prefixIcon: const Icon(Icons.search,
+                                    color: AppConstants.gold, size: 20),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppConstants.gold,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed:
+                                _searchingPlace ? null : _searchPlaceOnMap,
+                            child: _searchingPlace
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.black),
+                                  )
+                                : const Text('بحث',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
                       const Text(
                         'أكتب عنوانك التفصيلي بدقة (مطلوب): *',
                         style: TextStyle(
@@ -496,7 +690,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                               urlTemplate:
                                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                               fallbackUrl:
-                                  'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                                  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                               userAgentPackageName: 'com.fast.taiz',
                               tileProvider: NetworkTileProvider(),
                               maxZoom: 19,
@@ -530,7 +724,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                               ),
                               child: Text(
                                 _selectedPoint != null
-                                    ? 'إحداثيات الدبوس: (${_selectedPoint!.latitude.toStringAsFixed(4)}, ${_selectedPoint!.longitude.toStringAsFixed(4)})'
+                                    ? '$_detectedAreaLabel • (${_selectedPoint!.latitude.toStringAsFixed(4)}, ${_selectedPoint!.longitude.toStringAsFixed(4)})'
                                     : 'اسحب الخريطة لتحديد الموقع بدقة 🎯',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
