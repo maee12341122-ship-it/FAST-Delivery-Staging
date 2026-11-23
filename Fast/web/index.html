@@ -2,31 +2,72 @@
 <html lang="ar" dir="rtl">
 <head>
   <base href="/">
-  <link rel="icon" type="image/png" href="favicon.png">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  
+
   <!-- كود إثبات الملكية في Google Search Console -->
   <meta name="google-site-verification" content="egZpDaM1xgr8WL6IXvKCDv_ml6I1_IFJobsUy2n-9fA" />
 
   <!-- عنوان التطبيق المخصص للظهور في محركات البحث -->
-  <title>فاست ديليفري تعز | FAST Delivery Taiz</title>
+  <title>فاست ديليفري تعز | FAST Delivery Taiz - توصيل طلبات ووجبات</title>
 
   <!-- وصف شامل وجذاب للتطبيق يظهر تحت رابط الموقع في نتائج البحث -->
-  <meta name="description" content="أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة إلى باب منزلك في تعز بكل سهولة وأمان. اطلب الآن عبر فاست ديليفري.">
+  <meta name="description" content="فاست ديليفري (FAST Delivery Taiz) أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة والبقالة وخدمة وصل لي الخاصة إلى باب منزلك في تعز بكل سهولة وأمان.">
 
-  <!-- أقوى الكلمات المفتاحية لرفع ترتيبك في نتائج بحث Google وBing -->
-  <meta name="keywords" content="فاست ديليفري, تطبيق فاست, فاست تعز, FAST Delivery, FAST Taiz, توصيل طلبات تعز, طلب طعام تعز, توصيل وجبات اليمن, تطبيق توصيل تعز, FAST app">
+  <!-- الكلمات المفتاحية -->
+  <meta name="keywords" content="فاست ديليفري, تطبيق فاست, فاست تعز, FAST Delivery, FAST Taiz, توصيل طلبات تعز, طلب طعام تعز, توصيل وجبات اليمن, تطبيق توصيل تعز, FAST app, وصل لي تعز">
 
-  <!-- تحسينات إضافية لمحركات البحث والشحن السريع -->
-  <meta name="robots" content="index, follow">
+  <!-- إعدادات الفهرسة والرابط الأساسي (Canonical) -->
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <meta name="author" content="FAST Delivery Team">
+  <meta name="theme-color" content="#FFC107">
+  <link rel="canonical" href="https://fast-delivry-app.netlify.app/">
+
+  <!-- أيقونات الموقع والهواتف (مهمة جداً لظهور الشعار بجانب الرابط في Google) -->
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="shortcut icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
 
   <!-- وسوم Open Graph لتحديد شكل ظهور الرابط عند مشاركته في واتساب وفيس بوك -->
-  <meta property="og:title" content="فاست ديليفري تعز | FAST Delivery">
-  <meta property="og:description" content="أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة إلى باب منزلك في تعز.">
+  <meta property="og:site_name" content="فاست ديليفري تعز | FAST Delivery">
+  <meta property="og:locale" content="ar_AR">
+  <meta property="og:title" content="فاست ديليفري تعز | FAST Delivery Taiz">
+  <meta property="og:description" content="أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة وخدمة وصل لي إلى باب منزلك في تعز.">
   <meta property="og:type" content="website">
+  <meta property="og:url" content="https://fast-delivry-app.netlify.app/">
+  <meta property="og:image" content="https://fast-delivry-app.netlify.app/icons/Icon-512.png">
+
+  <!-- وسوم بطاقات تويتر / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="فاست ديليفري تعز | FAST Delivery Taiz">
+  <meta name="twitter:description" content="أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة إلى باب منزلك في تعز.">
+  <meta name="twitter:image" content="https://fast-delivry-app.netlify.app/icons/Icon-512.png">
+
+  <!-- البيانات المنظمة (JSON-LD) لإظهار اسم الموقع والشعار في نتائج بحث Google -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "فاست ديليفري تعز - FAST Delivery",
+        "alternateName": ["FAST Delivery Taiz", "فاست تعز", "FAST"],
+        "url": "https://fast-delivry-app.netlify.app/"
+      },
+      {
+        "@type": "Organization",
+        "name": "FAST Delivery Taiz",
+        "url": "https://fast-delivry-app.netlify.app/",
+        "logo": "https://fast-delivry-app.netlify.app/icons/Icon-512.png",
+        "areaServed": {
+          "@type": "City",
+          "name": "Taiz"
+        }
+      }
+    ]
+  }
+  </script>
 
   <!-- إعدادات الشاشة والجوال -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -38,9 +79,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FAST Taiz">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
 </head>
 <body>
+  <!-- محتوى نصي دلالي لمحركات البحث في حال عدم تفعيل الجافاسكربت -->
+  <noscript>
+    <h1>فاست ديليفري تعز | FAST Delivery Taiz</h1>
+    <p>أسرع تطبيق لتوصيل الطلبات والوجبات الطازجة والبقالة وخدمة وصل لي الخاصة إلى باب منزلك في مدينة تعز بكل سهولة وأمان.</p>
+  </noscript>
+
   <!-- ملف التشغيل الذكي الخاص بفلاتر الويب -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
