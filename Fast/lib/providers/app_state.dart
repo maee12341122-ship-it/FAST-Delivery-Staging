@@ -209,7 +209,6 @@ class AppState extends ChangeNotifier {
     throw Exception(errorMsg);
   }
 
-  // التحقق التلقائي من المشرف: يحاول عبر Backend إن وجد، وإلا يتحقق مباشرة من جدول admins في Supabase
   Future<JsonMapNullable> _verifyAdminFromBackendOrSchema(
     User? user, {
     String? loginInput,
@@ -226,9 +225,7 @@ class AppState extends ChangeNotifier {
                 ? Map<String, dynamic>.from(res['admin'] as Map)
                 : <String, dynamic>{'verified': true};
           }
-        } catch (_) {
-          // الانتقال للتحقق المباشر من Supabase
-        }
+        } catch (_) {}
       }
     }
 
@@ -1617,7 +1614,7 @@ class AppState extends ChangeNotifier {
   Future<bool> loginAdminFromSupabase(String username, String password) async {
     try {
       final raw = username.trim().toLowerCase();
-      final email = raw.contains('@') ? raw : '$raw@fast.local';
+      final email = raw.contains('@') ? raw : '$raw@fast.com';
       final response = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
@@ -1802,7 +1799,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // طلب OTP عبر WhatsApp Edge Function مع الحفاظ على التوافق مع بقية المشروع
   Future<JsonMap> requestOtpForPhone(String phone) async {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) {
@@ -1830,7 +1826,6 @@ class AppState extends ChangeNotifier {
             : 'تم إرسال رمز التحقق عبر واتساب إلى +$internationalPhone',
       };
     } catch (e) {
-      // في حال عدم توفر الاتصال بالدالة السحابية، نولّد رمزاً احتياطياً محلياً
       final generatedCode = (1000 + Random().nextInt(9000)).toString();
       _localFallbackOtps[cleanPhone] = generatedCode;
       notifyListeners();
@@ -1844,7 +1839,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // التحقق من OTP عبر WhatsApp Edge Function أو الرمز الاحتياطي المحلي
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
     final code = enteredOtp.trim();
     if (code.isEmpty) return false;
@@ -1859,7 +1853,9 @@ class AppState extends ChangeNotifier {
         phoneNumber: internationalPhone,
         otpCode: code,
       );
-      isValid = verifyRes['verified'] == true || verifyRes['ok'] == true;
+      isValid = verifyRes['verified'] == true ||
+          verifyRes['ok'] == true ||
+          verifyRes['success'] == true;
     } catch (e) {
       debugPrint('تعذر التحقق عبر دالة واتساب، التحقق من الاحتياطي: $e');
       if (_localFallbackOtps[cleanPhone] == code) {
@@ -2231,7 +2227,7 @@ class AppState extends ChangeNotifier {
   Future<bool> loginCourier(String username, String password) async {
     try {
       final raw = username.trim().toLowerCase();
-      final email = raw.contains('@') ? raw : '$raw@courier.fast.local';
+      final email = raw.contains('@') ? raw : '$raw@fast.com';
       final auth = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
