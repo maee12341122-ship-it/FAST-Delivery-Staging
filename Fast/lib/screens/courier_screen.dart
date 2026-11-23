@@ -23,6 +23,8 @@ class _CourierScreenState extends State<CourierScreen> {
   StreamSubscription<Position>? _locationSubscription;
   bool _isLoadingSession = true;
   final Set<String> _updatingOrderIds = {};
+  String? _lastSyncedCourierKey;
+  bool? _lastSyncedBusyState;
 
   @override
   void initState() {
@@ -155,6 +157,137 @@ class _CourierScreenState extends State<CourierScreen> {
     });
   }
 
+  bool _isCourierBusyFromOrders(List myOrders) {
+    return myOrders.any((o) {
+      if (o is! Map) return false;
+      final status = o['status']?.toString().trim() ?? '';
+      return status == 'onTheWay' ||
+          status == 'arrivedToCustomer' ||
+          status == 'arrived';
+    });
+  }
+
+  void _syncCourierAvailabilityState(
+    AppState appState,
+    Map<String, dynamic> courier,
+    bool isBusy,
+  ) {
+    final courierKey =
+        (courier['id'] ?? courier['name'] ?? '').toString().trim();
+    if (courierKey.isEmpty) return;
+    if (_lastSyncedCourierKey == courierKey && _lastSyncedBusyState == isBusy) {
+      return;
+    }
+    _lastSyncedCourierKey = courierKey;
+    _lastSyncedBusyState = isBusy;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final nextStatusLabel = isBusy ? 'مشغول' : 'متاح';
+      courier['is_available'] = !isBusy;
+      courier['status'] = nextStatusLabel;
+
+      for (final c in appState.couriers) {
+        if (c is Map) {
+          final cId = c['id']?.toString().trim() ?? '';
+          final cName = c['name']?.toString().trim() ?? '';
+          final targetName = courier['name']?.toString().trim() ?? '';
+          if ((courierKey.isNotEmpty && cId == courierKey) ||
+              (targetName.isNotEmpty &&
+                  cName.toLowerCase() == targetName.toLowerCase())) {
+            c['is_available'] = !isBusy;
+            c['status'] = nextStatusLabel;
+          }
+        }
+      }
+
+      if (courier['id'] != null) {
+        try {
+          await Supabase.instance.client
+              .from('couriers')
+              .update({'status': nextStatusLabel}).eq('id', courier['id']);
+        } catch (_) {
+          // يتجاهل الخطأ إن كان العمود غير موجود في الجدول
+        }
+      }
+      if (mounted) {
+        appState.notifyListeners();
+      }
+    });
+  }
+
+  void _openChatPickerForOrder(BuildContext context, String orderId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'محادثات الطلب #$orderId',
+                style: const TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings,
+                    color: Colors.amber),
+                title: const Text('محادثة المشرف (الإدارة)',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+                subtitle: const Text('التواصل مع المشرف بخصوص الطلب',
+                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        orderId: orderId,
+                        userRole: 'courier',
+                        targetChat: 'admin_courier',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person, color: Colors.cyanAccent),
+                title: const Text('محادثة العميل',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+                subtitle: const Text('التواصل المباشر مع صاحب الطلب',
+                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        orderId: orderId,
+                        userRole: 'courier',
+                        targetChat: 'courier_customer',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openMap(String address) async {
     final query = Uri.encodeComponent(
         address.trim().isNotEmpty ? address.trim() : 'Taiz, Yemen');
@@ -219,6 +352,7 @@ class _CourierScreenState extends State<CourierScreen> {
     setState(() => _updatingOrderIds.add(orderId));
     try {
       await appState.updateOrderStatus(orderId, nextStatus);
+      _lastSyncedBusyState = null;
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -483,6 +617,9 @@ class _CourierScreenState extends State<CourierScreen> {
           (courierId.isNotEmpty && assigned == courierId);
     }).toList();
 
+    final bool isBusy = _isCourierBusyFromOrders(myOrders);
+    _syncCourierAvailabilityState(appState, courier, isBusy);
+
     final completedOrders = myOrders.where((o) {
       final isDelivered = o['status']?.toString().trim() == 'delivered';
       final isSettled = o['is_settled'] == true;
@@ -524,7 +661,11 @@ class _CourierScreenState extends State<CourierScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                border: Border.all(
+                  color: isBusy
+                      ? Colors.orangeAccent.withOpacity(0.5)
+                      : Colors.greenAccent.withOpacity(0.45),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -538,11 +679,39 @@ class _CourierScreenState extends State<CourierScreen> {
                             color: Colors.black, size: 20),
                       ),
                       const SizedBox(width: 10),
-                      Text('الكابتن: ${courier['name']}',
-                          style: const TextStyle(
-                              color: Colors.amber,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('الكابتن: ${courier['name']}',
+                              style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15)),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isBusy
+                                  ? Colors.orange.withOpacity(0.2)
+                                  : Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isBusy
+                                  ? 'حالتك الآن: مشغول بطلب'
+                                  : 'حالتك الآن: متاح لاستقبال الطلبات',
+                              style: TextStyle(
+                                color: isBusy
+                                    ? Colors.orangeAccent
+                                    : Colors.greenAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                   Container(
@@ -736,18 +905,9 @@ class _CourierScreenState extends State<CourierScreen> {
                                 backgroundColor: Colors.blueGrey[800]),
                             icon: const Icon(Icons.chat,
                                 color: Colors.amber, size: 20),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => ChatScreen(
-                                    orderId: orderId,
-                                    userRole: 'courier',
-                                    targetChat: 'admin_courier',
-                                  ),
-                                ),
-                              );
-                            },
+                            tooltip: 'محادثة المشرف أو العميل',
+                            onPressed: () =>
+                                _openChatPickerForOrder(context, orderId),
                           ),
                         ],
                       ),
