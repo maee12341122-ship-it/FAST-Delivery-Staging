@@ -32,7 +32,7 @@ class FastAppLogo extends StatelessWidget {
       ),
       child: ClipOval(
         child: Image.asset(
-          'assets/images/fast_logo.jpg',
+          'assets/images/fast_logo.png',
           width: logoSize,
           height: logoSize,
           fit: BoxFit.cover,
