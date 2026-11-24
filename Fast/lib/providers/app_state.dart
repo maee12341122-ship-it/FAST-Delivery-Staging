@@ -120,6 +120,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<List<Map<String, dynamic>>>? _settingsSub;
   StreamSubscription<List<Map<String, dynamic>>>? _storeSettingsSub;
+  StreamSubscription<dynamic>? _connectivitySub;
   RealtimeChannel? _ordersChannel;
 
   // تخزين مؤقت لرموز OTP في الذاكرة عند العمل بدون Node.js Backend
@@ -139,6 +140,7 @@ class AppState extends ChangeNotifier {
     unawaited(_authSub?.cancel());
     unawaited(_settingsSub?.cancel());
     unawaited(_storeSettingsSub?.cancel());
+    unawaited(_connectivitySub?.cancel());
     if (_ordersChannel != null) {
       unawaited(supabase.removeChannel(_ordersChannel!));
     }
@@ -512,10 +514,13 @@ class AppState extends ChangeNotifier {
             (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
                 ? 'مشاريع منزلية'
                 : rawCat;
+        final logoVal =
+            (row['logo_url'] ?? row['image_url'] ?? '').toString().trim();
         return {
           ...row,
           'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
           'category': normalizedCat,
+          'logo_url': logoVal,
           'is_active': row['is_active'] ?? true,
         };
       }).toList();
@@ -542,10 +547,13 @@ class AppState extends ChangeNotifier {
               (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
                   ? 'مشاريع منزلية'
                   : rawCat;
+          final logoVal =
+              (row['logo_url'] ?? row['image_url'] ?? '').toString().trim();
           return {
             ...row,
             'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
             'category': normalizedCat,
+            'logo_url': logoVal,
             'is_active': row['is_active'] ?? true,
           };
         }).toList();
@@ -562,16 +570,27 @@ class AppState extends ChangeNotifier {
       for (final hp in homeProjectsList) {
         final hpName = (hp['name'] ?? '').toString().trim();
         if (hpName.isEmpty) continue;
-        final alreadyExists = restaurantsList.any(
+        final existingIndex = restaurantsList.indexWhere(
           (r) =>
               (r['name'] ?? '').toString().trim().toLowerCase() ==
               hpName.toLowerCase(),
         );
-        if (!alreadyExists) {
+        if (existingIndex == -1) {
           restaurantsList.add({
             ...hp,
             'category': (hp['category'] ?? 'مشاريع منزلية').toString().trim(),
           });
+        } else {
+          final currentLogo =
+              (restaurantsList[existingIndex]['logo_url'] ?? '')
+                  .toString()
+                  .trim();
+          final hpLogo = (hp['logo_url'] ?? hp['image_url'] ?? '')
+              .toString()
+              .trim();
+          if (currentLogo.isEmpty && hpLogo.isNotEmpty) {
+            restaurantsList[existingIndex]['logo_url'] = hpLogo;
+          }
         }
       }
 
@@ -585,9 +604,10 @@ class AppState extends ChangeNotifier {
     if (query == null || query.isEmpty || query == 'الكل') {
       return List<ProductModel>.from(products);
     }
+    final normalizedQuery = query.trim().toLowerCase();
     return products.where((p) {
-      return p.category.trim().toLowerCase() == query.trim().toLowerCase() ||
-          p.restaurantName.trim().toLowerCase() == query.trim().toLowerCase();
+      return p.category.trim().toLowerCase() == normalizedQuery ||
+          p.restaurantName.trim().toLowerCase() == normalizedQuery;
     }).toList();
   }
 
@@ -650,11 +670,12 @@ class AppState extends ChangeNotifier {
   final Connectivity _connectivity = Connectivity();
 
   void initializeInternetListener() {
+    unawaited(_connectivitySub?.cancel());
     _connectivity.checkConnectivity().then((result) {
       _updateConnectionStatus(result);
     });
 
-    _connectivity.onConnectivityChanged.listen((results) {
+    _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
       _updateConnectionStatus(results);
     });
   }
@@ -671,7 +692,7 @@ class AppState extends ChangeNotifier {
     if (previousState && !isConnectedToInternet) {
       addLocalNotification(
         'تم انقطاع الإنترنت',
-        '',
+        'تحقق من اتصالك بالشبكة لإتمام الطلبات وتحديث البيانات.',
         type: 'network_alert',
       );
     } else if (!previousState && isConnectedToInternet) {
@@ -929,8 +950,9 @@ class AppState extends ChangeNotifier {
 
   String? get latestNotificationMessage {
     if (notifications.isNotEmpty) {
-      return notifications.first['body']?.toString() ??
-          notifications.first['title']?.toString();
+      final body = notifications.first['body']?.toString().trim() ?? '';
+      if (body.isNotEmpty) return body;
+      return notifications.first['title']?.toString().trim();
     }
     return null;
   }
@@ -959,7 +981,7 @@ class AppState extends ChangeNotifier {
   List<AddressModel> get userAddresses => List.unmodifiable(_userAddresses);
 
   void addOrUpdateAddress(String formattedAddress) {
-    if (userProfile != null) {
+    if (userProfile != null && _userProfileData != null) {
       _userProfileData!['address'] = formattedAddress;
       unawaited(_persistUserSessionToPrefs(_userProfileData!));
       notifyListeners();
