@@ -505,6 +505,51 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> homeProjectsList = [];
   String? selectedCategory;
 
+  String _extractLogoUrl(Map<String, dynamic> row) {
+    const candidateKeys = [
+      'logo_url',
+      'image_url',
+      'logo',
+      'image',
+      'icon_url',
+      'avatar_url',
+      'photo_url',
+    ];
+    for (final key in candidateKeys) {
+      final val = row[key]?.toString().trim() ?? '';
+      if (val.isNotEmpty) {
+        return val;
+      }
+    }
+    return '';
+  }
+
+  String _resolveFallbackLogoForName(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return '';
+    for (final r in restaurantsList) {
+      final rName = (r['name'] ?? r['title'] ?? '').toString().trim();
+      if (rName.toLowerCase() == clean.toLowerCase()) {
+        final logo = _extractLogoUrl(r);
+        if (logo.isNotEmpty) return logo;
+      }
+    }
+    for (final hp in homeProjectsList) {
+      final hpName = (hp['name'] ?? hp['title'] ?? '').toString().trim();
+      if (hpName.toLowerCase() == clean.toLowerCase()) {
+        final logo = _extractLogoUrl(hp);
+        if (logo.isNotEmpty) return logo;
+      }
+    }
+    for (final p in products) {
+      if (p.restaurantName.trim().toLowerCase() == clean.toLowerCase() &&
+          p.imageUrl.trim().isNotEmpty) {
+        return p.imageUrl.trim();
+      }
+    }
+    return '';
+  }
+
   Future<void> fetchRestaurantsAndCategories() async {
     try {
       final restRes = await supabase.from('restaurants').select();
@@ -514,13 +559,14 @@ class AppState extends ChangeNotifier {
             (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
                 ? 'مشاريع منزلية'
                 : rawCat;
-        final logoVal =
-            (row['logo_url'] ?? row['image_url'] ?? '').toString().trim();
+        final nameVal = (row['name'] ?? row['title'] ?? '').toString().trim();
+        final logoVal = _extractLogoUrl(row);
         return {
           ...row,
-          'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
+          'name': nameVal,
           'category': normalizedCat,
           'logo_url': logoVal,
+          'image_url': logoVal,
           'is_active': row['is_active'] ?? true,
         };
       }).toList();
@@ -547,13 +593,14 @@ class AppState extends ChangeNotifier {
               (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
                   ? 'مشاريع منزلية'
                   : rawCat;
-          final logoVal =
-              (row['logo_url'] ?? row['image_url'] ?? '').toString().trim();
+          final nameVal = (row['name'] ?? row['title'] ?? '').toString().trim();
+          final logoVal = _extractLogoUrl(row);
           return {
             ...row,
-            'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
+            'name': nameVal,
             'category': normalizedCat,
             'logo_url': logoVal,
+            'image_url': logoVal,
             'is_active': row['is_active'] ?? true,
           };
         }).toList();
@@ -581,15 +628,34 @@ class AppState extends ChangeNotifier {
             'category': (hp['category'] ?? 'مشاريع منزلية').toString().trim(),
           });
         } else {
-          final currentLogo =
-              (restaurantsList[existingIndex]['logo_url'] ?? '')
-                  .toString()
-                  .trim();
-          final hpLogo = (hp['logo_url'] ?? hp['image_url'] ?? '')
-              .toString()
-              .trim();
+          final currentLogo = _extractLogoUrl(restaurantsList[existingIndex]);
+          final hpLogo = _extractLogoUrl(hp);
           if (currentLogo.isEmpty && hpLogo.isNotEmpty) {
             restaurantsList[existingIndex]['logo_url'] = hpLogo;
+            restaurantsList[existingIndex]['image_url'] = hpLogo;
+          }
+        }
+      }
+
+      // استكمال أي لوجو مفقود من السجلات المتطابقة أو منتجات المتجر/المشروع
+      for (final r in restaurantsList) {
+        if (_extractLogoUrl(r).isEmpty) {
+          final name = (r['name'] ?? '').toString().trim();
+          final fallbackLogo = _resolveFallbackLogoForName(name);
+          if (fallbackLogo.isNotEmpty) {
+            r['logo_url'] = fallbackLogo;
+            r['image_url'] = fallbackLogo;
+          }
+        }
+      }
+
+      for (final hp in homeProjectsList) {
+        if (_extractLogoUrl(hp).isEmpty) {
+          final name = (hp['name'] ?? '').toString().trim();
+          final fallbackLogo = _resolveFallbackLogoForName(name);
+          if (fallbackLogo.isNotEmpty) {
+            hp['logo_url'] = fallbackLogo;
+            hp['image_url'] = fallbackLogo;
           }
         }
       }
