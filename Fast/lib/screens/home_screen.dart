@@ -2255,8 +2255,8 @@ class _HomeScreenState extends State<HomeScreen>
               title: Row(
                 children: [
                   const SizedBox(
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     child: FittedBox(
                       child: FastAppLogo(),
                     ),
@@ -4017,36 +4017,38 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
         const SizedBox(height: 20),
-        _buildProfileItem(
-            Icons.edit, 'تعديل البيانات الشخصية', cardBg, textColor, accent,
-            () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) =>
-                  const EditProfileScreen(),
-              transitionsBuilder:
-                  (context, animation, secondaryAnimation, child) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-            ),
-          );
-        }),
-        _buildProfileItem(
-            Icons.location_on, 'إدارة عناويني المحفوظة', cardBg, textColor, accent,
-            () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) =>
-                  const AddressesScreen(),
-              transitionsBuilder:
-                  (context, animation, secondaryAnimation, child) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-            ),
-          );
-        }),
+        if (profile != null) ...[
+          _buildProfileItem(
+              Icons.edit, 'تعديل البيانات الشخصية', cardBg, textColor, accent,
+              () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    const EditProfileScreen(),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ),
+            );
+          }),
+          _buildProfileItem(
+              Icons.location_on, 'إدارة عناويني المحفوظة', cardBg, textColor, accent,
+              () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    const AddressesScreen(),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ),
+            );
+          }),
+        ],
         _buildProfileItem(
             Icons.favorite, 'المنتجات المفضلة', cardBg, textColor, accent, () {
           Navigator.push(
