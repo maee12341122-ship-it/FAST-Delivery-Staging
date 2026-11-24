@@ -2110,6 +2110,90 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  String _courierTurnKey(Map<String, dynamic> courier) {
+    final name = (courier['name'] ?? '').toString().trim().toLowerCase();
+    if (name.isNotEmpty) return 'name:$name';
+    return 'id:${(courier['id'] ?? '').toString().trim().toLowerCase()}';
+  }
+
+  DateTime? _parseOrderTimeForCourier(Map<String, dynamic> order) {
+    for (final key in ['updated_at', 'created_at']) {
+      final raw = order[key]?.toString().trim() ?? '';
+      if (raw.isNotEmpty) {
+        final parsed = DateTime.tryParse(raw);
+        if (parsed != null) return parsed.toUtc();
+      }
+    }
+    return null;
+  }
+
+  Map<String, DateTime> get courierLastAssignedAt {
+    final Map<String, DateTime> lastAssigned = {};
+    for (final order in orders) {
+      final status = (order['status'] ?? '').toString().trim();
+      if (status == 'cancelled' || status == 'cancelledByCustomer') {
+        continue;
+      }
+
+      final assignedName =
+          (order['assigned_courier'] ?? order['driver_name'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+      final assignedId =
+          (order['courier_id'] ?? '').toString().trim().toLowerCase();
+
+      final orderTime = _parseOrderTimeForCourier(order);
+      if (orderTime == null) continue;
+
+      for (final c in couriers) {
+        final cName = (c['name'] ?? '').toString().trim().toLowerCase();
+        final cId = (c['id'] ?? '').toString().trim().toLowerCase();
+        final matches = (assignedName.isNotEmpty && cName == assignedName) ||
+            (assignedId.isNotEmpty && cId == assignedId);
+        if (matches) {
+          final key = _courierTurnKey(c);
+          final prev = lastAssigned[key];
+          if (prev == null || orderTime.isAfter(prev)) {
+            lastAssigned[key] = orderTime;
+          }
+        }
+      }
+    }
+    return lastAssigned;
+  }
+
+  List<Map<String, dynamic>> get couriersInTurnOrder {
+    final lastAssigned = courierLastAssignedAt;
+    final list = List<Map<String, dynamic>>.from(couriers);
+
+    list.sort((a, b) {
+      final keyA = _courierTurnKey(a);
+      final keyB = _courierTurnKey(b);
+      final timeA = lastAssigned[keyA];
+      final timeB = lastAssigned[keyB];
+
+      if (timeA == null && timeB == null) {
+        final idA = int.tryParse((a['id'] ?? '').toString());
+        final idB = int.tryParse((b['id'] ?? '').toString());
+        if (idA != null && idB != null && idA != idB) {
+          return idA.compareTo(idB);
+        }
+        return (a['name'] ?? '')
+            .toString()
+            .compareTo((b['name'] ?? '').toString());
+      }
+      if (timeA == null) return -1;
+      if (timeB == null) return 1;
+      if (timeA != timeB) return timeA.compareTo(timeB);
+      return (a['name'] ?? '')
+          .toString()
+          .compareTo((b['name'] ?? '').toString());
+    });
+
+    return list;
+  }
+
   Future<void> fetchCouriersFromSupabase() async {
     try {
       final response = await supabase.from('couriers').select();
