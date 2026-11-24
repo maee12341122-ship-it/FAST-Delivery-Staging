@@ -94,14 +94,20 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     'هدايا واكسسوارات',
   ];
 
+  bool _isStoreActive(dynamic rawActive) {
+    if (rawActive == null) return true;
+    if (rawActive is bool) return rawActive;
+    final val = rawActive.toString().trim().toLowerCase();
+    return val != 'false' && val != '0' && val != 'inactive';
+  }
+
   List<String> _getStoresForCategory(AppState appState, String category) {
     final targetCat = category.trim().toLowerCase();
 
     final fromDb = appState.restaurantsList
         .where((r) {
           final rCat = (r['category'] ?? '').toString().trim().toLowerCase();
-          final isActive = r['is_active'] ?? true;
-          return isActive && rCat == targetCat;
+          return _isStoreActive(r['is_active']) && rCat == targetCat;
         })
         .map((r) => (r['name'] ?? '').toString().trim())
         .where((name) => name.isNotEmpty)
@@ -192,63 +198,57 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     if (cleanName.isEmpty || cleanLogo.isEmpty) return;
 
     if (category.trim() == 'مشاريع منزلية') {
-      final existingProject = await Supabase.instance.client
-          .from('home_projects')
-          .select('id')
-          .ilike('name', cleanName)
-          .maybeSingle();
-
-      if (existingProject != null && existingProject['id'] != null) {
-        await Supabase.instance.client.from('home_projects').update({
-          'logo_url': cleanLogo,
-          'image_url': cleanLogo,
-          'is_active': true,
-        }).eq('id', existingProject['id']);
-      } else {
-        await Supabase.instance.client.from('home_projects').insert({
-          'name': cleanName,
-          'category': 'مشاريع منزلية',
-          'logo_url': cleanLogo,
-          'image_url': cleanLogo,
-          'is_active': true,
-        });
-      }
-
       try {
-        await (appState as dynamic).fetchHomeProjects();
-      } catch (_) {}
-    }
+        final existingProject = await Supabase.instance.client
+            .from('home_projects')
+            .select('id')
+            .ilike('name', cleanName)
+            .maybeSingle();
 
-    try {
-      final existingStore = await Supabase.instance.client
-          .from('restaurants')
-          .select('id')
-          .ilike('name', cleanName)
-          .maybeSingle();
-
-      if (existingStore != null && existingStore['id'] != null) {
-        await Supabase.instance.client.from('restaurants').update({
-          'logo_url': cleanLogo,
-          'image_url': cleanLogo,
-          'category': category.trim(),
-          'is_active': true,
-        }).eq('id', existingStore['id']);
-      } else {
-        await Supabase.instance.client.from('restaurants').insert({
-          'name': cleanName,
-          'category': category.trim(),
-          'logo_url': cleanLogo,
-          'image_url': cleanLogo,
-          'is_active': true,
-        });
+        if (existingProject != null && existingProject['id'] != null) {
+          await Supabase.instance.client.from('home_projects').update({
+            'logo_url': cleanLogo,
+            'image_url': cleanLogo,
+            'is_active': true,
+          }).eq('id', existingProject['id']);
+        } else {
+          await Supabase.instance.client.from('home_projects').insert({
+            'name': cleanName,
+            'category': 'مشاريع منزلية',
+            'logo_url': cleanLogo,
+            'image_url': cleanLogo,
+            'is_active': true,
+          });
+        }
+      } catch (e) {
+        debugPrint('ℹ️ تنبيه عند حفظ اللوجو في جدول المشاريع المنزلية: $e');
       }
-    } catch (e) {
-      debugPrint('ℹ️ تنبيه عند حفظ اللوجو في جدول المتاجر: $e');
     }
 
-    try {
-      await (appState as dynamic).fetchRestaurants();
-    } catch (_) {}
+    final existingStore = await Supabase.instance.client
+        .from('restaurants')
+        .select('id')
+        .ilike('name', cleanName)
+        .maybeSingle();
+
+    if (existingStore != null && existingStore['id'] != null) {
+      await Supabase.instance.client.from('restaurants').update({
+        'logo_url': cleanLogo,
+        'image_url': cleanLogo,
+        'category': category.trim(),
+        'is_active': true,
+      }).eq('id', existingStore['id']);
+    } else {
+      await Supabase.instance.client.from('restaurants').insert({
+        'name': cleanName,
+        'category': category.trim(),
+        'logo_url': cleanLogo,
+        'image_url': cleanLogo,
+        'is_active': true,
+      });
+    }
+
+    await appState.fetchRestaurantsAndCategories();
   }
 
   Future<void> _showProductDialog(
