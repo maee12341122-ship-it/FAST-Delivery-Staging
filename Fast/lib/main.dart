@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,35 +7,30 @@ import 'services/notification_service.dart';
 import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/order_tracking_screen.dart'; // 👈 المسار الصحيح المباشر داخل مجلد screens[span_1](start_span)[span_1](end_span)
+import 'screens/order_tracking_screen.dart';
 
-// 🔑 مفتاح التنقل العام (NavigatorKey) لتوجيه المستخدم من الإشعارات الخارجية من أي مكان
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 0. التحقق مما إذا كانت هذه هي المرة الأولى لتثبيت التطبيق
   final prefs = await SharedPreferences.getInstance();
   final bool hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
 
-  // 1. تهيئة OneSignal للإشعارات الخارجية وتفعيل مستمع النقر لتوجيه المستخدم للطلب المحدد
   try {
     OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
-    
-    // طلب إذن الإشعارات من المستخدم
     await OneSignal.Notifications.requestPermission(true);
-    
-    // 🛎️ مستمع النقر على الإشعار الخارجي (عندما يكون التطبيق في الخلفية أو مغلقاً)
+
     OneSignal.Notifications.addClickListener((event) {
       final data = event.notification.additionalData;
-      // استخراج رقم الطلب من البيانات الإضافية أو النص
-      final String? orderId = data?['order_id']?.toString() ?? 
-                              data?['related_id']?.toString() ?? 
-                              _extractOrderIdFromNotification(event.notification.title ?? '', event.notification.body ?? '');
-      
+      final String? orderId = data?['order_id']?.toString() ??
+          data?['related_id']?.toString() ??
+          _extractOrderIdFromNotification(
+            event.notification.title ?? '',
+            event.notification.body ?? '',
+          );
+
       if (orderId != null && orderId.isNotEmpty) {
-        // الانتقال الفوري لشاشة تتبع الطلب باستخدام المفتاح العام
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
@@ -50,7 +44,6 @@ void main() async {
     debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
   }
 
-  // 2. تهيئة Supabase
   try {
     await Supabase.initialize(
       url: 'https://pzokmpthkpuofrntufyp.supabase.co',
@@ -60,14 +53,12 @@ void main() async {
     debugPrint('⚠️ خطأ في اتصال Supabase: $e');
   }
 
-  // 3. تهيئة خدمة الإشعارات المحلية
   try {
     await NotificationService.initialize();
   } catch (e) {
     debugPrint('⚠️ خطأ في تهيئة الإشعارات المحلية: $e');
   }
 
-  // 4. إنشاء AppState وتهيئة الجلسة المحفوظة تلقائياً
   final appState = AppState();
   runApp(
     MultiProvider(
@@ -79,7 +70,6 @@ void main() async {
   );
 }
 
-// 🔍 دالة مساعدة لاستخراج رقم الطلب من عنوان أو نص الإشعار الخارجي
 String? _extractOrderIdFromNotification(String title, String body) {
   final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
   final match = regExp.firstMatch('$title $body');
@@ -91,7 +81,7 @@ String? _extractOrderIdFromNotification(String title, String body) {
 
 class FastApp extends StatelessWidget {
   final bool hasSeenOnboarding;
-  const FastApp({Key? key, required this.hasSeenOnboarding}) : super(key: key);
+  const FastApp({super.key, required this.hasSeenOnboarding});
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +90,7 @@ class FastApp extends StatelessWidget {
     return MaterialApp(
       title: 'Fast',
       debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey, // 👈 ربط مفتاح التنقل العام هنا ليعمل بانتظام
+      navigatorKey: navigatorKey,
       themeMode: appState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
         brightness: Brightness.light,
@@ -126,7 +116,6 @@ class FastApp extends StatelessWidget {
           foregroundColor: Colors.amber,
         ),
       ),
-      // 👈 إذا شاهدها من قبل يذهب للـ SplashScreen، وإذا كانت أول مرة يذهب للـ OnboardingScreen
       home: hasSeenOnboarding ? const SplashScreen() : const OnboardingScreen(),
     );
   }
