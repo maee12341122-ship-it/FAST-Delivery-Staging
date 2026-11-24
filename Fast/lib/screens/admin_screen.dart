@@ -36,6 +36,8 @@ class _AdminScreenState extends State<AdminScreen>
       'name': 'عنباتي',
       'category': 'مشاريع منزلية',
       'description': 'مشروع عنباتي للمنتجات والحلويات المنزلية',
+      'logo_url': '',
+      'image_url': '',
       'is_active': true,
     },
     {
@@ -43,6 +45,8 @@ class _AdminScreenState extends State<AdminScreen>
       'name': 'TWISTA',
       'category': 'مشاريع منزلية',
       'description': 'مشروع TWISTA للمأكولات والوجبات المنزلية المميزة',
+      'logo_url': '',
+      'image_url': '',
       'is_active': true,
     },
   ];
@@ -204,6 +208,62 @@ class _AdminScreenState extends State<AdminScreen>
     }
   }
 
+  String _extractProjectLogoUrl(Map<String, dynamic> project) {
+    final candidates = [
+      project['logo_url'],
+      project['image_url'],
+      project['photo_url'],
+      project['image'],
+    ];
+    for (final val in candidates) {
+      final str = val?.toString().trim() ?? '';
+      if (str.isNotEmpty) return str;
+    }
+    return '';
+  }
+
+  Widget _buildProjectAvatar(String logoUrl) {
+    final cleanUrl = logoUrl.trim();
+    if (cleanUrl.isNotEmpty) {
+      if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+        return CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.amber.withOpacity(0.15),
+          child: ClipOval(
+            child: Image.network(
+              cleanUrl,
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.storefront,
+                  color: Colors.amber, size: 22),
+            ),
+          ),
+        );
+      }
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: Colors.amber.withOpacity(0.15),
+        child: ClipOval(
+          child: Image.asset(
+            cleanUrl,
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.storefront,
+                color: Colors.amber, size: 22),
+          ),
+        ),
+      );
+    }
+
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: Colors.amber.withOpacity(0.2),
+      child: const Icon(Icons.storefront, color: Colors.amber, size: 22),
+    );
+  }
+
   // ==================== إدارة المشاريع المنزلية (عنباتي و TWISTA) ====================
 
   Future<List<Map<String, dynamic>>> _fetchHomeProjectsList(
@@ -245,6 +305,8 @@ class _AdminScreenState extends State<AdminScreen>
         TextEditingController(text: project?['description']?.toString() ?? '');
     final phoneController =
         TextEditingController(text: project?['phone']?.toString() ?? '');
+    final logoController = TextEditingController(
+        text: project != null ? _extractProjectLogoUrl(project) : '');
     bool isActive = project?['is_active'] ?? true;
 
     showDialog(
@@ -252,174 +314,210 @@ class _AdminScreenState extends State<AdminScreen>
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            backgroundColor: const Color(0xFF1E1E1E),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Text(
-              project == null
-                  ? 'إضافة مشروع منزلي جديد 🏠'
-                  : 'تعديل المشروع المنزلي ✏️',
-              style: const TextStyle(
-                  color: Colors.amber,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // أزرار تعبئة سريعة للأسماء المعتمدة
-                  if (project == null) ...[
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Wrap(
-                        spacing: 8,
+          builder: (context, setDialogState) {
+            final currentLogo = logoController.text.trim();
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                project == null
+                    ? 'إضافة مشروع منزلي جديد 🏠'
+                    : 'تعديل المشروع المنزلي ✏️',
+                style: const TextStyle(
+                    color: Colors.amber,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // أزرار تعبئة سريعة للأسماء المعتمدة
+                    if (project == null) ...[
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: 8,
+                          children: [
+                            ActionChip(
+                              backgroundColor: Colors.amber.withOpacity(0.15),
+                              label: const Text('عنباتي',
+                                  style: TextStyle(
+                                      color: Colors.amber, fontSize: 12)),
+                              onPressed: () {
+                                nameController.text = 'عنباتي';
+                                if (descController.text.isEmpty) {
+                                  descController.text =
+                                      'مشروع عنباتي للمنتجات والحلويات المنزلية';
+                                }
+                              },
+                            ),
+                            ActionChip(
+                              backgroundColor: Colors.amber.withOpacity(0.15),
+                              label: const Text('TWISTA',
+                                  style: TextStyle(
+                                      color: Colors.amber, fontSize: 12)),
+                              onPressed: () {
+                                nameController.text = 'TWISTA';
+                                if (descController.text.isEmpty) {
+                                  descController.text =
+                                      'مشروع TWISTA للمأكولات والوجبات المنزلية';
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    TextField(
+                      controller: nameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المشروع (مثال: عنباتي / TWISTA)',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: logoController,
+                      onChanged: (_) => setDialogState(() {}),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'رابط لوجو / صورة المشروع (URL أو assets/...)',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (currentLogo.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          ActionChip(
-                            backgroundColor: Colors.amber.withOpacity(0.15),
-                            label: const Text('عنباتي',
-                                style: TextStyle(
-                                    color: Colors.amber, fontSize: 12)),
-                            onPressed: () {
-                              nameController.text = 'عنباتي';
-                              if (descController.text.isEmpty) {
-                                descController.text =
-                                    'مشروع عنباتي للمنتجات والحلويات المنزلية';
-                              }
-                            },
-                          ),
-                          ActionChip(
-                            backgroundColor: Colors.amber.withOpacity(0.15),
-                            label: const Text('TWISTA',
-                                style: TextStyle(
-                                    color: Colors.amber, fontSize: 12)),
-                            onPressed: () {
-                              nameController.text = 'TWISTA';
-                              if (descController.text.isEmpty) {
-                                descController.text =
-                                    'مشروع TWISTA للمأكولات والوجبات المنزلية';
-                              }
-                            },
+                          _buildProjectAvatar(currentLogo),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'معاينة اللوجو قبل الحفظ',
+                              style: TextStyle(
+                                  color: Colors.amberAccent, fontSize: 12),
+                            ),
                           ),
                         ],
                       ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descController,
+                      maxLines: 2,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'وصف المشروع والمنتجات',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'رقم هاتف صاحب المشروع (اختياري)',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: Colors.amber,
+                      title: const Text('المشروع نشط ومتاح للطلب',
+                          style: TextStyle(color: Colors.white, fontSize: 13)),
+                      value: isActive,
+                      onChanged: (val) => setDialogState(() => isActive = val),
+                    ),
                   ],
-                  TextField(
-                    controller: nameController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'اسم المشروع (مثال: عنباتي / TWISTA)',
-                      labelStyle: TextStyle(color: Colors.grey),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descController,
-                    maxLines: 2,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'وصف المشروع والمنتجات',
-                      labelStyle: TextStyle(color: Colors.grey),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneController,
-                    keyboardType: TextInputType.phone,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'رقم هاتف صاحب المشروع (اختياري)',
-                      labelStyle: TextStyle(color: Colors.grey),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    activeColor: Colors.amber,
-                    title: const Text('المشروع نشط ومتاح للطلب',
-                        style: TextStyle(color: Colors.white, fontSize: 13)),
-                    value: isActive,
-                    onChanged: (val) => setDialogState(() => isActive = val),
-                  ),
-                ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                onPressed: () async {
-                  final projName = nameController.text.trim();
-                  if (projName.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('الرجاء إدخال اسم المشروع المنزلي ⚠️')),
-                    );
-                    return;
-                  }
-
-                  final payload = {
-                    'name': projName,
-                    'description': descController.text.trim(),
-                    'phone': phoneController.text.trim(),
-                    'category': 'مشاريع منزلية',
-                    'is_active': isActive,
-                  };
-
-                  try {
-                    final rawId = project?['id'];
-                    if (rawId == null ||
-                        rawId.toString().startsWith('proj_')) {
-                      await Supabase.instance.client
-                          .from('home_projects')
-                          .insert(payload);
-                    } else {
-                      await Supabase.instance.client
-                          .from('home_projects')
-                          .update(payload)
-                          .eq('id', rawId);
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child:
+                      const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style:
+                      ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                  onPressed: () async {
+                    final projName = nameController.text.trim();
+                    if (projName.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content:
+                                Text('الرجاء إدخال اسم المشروع المنزلي ⚠️')),
+                      );
+                      return;
                     }
 
-                    // مزامنة الحالة مع AppState إذا كانت الدالة متوفرة
-                    try {
-                      await (appState as dynamic).fetchHomeProjects();
-                    } catch (_) {}
+                    final logoVal = logoController.text.trim();
+                    final payload = {
+                      'name': projName,
+                      'description': descController.text.trim(),
+                      'phone': phoneController.text.trim(),
+                      'logo_url': logoVal,
+                      'image_url': logoVal,
+                      'category': 'مشاريع منزلية',
+                      'is_active': isActive,
+                    };
 
-                    if (!context.mounted) return;
-                    Navigator.pop(ctx);
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content:
-                            Text('تم حفظ المشروع المنزلي "$projName" بنجاح ✅'),
-                        backgroundColor: Colors.green[700],
-                      ),
-                    );
-                  } catch (e) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('حدث خطأ أثناء الحفظ: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('حفظ المشروع',
-                    style: TextStyle(
-                        color: Colors.black, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
+                    try {
+                      final rawId = project?['id'];
+                      if (rawId == null ||
+                          rawId.toString().startsWith('proj_')) {
+                        await Supabase.instance.client
+                            .from('home_projects')
+                            .insert(payload);
+                      } else {
+                        await Supabase.instance.client
+                            .from('home_projects')
+                            .update(payload)
+                            .eq('id', rawId);
+                      }
+
+                      // مزامنة الحالة مع AppState إذا كانت الدالة متوفرة
+                      try {
+                        await (appState as dynamic).fetchHomeProjects();
+                      } catch (_) {}
+
+                      if (!context.mounted) return;
+                      Navigator.pop(ctx);
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              'تم حفظ المشروع المنزلي "$projName" بنجاح ✅'),
+                          backgroundColor: Colors.green[700],
+                        ),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('حدث خطأ أثناء الحفظ: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('حفظ المشروع',
+                      style: TextStyle(
+                          color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -488,6 +586,7 @@ class _AdminScreenState extends State<AdminScreen>
                   final name = proj['name']?.toString() ?? 'مشروع منزلي';
                   final desc = proj['description']?.toString() ?? '';
                   final phone = proj['phone']?.toString() ?? '';
+                  final logoUrl = _extractProjectLogoUrl(proj);
                   final isActive = proj['is_active'] != false;
 
                   return Card(
@@ -504,11 +603,7 @@ class _AdminScreenState extends State<AdminScreen>
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.amber.withOpacity(0.2),
-                        child: const Icon(Icons.storefront,
-                            color: Colors.amber, size: 22),
-                      ),
+                      leading: _buildProjectAvatar(logoUrl),
                       title: Row(
                         children: [
                           Text(
@@ -2135,8 +2230,8 @@ class _AdminScreenState extends State<AdminScreen>
                       decoration: BoxDecoration(
                         color: Colors.amber.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: Colors.amber.withOpacity(0.5)),
+                        border:
+                            Border.all(color: Colors.amber.withOpacity(0.5)),
                       ),
                       child: Text(
                         '🏠 مشروع منزلي: ${projectName.isNotEmpty ? projectName : 'مشاريع منزلية'}',
