@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../widgets/fast_app_logo.dart';
-import 'home_screen.dart'; // 👈 تم التعديل ليتم التوجيه مباشرة إلى HomeScreen حيث يوجد شريط التنقل السفلي الخاص بك
+import 'home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
@@ -23,7 +24,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    _fadeAnimation =
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     _controller.forward();
 
     Future.delayed(const Duration(milliseconds: 1800), () {
@@ -31,8 +33,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(), // 👈 التوجيه المباشر إلى HomeScreen
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const HomeScreen(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },
             transitionDuration: const Duration(milliseconds: 500),
@@ -64,15 +68,28 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.08),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.amber.withOpacity(0.2), width: 1.5),
+                    border: Border.all(
+                      color: Colors.amber.withOpacity(0.55),
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.amber.withOpacity(0.22),
+                        blurRadius: 24,
+                        spreadRadius: 4,
+                      ),
+                    ],
                   ),
-                  child: const FastAppLogo(iconSize: 75, textSize: 32, padding: EdgeInsets.all(0)),
+                  child: const FastAppLogo(
+                    iconSize: 85,
+                    textSize: 32,
+                    padding: EdgeInsets.zero,
+                  ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 28),
                 const Text(
                   'أسرع خدمة توصيل في تعز ⚡',
                   style: TextStyle(
