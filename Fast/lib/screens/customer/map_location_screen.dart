@@ -115,6 +115,9 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   String _detectedAreaLabel = 'تعز - منطقة معتمدة 📍';
   Timer? _geocodeDebounce;
 
+  bool _userEditedAddressManually = false;
+  bool _isProgrammaticAddressUpdate = false;
+
   final TextEditingController _customAddressController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _addressFocus = FocusNode();
@@ -122,12 +125,40 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   @override
   void initState() {
     super.initState();
+    _customAddressController.addListener(_onAddressTextChanged);
     _selectedPoint = widget.initialPoint ?? _taizCenter;
     _detectedAreaLabel = getTaizAreaName(_selectedPoint!);
-    unawaited(_reverseGeocodePoint(_selectedPoint!, autoFillIfEmpty: false));
+    _autoFillAddressFromLabel(_detectedAreaLabel);
+    unawaited(_reverseGeocodePoint(_selectedPoint!, forceAutoFill: true));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkInitialLocationStatus();
     });
+  }
+
+  void _onAddressTextChanged() {
+    if (_isProgrammaticAddressUpdate) return;
+    if (_customAddressController.text.trim().isEmpty) {
+      _userEditedAddressManually = false;
+    } else {
+      _userEditedAddressManually = true;
+    }
+  }
+
+  String _cleanAreaText(String rawLabel) {
+    return rawLabel.replaceAll('📍', '').trim();
+  }
+
+  void _autoFillAddressFromLabel(String label, {bool force = false}) {
+    if (!force && _userEditedAddressManually) return;
+    final cleanText = _cleanAreaText(label);
+    if (cleanText.isEmpty) return;
+
+    _isProgrammaticAddressUpdate = true;
+    _customAddressController.value = TextEditingValue(
+      text: cleanText,
+      selection: TextSelection.collapsed(offset: cleanText.length),
+    );
+    _isProgrammaticAddressUpdate = false;
   }
 
   void _switchToNextTileSource() {
@@ -248,7 +279,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
 
   Future<void> _reverseGeocodePoint(
     LatLng point, {
-    bool autoFillIfEmpty = true,
+    bool forceAutoFill = false,
   }) async {
     try {
       final uri = Uri.parse(
@@ -303,11 +334,8 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
           if (placeTitle.isNotEmpty) {
             setState(() {
               _detectedAreaLabel = '$placeTitle 📍';
-              if (autoFillIfEmpty &&
-                  _customAddressController.text.trim().isEmpty) {
-                _customAddressController.text = placeTitle;
-              }
             });
+            _autoFillAddressFromLabel(placeTitle, force: forceAutoFill);
           }
         }
       }
@@ -318,6 +346,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
         setState(() {
           _detectedAreaLabel = localLabel;
         });
+        _autoFillAddressFromLabel(localLabel, force: forceAutoFill);
       }
     }
   }
@@ -359,13 +388,13 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                 .split(',')
                 .first
                 .trim();
+            _userEditedAddressManually = false;
             setState(() {
               _selectedPoint = target;
               _detectedAreaLabel = '$display 📍';
-              if (_customAddressController.text.trim().isEmpty) {
-                _customAddressController.text = display;
-              }
+              _searchingPlace = false;
             });
+            _autoFillAddressFromLabel(display, force: true);
             _mapController.move(target, 16.5);
             return;
           }
@@ -380,15 +409,14 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     // ثانياً: البحث المحلي الفوري في مناطق تعز
     final localMatch = _findLocalTaizMatch(query);
     if (localMatch != null) {
+      _userEditedAddressManually = false;
       setState(() {
         _selectedPoint = localMatch.point;
         _detectedAreaLabel = '${localMatch.name} 📍';
-        if (_customAddressController.text.trim().isEmpty) {
-          _customAddressController.text = localMatch.name;
-        }
+        _searchingPlace = false;
       });
+      _autoFillAddressFromLabel(localMatch.name, force: true);
       _mapController.move(localMatch.point, 16.5);
-      setState(() => _searchingPlace = false);
       return;
     }
 
@@ -493,8 +521,10 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     final areaName = _detectedAreaLabel.isNotEmpty
         ? _detectedAreaLabel
         : getTaizAreaName(_selectedPoint!);
-    final finalFullAddress =
-        addressText.contains(areaName) ? addressText : '$addressText - $areaName';
+    final cleanArea = _cleanAreaText(areaName);
+    final finalFullAddress = addressText.contains(cleanArea)
+        ? addressText
+        : '$addressText - $areaName';
 
     Navigator.pop(context, {
       'address': finalFullAddress,
@@ -580,25 +610,31 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
       final point = LatLng(position.latitude, position.longitude);
       if (!mounted) return;
 
+      final localArea = getTaizAreaName(point);
+      _userEditedAddressManually = false;
       setState(() {
         _selectedPoint = point;
-        _detectedAreaLabel = getTaizAreaName(point);
+        _detectedAreaLabel = localArea;
         _error = null;
       });
+      _autoFillAddressFromLabel(localArea, force: true);
 
       _mapController.move(point, 17.5);
-      unawaited(_reverseGeocodePoint(point, autoFillIfEmpty: true));
+      unawaited(_reverseGeocodePoint(point, forceAutoFill: true));
     } catch (error) {
       try {
         final lastKnown = await Geolocator.getLastKnownPosition();
         if (lastKnown != null && mounted) {
           final fallbackPoint = LatLng(lastKnown.latitude, lastKnown.longitude);
+          final localArea = getTaizAreaName(fallbackPoint);
+          _userEditedAddressManually = false;
           setState(() {
             _selectedPoint = fallbackPoint;
-            _detectedAreaLabel = getTaizAreaName(fallbackPoint);
+            _detectedAreaLabel = localArea;
             _error =
                 'تم جلب آخر موقع معروف؛ يمكنك تحريك الدبوس لتعديل الموضع بدقة.';
           });
+          _autoFillAddressFromLabel(localArea, force: true);
           _mapController.move(fallbackPoint, 17.0);
           return;
         }
@@ -621,13 +657,16 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
     if (prev == null ||
         (prev.latitude - center.latitude).abs() > 0.00015 ||
         (prev.longitude - center.longitude).abs() > 0.00015) {
+      final localArea = getTaizAreaName(center);
       setState(() {
         _selectedPoint = center;
-        _detectedAreaLabel = getTaizAreaName(center);
+        _detectedAreaLabel = localArea;
       });
+      _autoFillAddressFromLabel(localArea);
+
       _geocodeDebounce?.cancel();
       _geocodeDebounce = Timer(const Duration(milliseconds: 600), () {
-        unawaited(_reverseGeocodePoint(center, autoFillIfEmpty: false));
+        unawaited(_reverseGeocodePoint(center));
       });
     }
   }
@@ -635,6 +674,7 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
   @override
   void dispose() {
     _geocodeDebounce?.cancel();
+    _customAddressController.removeListener(_onAddressTextChanged);
     _customAddressController.dispose();
     _searchController.dispose();
     _addressFocus.dispose();
@@ -768,6 +808,18 @@ class _MapLocationScreenState extends State<MapLocationScreen> {
                               borderRadius: BorderRadius.circular(10)),
                           prefixIcon: const Icon(Icons.location_on,
                               color: AppConstants.gold),
+                          suffixIcon: _customAddressController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear,
+                                      color: Colors.grey, size: 18),
+                                  tooltip: 'مسح النص',
+                                  onPressed: () {
+                                    _userEditedAddressManually = false;
+                                    _customAddressController.clear();
+                                    setState(() {});
+                                  },
+                                )
+                              : null,
                         ),
                       ),
                     ],
