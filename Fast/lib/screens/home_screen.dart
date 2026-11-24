@@ -501,68 +501,160 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildCustomDeliveryBanner(
+  /// بطاقتا «وصل لي» و«طلبات أخرى» جنب بعض في نفس الصف لتكونا ظاهرتين للجميع
+  Widget _buildWasalliAndOtherOrdersRow(
       BuildContext context, AppState appState, String token) {
     final accent = _accent(appState);
     final isDark = appState.isDarkMode;
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                CustomDeliveryScreen(token: token),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [const Color(0xFF332700), const Color(0xFF1E1E1E)]
-                : [const Color(0xFFE3F2FD), Colors.white],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent, width: 1.2),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.delivery_dining, color: accent, size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'وصل لي (توصيل خاص مرن)',
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
+    final isOtherSelected = selectedCategory == 'طلبات أخرى';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                Navigator.push(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        CustomDeliveryScreen(token: token),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'من أين، إلى أين، وبأفضل الأسعار',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey : Colors.black54,
-                      fontSize: 11.5,
-                    ),
+                );
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark
+                        ? [const Color(0xFF332700), const Color(0xFF1E1E1E)]
+                        : [const Color(0xFFE3F2FD), Colors.white],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accent, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.delivery_dining, color: accent, size: 24),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'خدمة وصل لي',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'توصيل خاص مرن',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isDark ? Colors.grey : Colors.black54,
+                              fontSize: 10.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward_ios, color: accent, size: 13),
+                  ],
+                ),
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: accent, size: 15),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  selectedCategory =
+                      isOtherSelected ? 'الكل' : 'طلبات أخرى';
+                  selectedRestaurantName = null;
+                  _searchController.clear();
+                });
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isOtherSelected
+                        ? [accent.withOpacity(0.28), accent.withOpacity(0.12)]
+                        : (isDark
+                            ? [const Color(0xFF262626), const Color(0xFF1E1E1E)]
+                            : [const Color(0xFFF3F6FA), Colors.white]),
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: accent.withOpacity(isOtherSelected ? 1.0 : 0.7),
+                    width: isOtherSelected ? 1.6 : 1.1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.playlist_add_check_circle_rounded,
+                        color: accent, size: 24),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'طلبات أخرى',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'طلب خاص أو خدمة',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isDark ? Colors.grey : Colors.black54,
+                              fontSize: 10.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      isOtherSelected
+                          ? Icons.keyboard_arrow_up
+                          : Icons.arrow_forward_ios,
+                      color: accent,
+                      size: 13,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2620,6 +2712,8 @@ class _HomeScreenState extends State<HomeScreen>
         child: ListView(
           children: [
             _buildStoreHoursStatusBar(appState, cardBg, textColor),
+            _buildWasalliAndOtherOrdersRow(
+                context, appState, appState.userProfile?['id'] ?? 'guest'),
             _buildCategoriesHorizontalList(appState, textColor, cardBg),
             const SizedBox(height: 10),
             Container(
@@ -2753,7 +2847,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           _buildStoreHoursStatusBar(appState, cardBg, textColor),
           _buildDynamicPromoBanners(appState),
-          _buildCustomDeliveryBanner(
+          _buildWasalliAndOtherOrdersRow(
               context, appState, appState.userProfile?['id'] ?? 'guest'),
           _buildAdBannerWidget(appState, cardBg, textColor),
           if (_isSearching)
