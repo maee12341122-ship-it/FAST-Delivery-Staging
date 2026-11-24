@@ -1,13 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
 import '../../providers/app_state.dart';
 import '../../models/product_model.dart';
 
 class AdminProductsScreen extends StatefulWidget {
-  const AdminProductsScreen({Key? key}) : super(key: key);
+  const AdminProductsScreen({super.key});
 
   @override
   State<AdminProductsScreen> createState() => _AdminProductsScreenState();
@@ -17,29 +17,69 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingImage = false;
 
-  // 🗺️ خريطة شاملة لكافة الأقسام والمتاجر التابعة لها لتجنب أي نقص في القائمة المنسدلة
+  static const String _customStoreOption = '__CUSTOM_STORE__';
+
+  // قائمة احتياطية في حال عدم توفر بيانات من قاعدة البيانات بعد
   final Map<String, List<String>> _categoryShopsMap = {
     'المطاعم': [
-      'مدينتي', 'السعيد', 'الشميري', 'تاج مول', 'تاج شمسان', 'ماريوت',
-      'الراسني', 'فود ستيشن', 'ابو خالد', 'بيرو كافي', 'وافل واي', 'دكه',
-      'وضاح الدبعي', 'الحضرمي', 'عشي عشي', 'بيت المضغوط', 'زيزو', 'زيون',
-      'افندي', 'متميزة في المطبخ'
+      'مدينتي',
+      'السعيد',
+      'الشميري',
+      'تاج مول',
+      'تاج شمسان',
+      'ماريوت',
+      'الراسني',
+      'فود ستيشن',
+      'ابو خالد',
+      'بيرو كافي',
+      'وافل واي',
+      'دكه',
+      'وضاح الدبعي',
+      'الحضرمي',
+      'عشي عشي',
+      'بيت المضغوط',
+      'زيزو',
+      'زيون',
+      'افندي',
+      'متميزة في المطبخ',
     ],
     'حلويات ومعجنات': [
-      'روزماري', 'كاندي', 'سويت سيتي', 'سيت هوم', 'ابو خالد', 'حلويات عامة'
+      'روزماري',
+      'كاندي',
+      'سويت سيتي',
+      'سيت هوم',
+      'ابو خالد',
+      'حلويات عامة',
     ],
     'البقالات': [
-      'سوبرماركت المدينة', 'بقالة العائلة', 'مارت تعز', 'بقالة السعادة', 'متجر مواد غذائية عامة'
+      'سوبرماركت المدينة',
+      'بقالة العائلة',
+      'مارت تعز',
+      'بقالة السعادة',
+      'متجر مواد غذائية عامة',
+    ],
+    'مشاريع منزلية': [
+      'عنباتي',
+      'TWISTA',
     ],
     'الخضار والفواكه': [
-      'سوق الخضار المركزي', 'مكتبة الخضار الطازجة', 'مفروشات الخضار والفواكه'
+      'سوق الخضار المركزي',
+      'مكتبة الخضار الطازجة',
+      'مفروشات الخضار والفواكه',
     ],
     'الصيدلية الآمنة': [
-      'صيدليه الوافي', 'صيدليه البريطانيه', 'صيدليه كريم',
-      'صيدليه الشيخ', 'صيدليه التلال', 'صيدليه صدام'
+      'صيدليه الوافي',
+      'صيدليه البريطانيه',
+      'صيدليه كريم',
+      'صيدليه الشيخ',
+      'صيدليه التلال',
+      'صيدليه صدام',
     ],
     'هدايا واكسسوارات': [
-      'شغف', 'فلاورز', 'دار التحف والهدايا', 'قصر التحف والهدايا'
+      'شغف',
+      'فلاورز',
+      'دار التحف والهدايا',
+      'قصر التحف والهدايا',
     ],
   };
 
@@ -47,15 +87,41 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     'المطاعم',
     'حلويات ومعجنات',
     'البقالات',
+    'مشاريع منزلية',
     'الخضار والفواكه',
     'الصيدلية الآمنة',
-    'هدايا واكسسوارات'
+    'هدايا واكسسوارات',
   ];
 
-  Future<String?> _uploadImageToSupabase(File imageFile, StateSetter setDialogState) async {
+  List<String> _getStoresForCategory(AppState appState, String category) {
+    final targetCat = category.trim().toLowerCase();
+
+    final fromDb = appState.restaurantsList
+        .where((r) {
+          final rCat = (r['category'] ?? '').toString().trim().toLowerCase();
+          final isActive = r['is_active'] ?? true;
+          return isActive && rCat == targetCat;
+        })
+        .map((r) => (r['name'] ?? '').toString().trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    final fallback = _categoryShopsMap[category] ?? const <String>[];
+    final combined = <String>[];
+
+    for (final name in [...fromDb, ...fallback]) {
+      if (!combined.any((e) => e.toLowerCase() == name.toLowerCase())) {
+        combined.add(name);
+      }
+    }
+    return combined;
+  }
+
+  Future<String?> _uploadImageToSupabase(
+      File imageFile, StateSetter setDialogState) async {
     try {
       setDialogState(() => _isUploadingImage = true);
-      
+
       final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final storagePath = 'products/$fileName';
 
@@ -76,45 +142,83 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     }
   }
 
-  void _showProductDialog(BuildContext context, AppState appState, {ProductModel? product}) {
+  Future<void> _showProductDialog(
+      BuildContext context, AppState appState,
+      {ProductModel? product}) async {
     final isEditing = product != null;
     final nameController = TextEditingController(text: product?.name ?? '');
-    final priceController = TextEditingController(text: product != null ? product.price.toString() : '');
+    final priceController = TextEditingController(
+        text: product != null ? product.price.toString() : '');
     final imageController = TextEditingController(text: product?.imageUrl ?? '');
-    final descriptionController = TextEditingController(text: product?.description ?? '');
-    
-    String selectedCategory = (product != null && _mainCategories.contains(product.category))
-        ? product.category
-        : 'المطاعم';
+    final descriptionController =
+        TextEditingController(text: product?.description ?? '');
 
-    String? selectedStore = product?.restaurantName;
-    if (_categoryShopsMap.containsKey(selectedCategory)) {
-      final stores = _categoryShopsMap[selectedCategory]!;
-      if (!stores.contains(selectedStore)) {
-        selectedStore = stores.first;
-      }
-    } else {
-      selectedStore = product?.restaurantName ?? '';
-    }
+    String selectedCategory =
+        (product != null && _mainCategories.contains(product.category))
+            ? product.category
+            : 'المطاعم';
+
+    var storesForCategory = _getStoresForCategory(appState, selectedCategory);
+    final initialStore = (product?.restaurantName ?? '').trim();
+
+    bool useCustomStore = initialStore.isNotEmpty &&
+        !storesForCategory
+            .any((s) => s.toLowerCase() == initialStore.toLowerCase());
+
+    String selectedStore = useCustomStore
+        ? _customStoreOption
+        : (storesForCategory.firstWhere(
+            (s) => s.toLowerCase() == initialStore.toLowerCase(),
+            orElse: () =>
+                storesForCategory.isNotEmpty ? storesForCategory.first : '',
+          ));
+
+    final customStoreController =
+        TextEditingController(text: useCustomStore ? initialStore : '');
 
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
     String selectedUnit = product?.unit ?? 'كيلو';
 
-    showDialog(
+    await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final List<String>? availableStores = _categoryShopsMap[selectedCategory];
+          storesForCategory = _getStoresForCategory(appState, selectedCategory);
+
+          final dropdownItems = <DropdownMenuItem<String>>[
+            ...storesForCategory.map(
+              (store) => DropdownMenuItem<String>(
+                value: store,
+                child: Text(store),
+              ),
+            ),
+            const DropdownMenuItem<String>(
+              value: _customStoreOption,
+              child: Text(
+                '➕ إضافة اسم متجر / مشروع جديد...',
+                style: TextStyle(color: Colors.amber),
+              ),
+            ),
+          ];
+
+          final validDropdownValue =
+              dropdownItems.any((item) => item.value == selectedStore)
+                  ? selectedStore
+                  : (storesForCategory.isNotEmpty
+                      ? storesForCategory.first
+                      : _customStoreOption);
 
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               title: Text(
                 isEditing ? 'تعديل المنتج 🛠️' : 'إضافة منتج جديد ➕',
-                style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.amber, fontWeight: FontWeight.bold),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -123,16 +227,20 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     TextField(
                       controller: nameController,
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'اسم المنتج *', labelStyle: TextStyle(color: Colors.grey)),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المنتج *',
+                        labelStyle: TextStyle(color: Colors.grey),
+                      ),
                     ),
                     const SizedBox(height: 8),
-
-                    // اختيار القسم الرئيسي
                     DropdownButtonFormField<String>(
                       value: selectedCategory,
                       dropdownColor: const Color(0xFF1E1E1E),
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'القسم الرئيسي *', labelStyle: TextStyle(color: Colors.grey)),
+                      decoration: const InputDecoration(
+                        labelText: 'القسم الرئيسي *',
+                        labelStyle: TextStyle(color: Colors.grey),
+                      ),
                       items: _mainCategories.map((cat) {
                         return DropdownMenuItem(value: cat, child: Text(cat));
                       }).toList(),
@@ -140,55 +248,60 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         if (val != null) {
                           setDialogState(() {
                             selectedCategory = val;
-                            if (_categoryShopsMap.containsKey(val)) {
-                              selectedStore = _categoryShopsMap[val]!.first;
+                            final updatedStores =
+                                _getStoresForCategory(appState, val);
+                            if (updatedStores.isNotEmpty) {
+                              selectedStore = updatedStores.first;
+                              useCustomStore = false;
                             } else {
-                              selectedStore = '';
+                              selectedStore = _customStoreOption;
+                              useCustomStore = true;
                             }
                           });
                         }
                       },
                     ),
-                    const SizedBox(height: 8),
-
-                    // القائمة المنسدلة لأسماء المحلات والصيدليات تلقائياً بناءً على القسم
-                    if (availableStores != null && availableStores.isNotEmpty) ...[
-                      DropdownButtonFormField<String>(
-                        value: availableStores.contains(selectedStore) ? selectedStore : availableStores.first,
-                        dropdownColor: const Color(0xFF1E1E1E),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'اختر اسم المتجر/المكان *',
-                          labelStyle: const TextStyle(color: Colors.amber),
-                          border: const OutlineInputBorder(),
-                        ),
-                        items: availableStores.map((store) {
-                          return DropdownMenuItem(value: store, child: Text(store));
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setDialogState(() {
-                              selectedStore = val;
-                            });
-                          }
-                        },
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: validDropdownValue,
+                      dropdownColor: const Color(0xFF1E1E1E),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'اسم المتجر / البقالة / المشروع *',
+                        labelStyle: TextStyle(color: Colors.amber),
+                        border: OutlineInputBorder(),
                       ),
-                    ] else ...[
+                      items: dropdownItems,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() {
+                            selectedStore = val;
+                            useCustomStore = val == _customStoreOption;
+                          });
+                        }
+                      },
+                    ),
+                    if (useCustomStore) ...[
+                      const SizedBox(height: 8),
                       TextField(
-                        controller: TextEditingController(text: selectedStore),
+                        controller: customStoreController,
                         style: const TextStyle(color: Colors.white),
-                        onChanged: (val) => selectedStore = val,
-                        decoration: const InputDecoration(labelText: 'اسم المتجر أو الجهة (اختياري)', labelStyle: TextStyle(color: Colors.grey)),
+                        decoration: const InputDecoration(
+                          labelText: 'اكتب اسم المتجر أو المشروع المنزلي *',
+                          labelStyle: TextStyle(color: Colors.amberAccent),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ],
                     const SizedBox(height: 8),
-
                     TextField(
                       controller: priceController,
                       keyboardType: TextInputType.number,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: isVariablePrice ? 'السعر التقريبي لكل وحدة (ر.ي) *' : 'السعر الثابت (ر.ي) *',
+                        labelText: isVariablePrice
+                            ? 'السعر التقريبي لكل وحدة (ر.ي) *'
+                            : 'السعر الثابت (ر.ي) *',
                         labelStyle: const TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -203,63 +316,86 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: imageController,
                             style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(labelText: 'رابط الصورة (Image URL)', labelStyle: TextStyle(color: Colors.grey)),
+                            decoration: const InputDecoration(
+                              labelText: 'رابط الصورة (Image URL)',
+                              labelStyle: TextStyle(color: Colors.grey),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         _isUploadingImage
                             ? const Padding(
                                 padding: EdgeInsets.all(8.0),
-                                child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2)),
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.amber, strokeWidth: 2),
+                                ),
                               )
                             : IconButton(
                                 onPressed: () async {
-                                  final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+                                  final XFile? image = await _picker.pickImage(
+                                      source: ImageSource.gallery);
                                   if (image != null) {
-                                    final uploadedUrl = await _uploadImageToSupabase(File(image.path), setDialogState);
+                                    final uploadedUrl =
+                                        await _uploadImageToSupabase(
+                                            File(image.path), setDialogState);
                                     if (uploadedUrl != null) {
                                       setDialogState(() {
                                         imageController.text = uploadedUrl;
                                       });
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('تم رفع الصورة بنجاح إلى السحاب ☁️')),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'تم رفع الصورة بنجاح إلى السحاب ☁️')),
                                         );
                                       }
                                     } else {
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('تعذر رفع الصورة ❌')),
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'تعذر رفع الصورة ❌')),
                                         );
                                       }
                                     }
                                   }
                                 },
-                                icon: const Icon(Icons.add_photo_alternate, color: Colors.amber, size: 28),
+                                icon: const Icon(Icons.add_photo_alternate,
+                                    color: Colors.amber, size: 28),
                                 tooltip: 'اختيار ورفع صورة من المعرض',
                               ),
                       ],
                     ),
                     const SizedBox(height: 12),
-
                     SwitchListTile(
-                      title: const Text('متوفر حالياً؟', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      title: const Text('متوفر حالياً؟',
+                          style: TextStyle(color: Colors.white, fontSize: 13)),
                       value: isAvailable,
                       activeColor: Colors.amber,
-                      onChanged: (val) => setDialogState(() => isAvailable = val),
+                      onChanged: (val) =>
+                          setDialogState(() => isAvailable = val),
                     ),
                     SwitchListTile(
-                      title: const Text('سعر متغير (بالوزن/العدد)؟', style: TextStyle(color: Colors.amberAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                      title: const Text('سعر متغير (بالوزن/العدد)؟',
+                          style: TextStyle(
+                              color: Colors.amberAccent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold)),
                       value: isVariablePrice,
                       activeColor: Colors.amber,
-                      onChanged: (val) => setDialogState(() => isVariablePrice = val),
+                      onChanged: (val) =>
+                          setDialogState(() => isVariablePrice = val),
                     ),
                     if (isVariablePrice) ...[
                       const SizedBox(height: 8),
@@ -267,11 +403,19 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         value: selectedUnit,
                         dropdownColor: const Color(0xFF1E1E1E),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(labelText: 'وحدة القياس الإجبارية *', labelStyle: TextStyle(color: Colors.amber)),
-                        items: ['كيلو', 'جرام', 'حبة', 'ربطة', 'لتر', 'باكت'].map((u) {
+                        decoration: const InputDecoration(
+                          labelText: 'وحدة القياس الإجبارية *',
+                          labelStyle: TextStyle(color: Colors.amber),
+                        ),
+                        items: ['كيلو', 'جرام', 'حبة', 'ربطة', 'لتر', 'باكت']
+                            .map((u) {
                           return DropdownMenuItem(value: u, child: Text(u));
                         }).toList(),
-                        onChanged: (val) => setDialogState(() => selectedUnit = val!),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() => selectedUnit = val);
+                          }
+                        },
                       ),
                     ],
                   ],
@@ -279,31 +423,55 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child:
+                      const Text('إلغاء', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                  style:
+                      ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                   onPressed: () async {
                     if (nameController.text.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('⚠️ يرجى إدخال اسم المنتج بشكل إجباري!')),
+                        const SnackBar(
+                            content: Text(
+                                '⚠️ يرجى إدخال اسم المنتج بشكل إجباري!')),
                       );
                       return;
                     }
 
-                    final double parsedPrice = double.tryParse(priceController.text.trim()) ?? 0.0;
+                    final double parsedPrice =
+                        double.tryParse(priceController.text.trim()) ?? 0.0;
                     if (parsedPrice <= 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('⚠️ يجب إدخال سعر صحيح أكبر من الصفر بشكل إجباري!')),
+                        const SnackBar(
+                            content: Text(
+                                '⚠️ يجب إدخال سعر صحيح أكبر من الصفر بشكل إجباري!')),
+                      );
+                      return;
+                    }
+
+                    final String finalStoreName = useCustomStore
+                        ? customStoreController.text.trim()
+                        : (validDropdownValue == _customStoreOption
+                            ? customStoreController.text.trim()
+                            : validDropdownValue);
+
+                    if (finalStoreName.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                '⚠️ يرجى اختيار أو كتابة اسم المتجر/المشروع!')),
                       );
                       return;
                     }
 
                     final newProduct = ProductModel(
-                      id: isEditing ? product.id : DateTime.now().millisecondsSinceEpoch.toString(),
+                      id: isEditing
+                          ? product.id
+                          : DateTime.now().millisecondsSinceEpoch.toString(),
                       name: nameController.text.trim(),
-                      restaurantName: selectedStore ?? '',
+                      restaurantName: finalStoreName,
                       price: parsedPrice,
                       category: selectedCategory,
                       available: isAvailable,
@@ -316,9 +484,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     try {
                       await appState.upsertProduct(newProduct);
                       if (!context.mounted) return;
-                      Navigator.pop(context);
+                      Navigator.pop(dialogContext);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('تم حفظ المنتج مع الوصف بنجاح ✅')),
+                        const SnackBar(
+                            content: Text('تم حفظ المنتج مع الوصف بنجاح ✅')),
                       );
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -326,7 +495,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       );
                     }
                   },
-                  child: const Text('حفظ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  child: const Text('حفظ',
+                      style: TextStyle(
+                          color: Colors.black, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -334,21 +505,33 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         },
       ),
     );
+
+    nameController.dispose();
+    priceController.dispose();
+    imageController.dispose();
+    descriptionController.dispose();
+    customStoreController.dispose();
   }
 
-  void _showDeleteConfirmationDialog(BuildContext context, AppState appState, String productId, String productName) {
+  void _showDeleteConfirmationDialog(BuildContext context, AppState appState,
+      String productId, String productName) {
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
               SizedBox(width: 8),
-              Text('تأكيد الحذف 🗑️', style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('تأكيد الحذف 🗑️',
+                  style: TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
             ],
           ),
           content: Text(
@@ -363,7 +546,8 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
                 Navigator.pop(context);
@@ -374,7 +558,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                   );
                 }
               },
-              child: const Text('نعم، حذف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text('نعم، حذف',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -393,11 +579,15 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('إدارة المنتجات والأصناف 🍔', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+          title: const Text('إدارة المنتجات والأصناف 🍔',
+              style:
+                  TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
         body: products.isEmpty
-            ? const Center(child: Text('لا توجد منتجات مسجلة حالياً', style: TextStyle(color: Colors.grey)))
+            ? const Center(
+                child: Text('لا توجد منتجات مسجلة حالياً',
+                    style: TextStyle(color: Colors.grey)))
             : ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: products.length,
@@ -419,26 +609,36 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                 width: 50,
                                 height: 50,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, color: Colors.amber),
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.fastfood,
+                                    color: Colors.amber),
                               )
                             : const Icon(Icons.fastfood, color: Colors.amber),
                       ),
-                      title: Text(product.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      title: Text(product.name,
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold)),
                       subtitle: Text(
                         '${product.restaurantName} | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                       isThreeLine: true,
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
-                            onPressed: () => _showProductDialog(context, appState, product: product),
+                            icon: const Icon(Icons.edit,
+                                color: Colors.blueAccent, size: 20),
+                            onPressed: () => _showProductDialog(
+                                context, appState,
+                                product: product),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                            onPressed: () => _showDeleteConfirmationDialog(context, appState, product.id, product.name),
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.redAccent, size: 20),
+                            onPressed: () => _showDeleteConfirmationDialog(
+                                context, appState, product.id, product.name),
                           ),
                         ],
                       ),
