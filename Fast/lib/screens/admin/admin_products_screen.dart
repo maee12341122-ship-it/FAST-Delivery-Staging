@@ -214,9 +214,8 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         } else {
           await Supabase.instance.client.from('home_projects').insert({
             'name': cleanName,
-            'category': 'مشاريع منزلية',
-            'logo_url': cleanLogo,
             'image_url': cleanLogo,
+            'logo_url': cleanLogo,
             'is_active': true,
           });
         }
@@ -225,6 +224,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       }
     }
 
+    // جدول restaurants يعتمد على عمود image_url في السكربت المرسل
     final existingStore = await Supabase.instance.client
         .from('restaurants')
         .select('id')
@@ -233,7 +233,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
 
     if (existingStore != null && existingStore['id'] != null) {
       await Supabase.instance.client.from('restaurants').update({
-        'logo_url': cleanLogo,
         'image_url': cleanLogo,
         'category': category.trim(),
         'is_active': true,
@@ -242,7 +241,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       await Supabase.instance.client.from('restaurants').insert({
         'name': cleanName,
         'category': category.trim(),
-        'logo_url': cleanLogo,
         'image_url': cleanLogo,
         'is_active': true,
       });
