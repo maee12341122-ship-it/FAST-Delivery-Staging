@@ -23,6 +23,7 @@ class _CourierScreenState extends State<CourierScreen> {
   StreamSubscription<Position>? _locationSubscription;
   bool _isLoadingSession = true;
   final Set<String> _updatingOrderIds = {};
+  final Set<String> _pickedUpWassalliOrderIds = {};
   String? _lastSyncedCourierKey;
   bool? _lastSyncedBusyState;
 
@@ -332,10 +333,310 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
+  // تحديد هل الطلب من خدمة "وصل لي" الخاصة فقط دون التأثير على الطلبات العادية
   bool _isWassalliServiceOrder(Map order) {
     final itemsText =
         '${order['items_description'] ?? ''} ${order['items_desc'] ?? ''} ${order['itemsDesc'] ?? ''} ${order['notes'] ?? ''}';
-    return itemsText.contains('وصل لي') || itemsText.contains('وصللي');
+    return itemsText.contains('وصل لي') ||
+        itemsText.contains('وصللي') ||
+        itemsText.contains('مكان الاستلام:') ||
+        itemsText.contains('مكان التوصيل:');
+  }
+
+  // استخراج نقطة الاستلام وموقع التسليم لطلبات "وصل لي" فقط
+  Map<String, String> _parseWassalliRoute(Map order) {
+    final rawDesc =
+        '${order['items_description'] ?? order['items_desc'] ?? order['itemsDesc'] ?? ''}';
+    final rawAddress = (order['address'] ?? '').toString().trim();
+
+    String pickup = '';
+    String dropoff = '';
+
+    final pickupMatch =
+        RegExp(r'مكان الاستلام:\s*([^\n]+)').firstMatch(rawDesc);
+    if (pickupMatch != null && pickupMatch.groupCount >= 1) {
+      pickup = pickupMatch.group(1)!.trim();
+    }
+
+    final dropoffMatch =
+        RegExp(r'مكان التوصيل:\s*([^\n]+)').firstMatch(rawDesc);
+    if (dropoffMatch != null && dropoffMatch.groupCount >= 1) {
+      dropoff = dropoffMatch.group(1)!.trim();
+    }
+
+    if ((pickup.isEmpty || dropoff.isEmpty) && rawAddress.contains('➡️')) {
+      final parts = rawAddress.split('➡️');
+      if (parts.length >= 2) {
+        if (pickup.isEmpty) {
+          pickup = parts[0].replaceFirst(RegExp(r'^\s*من:\s*'), '').trim();
+        }
+        if (dropoff.isEmpty) {
+          dropoff = parts[1].replaceFirst(RegExp(r'^\s*إلى:\s*'), '').trim();
+        }
+      }
+    }
+
+    if (pickup.isEmpty) {
+      pickup = 'نقطة الاستلام المحددة في الطلب';
+    }
+    if (dropoff.isEmpty) {
+      dropoff = rawAddress.isNotEmpty
+          ? rawAddress
+          : 'موقع التسليم المحدد في الطلب';
+    }
+
+    return {
+      'pickup': pickup,
+      'dropoff': dropoff,
+    };
+  }
+
+  Widget _buildWassalliTwoStepRouteCard(
+    BuildContext context,
+    Map order,
+    String orderId,
+    String orderStatus,
+  ) {
+    final route = _parseWassalliRoute(order);
+    final pickupLocation = route['pickup']!;
+    final dropoffLocation = route['dropoff']!;
+
+    final bool hasCompletedDeliveryPhase = orderStatus == 'arrivedToCustomer' ||
+        orderStatus == 'arrived' ||
+        orderStatus == 'delivered';
+    final bool isPickupDone =
+        hasCompletedDeliveryPhase || _pickedUpWassalliOrderIds.contains(orderId);
+    final bool isOnDeliveryLeg =
+        hasCompletedDeliveryPhase || (orderStatus == 'onTheWay' && isPickupDone);
+
+    final String activeTargetLocation =
+        isOnDeliveryLeg ? dropoffLocation : pickupLocation;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.55), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.route_rounded, color: Colors.amber, size: 18),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'مسار "وصل لي": استلام الغرض أولاً ثم التوصيل',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // الخطوة 1: الذهاب لنقطة الاستلام أولاً
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: !isOnDeliveryLeg
+                  ? Colors.amber.withOpacity(0.16)
+                  : Colors.black26,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: !isOnDeliveryLeg
+                    ? Colors.amber
+                    : Colors.greenAccent.withOpacity(0.5),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isPickupDone
+                          ? Icons.check_circle
+                          : Icons.looks_one_rounded,
+                      color: isPickupDone ? Colors.greenAccent : Colors.amber,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'الخطوة 1 (أولاً): التوجه إلى نقطة الاستلام وأخذ الغرض',
+                        style: TextStyle(
+                          color: isPickupDone ? Colors.greenAccent : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'نقطة الاستلام: $pickupLocation',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.amber),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () => _openMap(pickupLocation),
+                        icon: const Icon(Icons.near_me,
+                            color: Colors.amber, size: 15),
+                        label: const Text(
+                          'ملاحة لنقطة الاستلام',
+                          style: TextStyle(
+                              color: Colors.amber,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    if (!isPickupDone) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _pickedUpWassalliOrderIds.add(orderId);
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'تم تأكيد استلام الغرض — توجه الآن إلى موقع التسليم 🎯'),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.inventory_2,
+                              color: Colors.black, size: 15),
+                          label: const Text(
+                            'تم الاستلام ← التسليم',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // الخطوة 2: التوجه لموقع التسليم بعد الاستلام
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isOnDeliveryLeg
+                  ? Colors.cyan.withOpacity(0.14)
+                  : Colors.black26,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isOnDeliveryLeg
+                    ? Colors.cyanAccent
+                    : Colors.white24,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.looks_two_rounded,
+                      color: isOnDeliveryLeg ? Colors.cyanAccent : Colors.grey,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'الخطوة 2 (ثانياً): التوجه إلى موقع التسليم لإيصال الغرض',
+                        style: TextStyle(
+                          color: isOnDeliveryLeg
+                              ? Colors.cyanAccent
+                              : Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'موقع التسليم: $dropoffLocation',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                          color: isOnDeliveryLeg
+                              ? Colors.cyanAccent
+                              : Colors.white38),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => _openMap(dropoffLocation),
+                    icon: Icon(
+                      Icons.flag,
+                      color: isOnDeliveryLeg ? Colors.cyanAccent : Colors.grey,
+                      size: 15,
+                    ),
+                    label: Text(
+                      'ملاحة لموقع التسليم',
+                      style: TextStyle(
+                        color:
+                            isOnDeliveryLeg ? Colors.cyanAccent : Colors.grey,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 8),
+          Text(
+            'الوجهة الحالية للمندوب: $activeTargetLocation',
+            style: const TextStyle(
+                color: Colors.amberAccent,
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
   }
 
   /// استخراج سعر المنتجات الصحيح دون تكرار إضافة رسوم التوصيل
@@ -784,6 +1085,16 @@ class _CourierScreenState extends State<CourierScreen> {
         final customerAddress = order['address']?.toString() ?? '';
         final orderStatus = order['status']?.toString().trim() ?? '';
         final isUpdating = _updatingOrderIds.contains(orderId);
+        final bool isWassalli = _isWassalliServiceOrder(order);
+        final route = isWassalli ? _parseWassalliRoute(order) : null;
+        final String mapTargetAddress = isWassalli
+            ? ((orderStatus == 'arrivedToCustomer' ||
+                    orderStatus == 'arrived' ||
+                    orderStatus == 'delivered' ||
+                    _pickedUpWassalliOrderIds.contains(orderId))
+                ? route!['dropoff']!
+                : route!['pickup']!)
+            : customerAddress;
 
         final deliveryFee =
             double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
@@ -882,6 +1193,9 @@ class _CourierScreenState extends State<CourierScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  if (isWassalli)
+                    _buildWassalliTwoStepRouteCard(
+                        context, order, orderId, orderStatus),
                   Row(
                     children: [
                       const Icon(Icons.location_on,
@@ -909,15 +1223,17 @@ class _CourierScreenState extends State<CourierScreen> {
                             borderRadius: BorderRadius.circular(8)),
                       ),
                       icon: const Icon(Icons.map, color: Colors.amber, size: 16),
-                      label: const Text(
-                        'فتح اتجاهات الملاحة في خرائط جوجل 🗺️',
-                        style: TextStyle(
+                      label: Text(
+                        isWassalli
+                            ? 'فتح الملاحة للوجهة الحالية في خرائط جوجل 🗺️'
+                            : 'فتح اتجاهات الملاحة في خرائط جوجل 🗺️',
+                        style: const TextStyle(
                             color: Colors.amber,
                             fontSize: 12,
                             fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      onPressed: () => _openMap(customerAddress),
+                      onPressed: () => _openMap(mapTargetAddress),
                     ),
                   ),
                   const SizedBox(height: 6),
