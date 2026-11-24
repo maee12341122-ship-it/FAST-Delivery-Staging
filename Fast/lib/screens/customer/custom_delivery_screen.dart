@@ -15,7 +15,7 @@ class CustomDeliveryScreen extends StatefulWidget {
 class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // حقول الربط الثلاثي الجديدة (من أين، إلى أين، وصف الغرض والملاحظات)
+  // حقول الربط الثلاثي (من أين، إلى أين، وصف الغرض والملاحظات)
   final TextEditingController _pickupController = TextEditingController();
   final TextEditingController _dropoffController = TextEditingController();
   final TextEditingController _itemDescriptionController = TextEditingController();
@@ -210,7 +210,7 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
               '🏷️ الغرض: $itemDesc' +
           (notes.isNotEmpty ? '\n💬 ملاحظات: $notes' : '');
 
-      // 💡 سعر المنتجات 0.0 تماماً لأنها خدمة توصيل أغراض وليست شراء منتجات، بانتظار تسعير الإدارة لرسوم التوصيل
+      // سعر المنتجات 0.0 لأنها خدمة توصيل أغراض بانتظار تسعير الإدارة لرسوم التوصيل
       await appState.createOrder(
         customerName: customerName,
         phone: phone,
@@ -299,7 +299,7 @@ class _CustomDeliveryScreenState extends State<CustomDeliveryScreen> {
                     ),
                   ),
                   validator: (value) => value == null || value.trim().isEmpty
-                      ? 'الرجاء إحديد مكان الاستلام'
+                      ? 'الرجاء تحديد مكان الاستلام'
                       : null,
                 ),
                 const SizedBox(height: 14),
