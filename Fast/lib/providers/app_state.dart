@@ -500,6 +500,7 @@ class AppState extends ChangeNotifier {
 
   List<Map<String, dynamic>> restaurantsList = [];
   List<Map<String, dynamic>> categoriesList = [];
+  List<Map<String, dynamic>> homeProjectsList = [];
   String? selectedCategory;
 
   Future<void> fetchRestaurantsAndCategories() async {
@@ -508,7 +509,26 @@ class AppState extends ChangeNotifier {
       restaurantsList = List<Map<String, dynamic>>.from(restRes);
 
       final catRes = await supabase.from('categories').select();
-      categoriesList = List<Map<String, dynamic>>.from(catRes);
+      final fetchedCategories = List<Map<String, dynamic>>.from(catRes);
+      final hasHomeProjects = fetchedCategories.any(
+        (c) => (c['name'] ?? '').toString().trim() == 'المشاريع المنزلية',
+      );
+      if (!hasHomeProjects) {
+        fetchedCategories.add({
+          'name': 'المشاريع المنزلية',
+        });
+      }
+      categoriesList = fetchedCategories;
+
+      try {
+        final hpRes = await supabase.from('home_projects').select();
+        homeProjectsList = List<Map<String, dynamic>>.from(hpRes);
+      } catch (_) {
+        homeProjectsList = restaurantsList.where((r) {
+          final cat = (r['category'] ?? r['type'] ?? '').toString().trim();
+          return cat == 'المشاريع المنزلية' || cat == 'home_projects';
+        }).toList();
+      }
 
       notifyListeners();
     } catch (e) {
@@ -1872,6 +1892,19 @@ class AppState extends ChangeNotifier {
       await restoreLastCustomerOrder();
     }
 
+    if (_useSandboxOtpProvider) {
+      final generatedCode = (1000 + Random().nextInt(9000)).toString();
+      _localFallbackOtps[cleanPhone] = generatedCode;
+      notifyListeners();
+      return {
+        'exists': existsInDb,
+        'provider': 'sandbox',
+        'is_sandbox': true,
+        'otp_code': generatedCode,
+        'message': 'رمز التحقق التجريبي: $generatedCode',
+      };
+    }
+
     try {
       final res =
           await ApiService.sendWhatsappOtp(phoneNumber: internationalPhone);
@@ -1907,18 +1940,20 @@ class AppState extends ChangeNotifier {
     final internationalPhone = '967$cleanPhone';
     var isValid = false;
 
-    try {
-      final verifyRes = await ApiService.verifyWhatsappOtp(
-        phoneNumber: internationalPhone,
-        otpCode: code,
-      );
-      isValid = verifyRes['verified'] == true ||
-          verifyRes['ok'] == true ||
-          verifyRes['success'] == true;
-    } catch (e) {
-      debugPrint('تعذر التحقق عبر دالة واتساب، التحقق من الاحتياطي: $e');
-      if (_localFallbackOtps[cleanPhone] == code) {
-        isValid = true;
+    if (!_useSandboxOtpProvider) {
+      try {
+        final verifyRes = await ApiService.verifyWhatsappOtp(
+          phoneNumber: internationalPhone,
+          otpCode: code,
+        );
+        isValid = verifyRes['verified'] == true ||
+            verifyRes['ok'] == true ||
+            verifyRes['success'] == true;
+      } catch (e) {
+        debugPrint('تعذر التحقق عبر دالة واتساب، التحقق من الاحتياطي: $e');
+        if (_localFallbackOtps[cleanPhone] == code) {
+          isValid = true;
+        }
       }
     }
 
