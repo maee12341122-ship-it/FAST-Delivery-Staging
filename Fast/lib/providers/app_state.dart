@@ -506,28 +506,73 @@ class AppState extends ChangeNotifier {
   Future<void> fetchRestaurantsAndCategories() async {
     try {
       final restRes = await supabase.from('restaurants').select();
-      restaurantsList = List<Map<String, dynamic>>.from(restRes);
+      restaurantsList = List<Map<String, dynamic>>.from(restRes).map((row) {
+        final rawCat = (row['category'] ?? row['type'] ?? '').toString().trim();
+        final normalizedCat =
+            (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
+                ? 'مشاريع منزلية'
+                : rawCat;
+        return {
+          ...row,
+          'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
+          'category': normalizedCat,
+          'is_active': row['is_active'] ?? true,
+        };
+      }).toList();
 
       final catRes = await supabase.from('categories').select();
       final fetchedCategories = List<Map<String, dynamic>>.from(catRes);
-      final hasHomeProjects = fetchedCategories.any(
-        (c) => (c['name'] ?? '').toString().trim() == 'المشاريع المنزلية',
-      );
+      final hasHomeProjects = fetchedCategories.any((c) {
+        final n = (c['name'] ?? '').toString().trim();
+        return n == 'مشاريع منزلية' || n == 'المشاريع المنزلية';
+      });
       if (!hasHomeProjects) {
         fetchedCategories.add({
-          'name': 'المشاريع المنزلية',
+          'name': 'مشاريع منزلية',
         });
       }
       categoriesList = fetchedCategories;
 
       try {
         final hpRes = await supabase.from('home_projects').select();
-        homeProjectsList = List<Map<String, dynamic>>.from(hpRes);
+        homeProjectsList = List<Map<String, dynamic>>.from(hpRes).map((row) {
+          final rawCat =
+              (row['category'] ?? 'مشاريع منزلية').toString().trim();
+          final normalizedCat =
+              (rawCat == 'المشاريع المنزلية' || rawCat == 'home_projects')
+                  ? 'مشاريع منزلية'
+                  : rawCat;
+          return {
+            ...row,
+            'name': (row['name'] ?? row['title'] ?? '').toString().trim(),
+            'category': normalizedCat,
+            'is_active': row['is_active'] ?? true,
+          };
+        }).toList();
       } catch (_) {
         homeProjectsList = restaurantsList.where((r) {
           final cat = (r['category'] ?? r['type'] ?? '').toString().trim();
-          return cat == 'المشاريع المنزلية' || cat == 'home_projects';
+          return cat == 'مشاريع منزلية' ||
+              cat == 'المشاريع المنزلية' ||
+              cat == 'home_projects';
         }).toList();
+      }
+
+      // دمج المشاريع المنزلية في restaurantsList إذا لم تكن مضافة هناك مسبقاً
+      for (final hp in homeProjectsList) {
+        final hpName = (hp['name'] ?? '').toString().trim();
+        if (hpName.isEmpty) continue;
+        final alreadyExists = restaurantsList.any(
+          (r) =>
+              (r['name'] ?? '').toString().trim().toLowerCase() ==
+              hpName.toLowerCase(),
+        );
+        if (!alreadyExists) {
+          restaurantsList.add({
+            ...hp,
+            'category': (hp['category'] ?? 'مشاريع منزلية').toString().trim(),
+          });
+        }
       }
 
       notifyListeners();
@@ -635,6 +680,7 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
+      unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
     }
 
