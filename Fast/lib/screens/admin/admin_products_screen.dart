@@ -16,6 +16,7 @@ class AdminProductsScreen extends StatefulWidget {
 class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isUploadingImage = false;
+  bool _isUploadingLogo = false;
 
   static const String _customStoreOption = '__CUSTOM_STORE__';
 
@@ -117,13 +118,39 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     return combined;
   }
 
-  Future<String?> _uploadImageToSupabase(
-      File imageFile, StateSetter setDialogState) async {
-    try {
-      setDialogState(() => _isUploadingImage = true);
+  String _findExistingStoreLogo(
+      AppState appState, String category, String storeName) {
+    final cleanName = storeName.trim().toLowerCase();
+    if (cleanName.isEmpty) return '';
 
-      final fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storagePath = 'products/$fileName';
+    for (final r in appState.restaurantsList) {
+      final rName = (r['name'] ?? '').toString().trim().toLowerCase();
+      if (rName == cleanName) {
+        final logo = (r['logo_url'] ?? r['image_url'] ?? '').toString().trim();
+        if (logo.isNotEmpty) return logo;
+      }
+    }
+    return '';
+  }
+
+  Future<String?> _uploadImageToSupabase(
+    File imageFile,
+    StateSetter setDialogState, {
+    required bool isLogo,
+  }) async {
+    try {
+      setDialogState(() {
+        if (isLogo) {
+          _isUploadingLogo = true;
+        } else {
+          _isUploadingImage = true;
+        }
+      });
+
+      final prefix = isLogo ? 'store_logo' : 'product';
+      final folder = isLogo ? 'logos' : 'products';
+      final fileName = '${prefix}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storagePath = '$folder/$fileName';
 
       await Supabase.instance.client.storage
           .from('products')
@@ -133,13 +160,95 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
           .from('products')
           .getPublicUrl(storagePath);
 
-      setDialogState(() => _isUploadingImage = false);
+      setDialogState(() {
+        if (isLogo) {
+          _isUploadingLogo = false;
+        } else {
+          _isUploadingImage = false;
+        }
+      });
       return publicUrl;
     } catch (e) {
-      setDialogState(() => _isUploadingImage = false);
+      setDialogState(() {
+        if (isLogo) {
+          _isUploadingLogo = false;
+        } else {
+          _isUploadingImage = false;
+        }
+      });
       debugPrint('❌ خطأ في رفع الصورة: $e');
       return null;
     }
+  }
+
+  Future<void> _saveStoreLogoToDatabase(
+    AppState appState, {
+    required String storeName,
+    required String category,
+    required String logoUrl,
+  }) async {
+    final cleanName = storeName.trim();
+    final cleanLogo = logoUrl.trim();
+    if (cleanName.isEmpty || cleanLogo.isEmpty) return;
+
+    if (category.trim() == 'مشاريع منزلية') {
+      final existingProject = await Supabase.instance.client
+          .from('home_projects')
+          .select('id')
+          .ilike('name', cleanName)
+          .maybeSingle();
+
+      if (existingProject != null && existingProject['id'] != null) {
+        await Supabase.instance.client.from('home_projects').update({
+          'logo_url': cleanLogo,
+          'image_url': cleanLogo,
+          'is_active': true,
+        }).eq('id', existingProject['id']);
+      } else {
+        await Supabase.instance.client.from('home_projects').insert({
+          'name': cleanName,
+          'category': 'مشاريع منزلية',
+          'logo_url': cleanLogo,
+          'image_url': cleanLogo,
+          'is_active': true,
+        });
+      }
+
+      try {
+        await (appState as dynamic).fetchHomeProjects();
+      } catch (_) {}
+    }
+
+    try {
+      final existingStore = await Supabase.instance.client
+          .from('restaurants')
+          .select('id')
+          .ilike('name', cleanName)
+          .maybeSingle();
+
+      if (existingStore != null && existingStore['id'] != null) {
+        await Supabase.instance.client.from('restaurants').update({
+          'logo_url': cleanLogo,
+          'image_url': cleanLogo,
+          'category': category.trim(),
+          'is_active': true,
+        }).eq('id', existingStore['id']);
+      } else {
+        await Supabase.instance.client.from('restaurants').insert({
+          'name': cleanName,
+          'category': category.trim(),
+          'logo_url': cleanLogo,
+          'image_url': cleanLogo,
+          'is_active': true,
+        });
+      }
+    } catch (e) {
+      debugPrint('ℹ️ تنبيه عند حفظ اللوجو في جدول المتاجر: $e');
+    }
+
+    try {
+      await (appState as dynamic).fetchRestaurants();
+    } catch (_) {}
   }
 
   Future<void> _showProductDialog(
@@ -175,6 +284,11 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
 
     final customStoreController =
         TextEditingController(text: useCustomStore ? initialStore : '');
+
+    final initialStoreName = useCustomStore ? initialStore : selectedStore;
+    final storeLogoController = TextEditingController(
+      text: _findExistingStoreLogo(appState, selectedCategory, initialStoreName),
+    );
 
     bool isAvailable = product?.available ?? true;
     bool isVariablePrice = product?.isVariablePrice ?? false;
@@ -253,9 +367,12 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             if (updatedStores.isNotEmpty) {
                               selectedStore = updatedStores.first;
                               useCustomStore = false;
+                              storeLogoController.text = _findExistingStoreLogo(
+                                  appState, val, selectedStore);
                             } else {
                               selectedStore = _customStoreOption;
                               useCustomStore = true;
+                              storeLogoController.text = '';
                             }
                           });
                         }
@@ -277,6 +394,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                           setDialogState(() {
                             selectedStore = val;
                             useCustomStore = val == _customStoreOption;
+                            if (!useCustomStore) {
+                              storeLogoController.text = _findExistingStoreLogo(
+                                  appState, selectedCategory, val);
+                            }
                           });
                         }
                       },
@@ -293,6 +414,69 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: storeLogoController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'لوجو المتجر / المشروع (URL)',
+                              labelStyle: TextStyle(color: Colors.amberAccent),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _isUploadingLogo
+                            ? const Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.amber, strokeWidth: 2),
+                                ),
+                              )
+                            : IconButton(
+                                onPressed: () async {
+                                  final XFile? logoFile = await _picker
+                                      .pickImage(source: ImageSource.gallery);
+                                  if (logoFile != null) {
+                                    final uploadedLogoUrl =
+                                        await _uploadImageToSupabase(
+                                      File(logoFile.path),
+                                      setDialogState,
+                                      isLogo: true,
+                                    );
+                                    if (uploadedLogoUrl != null) {
+                                      setDialogState(() {
+                                        storeLogoController.text =
+                                            uploadedLogoUrl;
+                                      });
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'تم رفع لوجو الجهة بنجاح ✅')),
+                                        );
+                                      }
+                                    } else if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text('تعذر رفع اللوجو ❌')),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.storefront,
+                                    color: Colors.amber, size: 28),
+                                tooltip: 'اختيار ورفع لوجو المتجر أو المشروع',
+                              ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: priceController,
@@ -323,7 +507,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             controller: imageController,
                             style: const TextStyle(color: Colors.white),
                             decoration: const InputDecoration(
-                              labelText: 'رابط الصورة (Image URL)',
+                              labelText: 'رابط صورة المنتج (Image URL)',
                               labelStyle: TextStyle(color: Colors.grey),
                             ),
                           ),
@@ -346,7 +530,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                   if (image != null) {
                                     final uploadedUrl =
                                         await _uploadImageToSupabase(
-                                            File(image.path), setDialogState);
+                                      File(image.path),
+                                      setDialogState,
+                                      isLogo: false,
+                                    );
                                     if (uploadedUrl != null) {
                                       setDialogState(() {
                                         imageController.text = uploadedUrl;
@@ -359,21 +546,18 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                                   'تم رفع الصورة بنجاح إلى السحاب ☁️')),
                                         );
                                       }
-                                    } else {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text(
-                                                  'تعذر رفع الصورة ❌')),
-                                        );
-                                      }
+                                    } else if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text('تعذر رفع الصورة ❌')),
+                                      );
                                     }
                                   }
                                 },
                                 icon: const Icon(Icons.add_photo_alternate,
                                     color: Colors.amber, size: 28),
-                                tooltip: 'اختيار ورفع صورة من المعرض',
+                                tooltip: 'اختيار ورفع صورة المنتج من المعرض',
                               ),
                       ],
                     ),
@@ -482,12 +666,21 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     );
 
                     try {
+                      if (storeLogoController.text.trim().isNotEmpty) {
+                        await _saveStoreLogoToDatabase(
+                          appState,
+                          storeName: finalStoreName,
+                          category: selectedCategory,
+                          logoUrl: storeLogoController.text.trim(),
+                        );
+                      }
                       await appState.upsertProduct(newProduct);
                       if (!context.mounted) return;
                       Navigator.pop(dialogContext);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text('تم حفظ المنتج مع الوصف بنجاح ✅')),
+                            content:
+                                Text('تم حفظ المنتج واللوجو بنجاح ✅')),
                       );
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -511,6 +704,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     imageController.dispose();
     descriptionController.dispose();
     customStoreController.dispose();
+    storeLogoController.dispose();
   }
 
   void _showDeleteConfirmationDialog(BuildContext context, AppState appState,
