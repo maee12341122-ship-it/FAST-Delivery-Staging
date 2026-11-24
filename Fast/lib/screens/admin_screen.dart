@@ -30,7 +30,7 @@ class _AdminScreenState extends State<AdminScreen>
   DateTime? _customEndDate;
 
   // المشاريع المنزلية الافتراضية المعتمدة في النظام
-  final List> _defaultHomeProjects = [
+  final List<Map<String, dynamic>> _defaultHomeProjects = [
     {
       'id': 'proj_enabati',
       'name': 'عنباتي',
@@ -206,7 +206,7 @@ class _AdminScreenState extends State<AdminScreen>
 
   // ==================== إدارة المشاريع المنزلية (عنباتي و TWISTA) ====================
 
-  Future<List>> _fetchHomeProjectsList(
+  Future<List<Map<String, dynamic>>> _fetchHomeProjectsList(
       AppState appState) async {
     try {
       final response = await Supabase.instance.client
@@ -214,7 +214,7 @@ class _AdminScreenState extends State<AdminScreen>
           .select()
           .order('id', ascending: true);
 
-      final fetched = List>.from(response);
+      final fetched = List<Map<String, dynamic>>.from(response);
 
       // ضمان وجود "عنباتي" و "TWISTA" ضمن القائمة المعروضة
       final existingNames = fetched
@@ -230,7 +230,7 @@ class _AdminScreenState extends State<AdminScreen>
       return fetched;
     } catch (e) {
       debugPrint('⚠️ تعذر جلب جدول home_projects، سيتم عرض القائمة الافتراضية: $e');
-      return List>.from(_defaultHomeProjects);
+      return List<Map<String, dynamic>>.from(_defaultHomeProjects);
     }
   }
 
@@ -464,7 +464,7 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         Expanded(
-          child: FutureBuilder<List>>(
+          child: FutureBuilder<List<Map<String, dynamic>>>(
             future: _fetchHomeProjectsList(appState),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
