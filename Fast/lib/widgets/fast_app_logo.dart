@@ -6,14 +6,16 @@ class FastAppLogo extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   const FastAppLogo({
-    Key? key, 
-    this.iconSize = 30.0, 
+    super.key,
+    this.iconSize = 30.0,
     this.textSize = 16.0,
-    this.padding = const EdgeInsets.all(8.0),
-  }) : super(key: key);
+    this.padding = const EdgeInsets.all(2.0),
+  });
 
   @override
   Widget build(BuildContext context) {
+    final double logoSize = iconSize > 45 ? iconSize * 1.9 : iconSize * 1.25;
+
     return Container(
       padding: padding,
       decoration: BoxDecoration(
@@ -28,28 +30,22 @@ class FastAppLogo extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.flash_on,
-            size: iconSize,
-            color: Colors.amber,
-          ),
-          if (textSize > 0) ...[
-            const SizedBox(width: 4),
-            Text(
-              'FAST',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: textSize,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/fast_logo.jpg',
+          width: logoSize,
+          height: logoSize,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => SizedBox(
+            width: logoSize,
+            height: logoSize,
+            child: Icon(
+              Icons.flash_on,
+              size: iconSize * 0.75,
+              color: Colors.amber,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
