@@ -2794,7 +2794,7 @@ class _HomeScreenState extends State<HomeScreen>
                   return c == targetCat;
                 }
 
-                final List> dbStores = [];
+                final List<Map<String, dynamic>> dbStores = [];
                 final Map<String, int> nameToIndex = {};
 
                 void addOrEnrichStore(Map<String, dynamic> rawStore) {
