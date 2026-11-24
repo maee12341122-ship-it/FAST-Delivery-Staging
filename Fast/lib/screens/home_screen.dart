@@ -2794,38 +2794,54 @@ class _HomeScreenState extends State<HomeScreen>
                   return c == targetCat;
                 }
 
-                final List<Map<String, dynamic>> dbStores = [];
-                final Set<String> seenNames = {};
+                final List> dbStores = [];
+                final Map<String, int> nameToIndex = {};
 
-                void addStoreIfValid(Map<String, dynamic> rawStore) {
+                void addOrEnrichStore(Map<String, dynamic> rawStore) {
                   final isActive = rawStore['is_active'] ?? true;
                   if (isActive == false) return;
                   final name = (rawStore['name'] ?? '').toString().trim();
                   if (name.isEmpty) return;
                   final key = name.toLowerCase();
-                  if (!seenNames.contains(key)) {
-                    seenNames.add(key);
-                    dbStores.add(rawStore);
+                  final incomingLogo =
+                      (rawStore['logo_url'] ?? rawStore['image_url'] ?? '')
+                          .toString()
+                          .trim();
+
+                  if (!nameToIndex.containsKey(key)) {
+                    nameToIndex[key] = dbStores.length;
+                    dbStores.add({
+                      ...rawStore,
+                      'name': name,
+                      'logo_url': incomingLogo,
+                    });
+                  } else {
+                    final idx = nameToIndex[key]!;
+                    final existingLogo =
+                        (dbStores[idx]['logo_url'] ?? '').toString().trim();
+                    if (existingLogo.isEmpty && incomingLogo.isNotEmpty) {
+                      dbStores[idx]['logo_url'] = incomingLogo;
+                    }
                   }
                 }
 
                 for (final r in appState.restaurantsList) {
                   final rCat = (r['category'] ?? r['type'] ?? '').toString();
                   if (matchesTargetCategory(rCat)) {
-                    addStoreIfValid(Map<String, dynamic>.from(r));
+                    addOrEnrichStore(Map<String, dynamic>.from(r));
                   }
                 }
 
                 if (isHomeProjCat) {
                   for (final hp in appState.homeProjectsList) {
-                    addStoreIfValid(Map<String, dynamic>.from(hp));
+                    addOrEnrichStore(Map<String, dynamic>.from(hp));
                   }
                 }
 
                 for (final p in appState.products) {
                   if (matchesTargetCategory(p.category) &&
                       p.restaurantName.trim().isNotEmpty) {
-                    addStoreIfValid({
+                    addOrEnrichStore({
                       'name': p.restaurantName.trim(),
                       'logo_url': '',
                       'rating': 4.9,
@@ -2872,7 +2888,8 @@ class _HomeScreenState extends State<HomeScreen>
                           final logoUrl = (store['logo_url'] ??
                                   store['image_url'] ??
                                   '')
-                              .toString();
+                              .toString()
+                              .trim();
 
                           return GestureDetector(
                             onTap: () {
@@ -2897,6 +2914,9 @@ class _HomeScreenState extends State<HomeScreen>
                                     backgroundColor: accent.withOpacity(0.2),
                                     backgroundImage: logoUrl.isNotEmpty
                                         ? CachedNetworkImageProvider(logoUrl)
+                                        : null,
+                                    onBackgroundImageError: logoUrl.isNotEmpty
+                                        ? (_, __) {}
                                         : null,
                                     child: logoUrl.isEmpty
                                         ? Icon(
