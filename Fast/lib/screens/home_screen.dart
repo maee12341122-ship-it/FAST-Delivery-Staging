@@ -149,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       final appState = Provider.of<AppState>(context, listen: false);
       unawaited(appState.fetchStoreSettings());
+      unawaited(appState.fetchRestaurantsAndCategories());
       unawaited(appState.fetchProductsFromSupabase());
 
       if (appState.userProfile != null) {
@@ -584,6 +585,11 @@ class _HomeScreenState extends State<HomeScreen>
         'title': 'البقالات',
         'image': 'https://images.unsplash.com/photo-1542838132-92c53300491e',
         'category': 'البقالات'
+      },
+      {
+        'title': 'مشاريع منزلية',
+        'image': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d',
+        'category': 'مشاريع منزلية'
       },
       {
         'title': 'الحلويات',
@@ -2704,13 +2710,18 @@ class _HomeScreenState extends State<HomeScreen>
     final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
         selectedCategory == 'حلويات ومعجنات' ||
         selectedCategory == 'الصيدلية الآمنة' ||
-        selectedCategory == 'البقالات';
+        selectedCategory == 'البقالات' ||
+        selectedCategory == 'مشاريع منزلية' ||
+        selectedCategory == 'المشاريع المنزلية';
 
     if (isCategoryWithShops && selectedRestaurantName != null) {
       filteredProducts = appState.products.where((p) {
+        final pCat = p.category.trim().toLowerCase();
+        final sCat = selectedCategory.trim().toLowerCase();
         final matchesCategory = selectedCategory == 'الكل' ||
-            p.category.trim().toLowerCase() ==
-                selectedCategory.trim().toLowerCase();
+            pCat == sCat ||
+            ((sCat == 'مشاريع منزلية' || sCat == 'المشاريع المنزلية') &&
+                (pCat == 'مشاريع منزلية' || pCat == 'المشاريع المنزلية'));
         final matchesRestaurant =
             p.restaurantName.trim() == selectedRestaurantName!.trim();
         final matchesSearch =
@@ -2733,6 +2744,7 @@ class _HomeScreenState extends State<HomeScreen>
       color: accent,
       onRefresh: () async {
         await appState.fetchStoreSettings();
+        await appState.fetchRestaurantsAndCategories();
         await appState.fetchProductsFromSupabase();
       },
       child: ListView(
@@ -2752,7 +2764,7 @@ class _HomeScreenState extends State<HomeScreen>
                 autofocus: true,
                 style: TextStyle(color: textColor),
                 decoration: InputDecoration(
-                  hintText: 'ابحث عن منتج أو مطعم...',
+                  hintText: 'ابحث عن منتج أو مطعم أو مشروع...',
                   prefixIcon: Icon(Icons.search, color: accent, size: 20),
                   filled: true,
                   fillColor: cardBg,
@@ -2768,24 +2780,60 @@ class _HomeScreenState extends State<HomeScreen>
           if (isCategoryWithShops && selectedRestaurantName == null) ...[
             Builder(
               builder: (context) {
-                final Set<String> storesInThisCategory = appState.products
-                    .where((p) =>
-                        p.category.trim().toLowerCase() ==
-                        selectedCategory.trim().toLowerCase())
-                    .map<String>((p) => p.restaurantName)
-                    .toSet();
+                final targetCat = selectedCategory.trim().toLowerCase();
+                final isHomeProjCat = targetCat == 'مشاريع منزلية' ||
+                    targetCat == 'المشاريع المنزلية';
 
-                List<dynamic> categoryStores = appState.restaurantsList.where((r) {
-                  return storesInThisCategory
-                      .contains(r['name']?.toString().trim());
-                }).toList();
-
-                if (categoryStores.isEmpty) {
-                  categoryStores = storesInThisCategory
-                      .map((name) =>
-                          {'name': name, 'logo_url': '', 'rating': 4.9})
-                      .toList();
+                bool matchesTargetCategory(String rawCat) {
+                  final c = rawCat.trim().toLowerCase();
+                  if (isHomeProjCat) {
+                    return c == 'مشاريع منزلية' ||
+                        c == 'المشاريع المنزلية' ||
+                        c == 'home_projects';
+                  }
+                  return c == targetCat;
                 }
+
+                final List<Map<String, dynamic>> dbStores = [];
+                final Set<String> seenNames = {};
+
+                void addStoreIfValid(Map<String, dynamic> rawStore) {
+                  final isActive = rawStore['is_active'] ?? true;
+                  if (isActive == false) return;
+                  final name = (rawStore['name'] ?? '').toString().trim();
+                  if (name.isEmpty) return;
+                  final key = name.toLowerCase();
+                  if (!seenNames.contains(key)) {
+                    seenNames.add(key);
+                    dbStores.add(rawStore);
+                  }
+                }
+
+                for (final r in appState.restaurantsList) {
+                  final rCat = (r['category'] ?? r['type'] ?? '').toString();
+                  if (matchesTargetCategory(rCat)) {
+                    addStoreIfValid(Map<String, dynamic>.from(r));
+                  }
+                }
+
+                if (isHomeProjCat) {
+                  for (final hp in appState.homeProjectsList) {
+                    addStoreIfValid(Map<String, dynamic>.from(hp));
+                  }
+                }
+
+                for (final p in appState.products) {
+                  if (matchesTargetCategory(p.category) &&
+                      p.restaurantName.trim().isNotEmpty) {
+                    addStoreIfValid({
+                      'name': p.restaurantName.trim(),
+                      'logo_url': '',
+                      'rating': 4.9,
+                    });
+                  }
+                }
+
+                final categoryStores = dbStores;
 
                 if (categoryStores.isEmpty) {
                   return const Padding(
@@ -2803,7 +2851,10 @@ class _HomeScreenState extends State<HomeScreen>
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 6),
-                      child: Text('اختر متجراً',
+                      child: Text(
+                          isHomeProjCat
+                              ? 'اختر مشروعاً منزلياً'
+                              : 'اختر متجراً',
                           style: TextStyle(
                               color: accent,
                               fontWeight: FontWeight.bold,
@@ -2818,7 +2869,10 @@ class _HomeScreenState extends State<HomeScreen>
                         itemBuilder: (context, index) {
                           final store = categoryStores[index];
                           final storeName = store['name']?.toString() ?? 'متجر';
-                          final logoUrl = store['logo_url']?.toString() ?? '';
+                          final logoUrl = (store['logo_url'] ??
+                                  store['image_url'] ??
+                                  '')
+                              .toString();
 
                           return GestureDetector(
                             onTap: () {
@@ -2845,8 +2899,12 @@ class _HomeScreenState extends State<HomeScreen>
                                         ? CachedNetworkImageProvider(logoUrl)
                                         : null,
                                     child: logoUrl.isEmpty
-                                        ? Icon(Icons.store,
-                                            color: accent, size: 20)
+                                        ? Icon(
+                                            isHomeProjCat
+                                                ? Icons.home_work
+                                                : Icons.store,
+                                            color: accent,
+                                            size: 20)
                                         : null,
                                   ),
                                   const SizedBox(height: 6),
