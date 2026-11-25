@@ -140,6 +140,11 @@ class AppState extends ChangeNotifier {
 
   bool _isCreatingOrder = false;
 
+  // إحصائيات الأكثر طلباً: منتجات، مطاعم/متاجر، وأقسام
+  Map<String, int> productOrderCounts = {};
+  Map<String, int> storeOrderCounts = {};
+  Map<String, int> categoryOrderCounts = {};
+
   AppState() {
     unawaited(_initializeApplicationState());
     _initAuthListener();
@@ -492,12 +497,142 @@ class AppState extends ChangeNotifier {
     await fetchProductsFromSupabase();
     await fetchCouriersFromSupabase();
     await fetchRestaurantAverages();
+    await fetchPopularStats();
     unawaited(recordVisitorVisit());
     await fetchTotalVisitorsCount();
     unawaited(fetchAdminFinancialReports());
     listenToOrdersRealtime();
     listenToStoreSettingsRealtime();
     initializeInternetListener();
+  }
+
+  /// حساب الأكثر طلباً للمنتجات، المتاجر/المطاعم، والأقسام
+  Future<void> fetchPopularStats() async {
+    final Map<String, int> prodCounts = {};
+    final Map<String, int> stCounts = {};
+    final Map<String, int> catCounts = {};
+
+    void bumpProduct(ProductModel p, int qty) {
+      final addQty = qty > 0 ? qty : 1;
+      final pKey = p.name.trim().toLowerCase();
+      if (pKey.isNotEmpty) {
+        prodCounts[pKey] = (prodCounts[pKey] ?? 0) + addQty;
+      }
+      final sKey = p.restaurantName.trim().toLowerCase();
+      if (sKey.isNotEmpty) {
+        stCounts[sKey] = (stCounts[sKey] ?? 0) + addQty;
+      }
+      final cKey = p.category.trim().toLowerCase();
+      if (cKey.isNotEmpty) {
+        catCounts[cKey] = (catCounts[cKey] ?? 0) + addQty;
+      }
+    }
+
+    try {
+      final orderItemsRows = await supabase
+          .from('order_items')
+          .select('order_id, product_name, quantity');
+
+      final Set<String> ordersWithItems = {};
+      for (final row in orderItemsRows) {
+        final pName = (row['product_name'] ?? '').toString().trim();
+        final qty = int.tryParse(row['quantity']?.toString() ?? '1') ?? 1;
+        final oid = row['order_id']?.toString().trim() ?? '';
+        if (oid.isNotEmpty) ordersWithItems.add(oid);
+
+        if (pName.isNotEmpty) {
+          final lowerName = pName.toLowerCase();
+          prodCounts[lowerName] =
+              (prodCounts[lowerName] ?? 0) + (qty > 0 ? qty : 1);
+
+          ProductModel? matchedProduct;
+          for (final p in _products) {
+            final pLower = p.name.trim().toLowerCase();
+            if (pLower == lowerName ||
+                lowerName.contains(pLower) ||
+                pLower.contains(lowerName)) {
+              matchedProduct = p;
+              break;
+            }
+          }
+          if (matchedProduct != null) {
+            bumpProduct(matchedProduct, qty);
+          }
+        }
+      }
+
+      // احتساب الطلبات التي ليس لها صفوف في order_items عبر نص الوصف واسم المطعم
+      for (final order in orders) {
+        final status = (order['status'] ?? '').toString().trim();
+        if (status == 'cancelled' || status == 'cancelledByCustomer') continue;
+
+        final oid = order['id']?.toString().trim() ?? '';
+        final restName =
+            (order['restaurant_name'] ?? order['restaurantName'] ?? '')
+                .toString()
+                .trim();
+        final restId = (order['restaurant_id'] ?? '').toString().trim();
+
+        if (restName.isNotEmpty) {
+          stCounts[restName.toLowerCase()] =
+              (stCounts[restName.toLowerCase()] ?? 0) + 1;
+        }
+        if (restId.isNotEmpty) {
+          stCounts[restId.toLowerCase()] =
+              (stCounts[restId.toLowerCase()] ?? 0) + 1;
+        }
+
+        if (oid.isEmpty || !ordersWithItems.contains(oid)) {
+          final desc = (order['items_desc'] ?? order['items_description'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (desc.isNotEmpty) {
+            for (final p in _products) {
+              final pLower = p.name.trim().toLowerCase();
+              if (pLower.isNotEmpty && desc.contains(pLower)) {
+                bumpProduct(p, 1);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('خطأ في حساب إحصائيات الأكثر طلباً: $e');
+    }
+
+    productOrderCounts = prodCounts;
+    storeOrderCounts = stCounts;
+    categoryOrderCounts = catCounts;
+    notifyListeners();
+  }
+
+  int getProductOrderScore(ProductModel product) {
+    final nameKey = product.name.trim().toLowerCase();
+    final storeKey = product.restaurantName.trim().toLowerCase();
+    return (productOrderCounts[nameKey] ?? 0) * 10 +
+        (storeOrderCounts[storeKey] ?? 0);
+  }
+
+  int getStoreOrderScore(Map<String, dynamic> store) {
+    final idKey = (store['id'] ?? '').toString().trim().toLowerCase();
+    final nameKey = (store['name'] ?? '').toString().trim().toLowerCase();
+    final displayOrder =
+        int.tryParse(store['display_order']?.toString() ?? '0') ?? 0;
+    final countScore =
+        (storeOrderCounts[idKey] ?? 0) + (storeOrderCounts[nameKey] ?? 0);
+    return countScore * 100 - displayOrder;
+  }
+
+  int getCategoryOrderScore(String categoryName) {
+    final key = categoryName.trim().toLowerCase();
+    if (key == 'الكل') return 999999999;
+    int score = (categoryOrderCounts[key] ?? 0) * 100;
+    for (final p in _products) {
+      if (p.category.trim().toLowerCase() == key) {
+        score += productOrderCounts[p.name.trim().toLowerCase()] ?? 0;
+      }
+    }
+    return score;
   }
 
   Future<void> _checkInitialSessions() async {
@@ -677,7 +812,7 @@ class AppState extends ChangeNotifier {
   List<String> getSubCategoriesForStore(String storeName, {String? category}) {
     final targetStore = storeName.trim().toLowerCase();
     final targetCat = (category ?? '').trim().toLowerCase();
-    final List<String> sections = [];
+    final Map<String, int> subScores = {};
 
     for (final p in _products) {
       if (p.restaurantName.trim().toLowerCase() != targetStore) continue;
@@ -687,23 +822,31 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final sub = p.subCategory.trim();
-      if (sub.isNotEmpty &&
-          !sections.any((s) => s.toLowerCase() == sub.toLowerCase())) {
-        sections.add(sub);
+      if (sub.isNotEmpty) {
+        final pScore = productOrderCounts[p.name.trim().toLowerCase()] ?? 0;
+        subScores[sub] = (subScores[sub] ?? 0) + pScore;
       }
     }
+
+    final sections = subScores.keys.toList();
+    sections.sort((a, b) => (subScores[b] ?? 0).compareTo(subScores[a] ?? 0));
     return sections;
   }
 
   List<ProductModel> getProductsByCategoryOrRestaurant(String? query) {
+    final List<ProductModel> base;
     if (query == null || query.isEmpty || query == 'الكل') {
-      return List<ProductModel>.from(products);
+      base = List<ProductModel>.from(products);
+    } else {
+      final normalizedQuery = query.trim().toLowerCase();
+      base = products.where((p) {
+        return p.category.trim().toLowerCase() == normalizedQuery ||
+            p.restaurantName.trim().toLowerCase() == normalizedQuery;
+      }).toList();
     }
-    final normalizedQuery = query.trim().toLowerCase();
-    return products.where((p) {
-      return p.category.trim().toLowerCase() == normalizedQuery ||
-          p.restaurantName.trim().toLowerCase() == normalizedQuery;
-    }).toList();
+    base.sort(
+        (a, b) => getProductOrderScore(b).compareTo(getProductOrderScore(a)));
+    return base;
   }
 
   void setSelectedCategory(String? categoryName) {
@@ -731,6 +874,7 @@ class AppState extends ChangeNotifier {
         orders = List<Map<String, dynamic>>.from(initialData);
       }
       _sortOrders();
+      unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
     } catch (e) {
@@ -798,6 +942,8 @@ class AppState extends ChangeNotifier {
       );
       unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
+      unawaited(fetchRestaurantAverages());
+      unawaited(fetchPopularStats());
     }
 
     notifyListeners();
@@ -968,20 +1114,7 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
-  Future<void> fetchProductModifiers(String productId) async {
-    try {
-      final response = await supabase
-          .from('product_modifiers')
-          .select()
-          .eq('product_id', productId);
-
-      productModifiers = List<Map<String, dynamic>>.from(response);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('خطأ في جلب إضافات المنتج: $e');
-    }
-  }
-
+  /// جلب متوسط وعدد تقييمات المطاعم (يدعم الربط عبر restaurant.id أو restaurant.name)
   Future<void> fetchRestaurantAverages() async {
     try {
       final response = await supabase
@@ -998,13 +1131,14 @@ class AppState extends ChangeNotifier {
             double.tryParse(row['rating']?.toString() ?? '0.0') ?? 0.0;
         if (targetId.isNotEmpty && rating > 0) {
           tempRatings.putIfAbsent(targetId, () => []).add(rating);
+          tempRatings.putIfAbsent(targetId.toLowerCase(), () => []).add(rating);
         }
       }
 
-      tempRatings.forEach((targetId, ratings) {
+      tempRatings.forEach((key, ratings) {
         final sum = ratings.fold(0.0, (a, b) => a + b);
         final avg = sum / ratings.length;
-        restaurantRatingsCache[targetId] = {
+        restaurantRatingsCache[key] = {
           'avg': avg,
           'total': ratings.length,
         };
@@ -1013,6 +1147,44 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب تقييمات المطاعم: $e');
+    }
+  }
+
+  /// إرجاع بيانات التقييم {avg, total} لمطعم سواء بالـ id أو بالاسم
+  Map<String, dynamic>? getRestaurantRatingInfo({
+    String? restaurantId,
+    String? restaurantName,
+  }) {
+    final candidates = <String>[
+      if (restaurantId != null && restaurantId.trim().isNotEmpty)
+        restaurantId.trim(),
+      if (restaurantId != null && restaurantId.trim().isNotEmpty)
+        restaurantId.trim().toLowerCase(),
+      if (restaurantName != null && restaurantName.trim().isNotEmpty)
+        restaurantName.trim(),
+      if (restaurantName != null && restaurantName.trim().isNotEmpty)
+        restaurantName.trim().toLowerCase(),
+    ];
+
+    for (final key in candidates) {
+      if (restaurantRatingsCache.containsKey(key)) {
+        return restaurantRatingsCache[key];
+      }
+    }
+    return null;
+  }
+
+  Future<void> fetchProductModifiers(String productId) async {
+    try {
+      final response = await supabase
+          .from('product_modifiers')
+          .select()
+          .eq('product_id', productId);
+
+      productModifiers = List<Map<String, dynamic>>.from(response);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('خطأ في جلب إضافات المنتج: $e');
     }
   }
 
@@ -2719,6 +2891,7 @@ class AppState extends ChangeNotifier {
         } else {
           await fetchOrders();
         }
+        unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
         notifyListeners();
         return;
@@ -2736,6 +2909,7 @@ class AppState extends ChangeNotifier {
         .single();
 
     _upsertOrderInList(updated);
+    unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
     notifyListeners();
   }
@@ -2843,6 +3017,7 @@ class AppState extends ChangeNotifier {
       _products = mapped;
 
       await _localStorage.cacheProducts(response);
+      unawaited(fetchPopularStats());
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب المنتجات: $e');
@@ -2945,6 +3120,7 @@ class AppState extends ChangeNotifier {
       final initialData = await supabase.from('orders').select();
       orders = List<Map<String, dynamic>>.from(initialData);
       _sortOrders();
+      unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
       notifyListeners();
 
@@ -3017,6 +3193,7 @@ class AppState extends ChangeNotifier {
                     o['id'].toString() == payload.oldRecord['id'].toString());
               }
 
+              unawaited(fetchPopularStats());
               unawaited(fetchAdminFinancialReports());
               notifyListeners();
             },
@@ -3163,6 +3340,7 @@ class AppState extends ChangeNotifier {
 
       _cartItems.clear();
       removeCoupon();
+      unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
 
       addNotification(
@@ -3352,6 +3530,7 @@ class AppState extends ChangeNotifier {
           await fetchOrders();
         }
 
+        unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
         notifyListeners();
         return;
@@ -3372,6 +3551,7 @@ class AppState extends ChangeNotifier {
         .single();
 
     _upsertOrderInList(updated);
+    unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
     notifyListeners();
   }
