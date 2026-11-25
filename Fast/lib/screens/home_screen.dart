@@ -125,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  List> _findMatchingStores(
+  List<Map<String, String>> _findMatchingStores(
       AppState appState, String query) {
     if (query.isEmpty) return const [];
     final Map<String, Map<String, String>> uniqueStores = {};
@@ -195,6 +195,29 @@ class _HomeScreenState extends State<HomeScreen>
     return 'المطاعم';
   }
 
+  double? _resolveStoreRating(AppState appState, String storeName,
+      {Map<String, dynamic>? storeMap}) {
+    final direct = storeMap?['rating'] ??
+        storeMap?['avg_rating'] ??
+        storeMap?['average_rating'];
+    if (direct != null) {
+      final parsed = double.tryParse(direct.toString());
+      if (parsed != null && parsed > 0) return parsed;
+    }
+
+    final lower = storeName.trim().toLowerCase();
+    for (final r in appState.restaurantsList) {
+      if ((r['name'] ?? '').toString().trim().toLowerCase() == lower) {
+        final rVal = r['rating'] ?? r['avg_rating'] ?? r['average_rating'];
+        if (rVal != null) {
+          final parsed = double.tryParse(rVal.toString());
+          if (parsed != null && parsed > 0) return parsed;
+        }
+      }
+    }
+    return null;
+  }
+
   Widget _buildSmartSearchPanel(
       AppState appState, Color cardBg, Color textColor) {
     final accent = _accent(appState);
@@ -241,7 +264,8 @@ class _HomeScreenState extends State<HomeScreen>
                     hintText: _searchHintText(),
                     hintStyle:
                         const TextStyle(color: Colors.grey, fontSize: 12),
-                    prefixIcon: Icon(Icons.search_rounded, color: accent, size: 20),
+                    prefixIcon:
+                        Icon(Icons.search_rounded, color: accent, size: 20),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: Icon(Icons.close_rounded,
@@ -366,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen>
               runSpacing: 4,
               children: matchingStores.map((st) {
                 final sName = st['name'] ?? '';
-                final sCat = st['category'] ?? 'المطاعم';
+                final sCat = st['category'] ?? _resolveStoreCategory(appState, sName);
                 return ActionChip(
                   avatar: Icon(Icons.storefront, size: 15, color: accent),
                   label: Text(sName, style: const TextStyle(fontSize: 11)),
@@ -433,6 +457,20 @@ class _HomeScreenState extends State<HomeScreen>
       return match.group(1);
     }
     return null;
+  }
+
+  void _resetToHomeView({bool clearSearch = true}) {
+    setState(() {
+      _currentIndex = 0;
+      selectedCategory = 'الكل';
+      selectedRestaurantName = null;
+      selectedStoreSubCategory = 'الكل';
+      if (clearSearch) {
+        _searchController.clear();
+        _searchScope = 'all';
+        _isSearching = false;
+      }
+    });
   }
 
   @override
@@ -525,7 +563,8 @@ class _HomeScreenState extends State<HomeScreen>
                   shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات
+لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(
                           color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
@@ -805,7 +844,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// بطاقتا «وصل لي» و«طلبات أخرى» جنب بعض في نفس الصف لتكونا ظاهرتين للجميع
   Widget _buildWasalliAndOtherOrdersRow(
       BuildContext context, AppState appState, String token) {
     final accent = _accent(appState);
@@ -2652,24 +2690,36 @@ class _HomeScreenState extends State<HomeScreen>
             appBar: AppBar(
               backgroundColor: cardBg,
               elevation: 2,
-              title: Row(
-                children: [
-                  const SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: FittedBox(
-                      child: FastAppLogo(),
-                    ),
+              title: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  _resetToHomeView();
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: FittedBox(
+                          child: FastAppLogo(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'FAST – تعز',
+                        style: TextStyle(
+                            color: accent,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'FAST – تعز',
-                    style: TextStyle(
-                        color: accent,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
+                ),
               ),
               actions: [
                 IconButton(
@@ -2972,6 +3022,10 @@ class _HomeScreenState extends State<HomeScreen>
               currentIndex: _currentIndex,
               onTap: (index) {
                 HapticFeedback.selectionClick();
+                if (index == 0) {
+                  _resetToHomeView();
+                  return;
+                }
                 if (index == 1 && appState.userProfile == null) {
                   Navigator.push(
                     context,
@@ -3221,7 +3275,7 @@ class _HomeScreenState extends State<HomeScreen>
                   return c == targetCat;
                 }
 
-                final List> dbStores = [];
+                final List<Map<String, dynamic>> dbStores = [];
                 final Map<String, int> nameToIndex = {};
 
                 void addOrEnrichStore(Map<String, dynamic> rawStore) {
@@ -3271,7 +3325,6 @@ class _HomeScreenState extends State<HomeScreen>
                     addOrEnrichStore({
                       'name': p.restaurantName.trim(),
                       'logo_url': '',
-                      'rating': 4.9,
                     });
                   }
                 }
@@ -3304,7 +3357,7 @@ class _HomeScreenState extends State<HomeScreen>
                               fontSize: 14)),
                     ),
                     SizedBox(
-                      height: 98,
+                      height: 112,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -3317,6 +3370,9 @@ class _HomeScreenState extends State<HomeScreen>
                                   '')
                               .toString()
                               .trim();
+                          final double? storeRating = _resolveStoreRating(
+                              appState, storeName,
+                              storeMap: store);
 
                           return GestureDetector(
                             onTap: () {
@@ -3327,7 +3383,7 @@ class _HomeScreenState extends State<HomeScreen>
                               });
                             },
                             child: Container(
-                              width: 112,
+                              width: 116,
                               margin: const EdgeInsets.symmetric(horizontal: 5),
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
@@ -3357,7 +3413,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             size: 20)
                                         : null,
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 5),
                                   Text(
                                     storeName,
                                     maxLines: 1,
@@ -3367,6 +3423,29 @@ class _HomeScreenState extends State<HomeScreen>
                                         fontWeight: FontWeight.bold,
                                         fontSize: 11.5),
                                   ),
+                                  if (storeRating != null) ...[
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.star_rounded,
+                                            size: 13,
+                                            color: appState.isDarkMode
+                                                ? Colors.amber
+                                                : Colors.amber.shade700),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          storeRating.toStringAsFixed(1),
+                                          style: TextStyle(
+                                              color: textColor.withOpacity(0.85),
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -3380,27 +3459,72 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ] else ...[
             if (isCategoryWithShops && selectedRestaurantName != null) ...[
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('منتجات: $selectedRestaurantName',
-                        style: TextStyle(
-                            color: accent,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13)),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        selectedRestaurantName = null;
-                        selectedStoreSubCategory = 'الكل';
-                      }),
-                      child: Text('تغيير المتجر',
-                          style: TextStyle(color: accent, fontSize: 12)),
+              Builder(
+                builder: (context) {
+                  final double? activeStoreRating = _resolveStoreRating(
+                      appState, selectedRestaurantName!);
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text('منتجات: $selectedRestaurantName',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: accent,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13)),
+                              ),
+                              if (activeStoreRating != null) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: accent.withOpacity(0.14),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.star_rounded,
+                                          size: 13,
+                                          color: appState.isDarkMode
+                                              ? Colors.amber
+                                              : Colors.amber.shade700),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        activeStoreRating.toStringAsFixed(1),
+                                        style: TextStyle(
+                                            color: accent,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            selectedRestaurantName = null;
+                            selectedStoreSubCategory = 'الكل';
+                          }),
+                          child: Text('تغيير المتجر',
+                              style: TextStyle(color: accent, fontSize: 12)),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               Builder(
                 builder: (context) {
@@ -4104,13 +4228,20 @@ class _HomeScreenState extends State<HomeScreen>
                                         tooltip: 'مشاركة الفاتورة',
                                         onPressed: () {
                                           final invoiceText =
-                                              'فاتورة تطبيق FAST - تعز\n'
-                                              'رقم الطلب: #${order['id']}\n'
-                                              'المنتجات: ${order['items_desc'] ?? order['items_description']}\n'
-                                              'العنوان: $formattedAddress\n'
-                                              'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي\n'
-                                              'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي\n'
-                                              'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي\n'
+                                              'فاتورة تطبيق FAST - تعز
+'
+                                              'رقم الطلب: #${order['id']}
+'
+                                              'المنتجات: ${order['items_desc'] ?? order['items_description']}
+'
+                                              'العنوان: $formattedAddress
+'
+                                              'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي
+'
+                                              'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي
+'
+                                              'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي
+'
                                               'الحالة: $arabicStatus';
                                           Share.share(invoiceText);
                                         },
