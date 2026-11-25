@@ -5,6 +5,7 @@ class ProductModel {
   final String restaurantName;
   final double price;
   final String category; // المطاعم، حلويات ومعجنات، البقالات، الخضار والفواكه، الصيدلية الآمنة، هدايا واكسسوارات
+  final String subCategory; // القسم الداخلي الخاص بالمتجر/المطعم
   final bool available;
   final String imageUrl;
   final String unit; // كيلو، حبة، صندوق، جرام (مهم للخضار والفواكه)
@@ -17,6 +18,7 @@ class ProductModel {
     required this.restaurantName,
     required this.price,
     required this.category,
+    this.subCategory = '',
     required this.available,
     required this.imageUrl,
     this.unit = 'حبة',
@@ -31,6 +33,7 @@ class ProductModel {
       'restaurant_name': restaurantName,
       'price': price,
       'category': category,
+      'sub_category': subCategory,
       'available': available,
       'image_url': imageUrl,
       'unit': unit,
@@ -63,6 +66,9 @@ class ProductModel {
           '',
       price: double.tryParse(map['price']?.toString() ?? '0.0') ?? 0.0,
       category: map['category']?.toString() ?? 'المطاعم',
+      subCategory: map['sub_category']?.toString().trim() ??
+          map['subCategory']?.toString().trim() ??
+          '',
       available: _parseBool(rawAvailable, fallback: true),
       imageUrl:
           map['image_url']?.toString() ?? map['imageUrl']?.toString() ?? '',
