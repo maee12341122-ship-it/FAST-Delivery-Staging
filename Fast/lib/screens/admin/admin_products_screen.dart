@@ -20,7 +20,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
 
   static const String _customStoreOption = '__CUSTOM_STORE__';
 
-  // قائمة احتياطية في حال عدم توفر بيانات من قاعدة البيانات بعد
   final Map<String, List<String>> _categoryShopsMap = {
     'المطاعم': [
       'مدينتي',
@@ -93,6 +92,46 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     'الصيدلية الآمنة',
     'هدايا واكسسوارات',
   ];
+
+  List<String> _suggestedSubCategories(
+      AppState appState, String category, String storeName) {
+    final existingForStore =
+        appState.getSubCategoriesForStore(storeName, category: category);
+    final lowerStore = storeName.trim().toLowerCase();
+    final List<String> defaults = [];
+
+    if (lowerStore.contains('وافل')) {
+      defaults.addAll([
+        'الوافل',
+        'الكريب الحالي',
+        'الوجبات والكريب المالح',
+        'الطواجن والتشيز والكوكيز',
+        'الصحون العائلي',
+        'المكرونة',
+        'الشاورما',
+        'الخبز',
+        'الإضافات والمشروبات الغازية',
+      ]);
+    } else if (category == 'المطاعم') {
+      defaults.addAll([
+        'المشويات واللحوم',
+        'الوجبات والرز والمقبلات',
+        'الفطائر والبيتزا والمخبوزات',
+        'الفتة والشعبيات والفطور',
+        'السلطات والسحاوق',
+        'الحلويات',
+        'العصائر والمشروبات',
+      ]);
+    }
+
+    final result = <String>[];
+    for (final item in [...existingForStore, ...defaults]) {
+      if (!result.any((e) => e.toLowerCase() == item.toLowerCase())) {
+        result.add(item);
+      }
+    }
+    return result;
+  }
 
   bool _isStoreActive(dynamic rawActive) {
     if (rawActive == null) return true;
@@ -224,7 +263,6 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       }
     }
 
-    // جدول restaurants يعتمد على عمود image_url في السكربت المرسل
     final existingStore = await Supabase.instance.client
         .from('restaurants')
         .select('id')
@@ -259,6 +297,8 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     final imageController = TextEditingController(text: product?.imageUrl ?? '');
     final descriptionController =
         TextEditingController(text: product?.description ?? '');
+    final subCategoryController =
+        TextEditingController(text: product?.subCategory ?? '');
 
     String selectedCategory =
         (product != null && _mainCategories.contains(product.category))
@@ -297,6 +337,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           storesForCategory = _getStoresForCategory(appState, selectedCategory);
+          final activeStoreName = useCustomStore
+              ? customStoreController.text.trim()
+              : (selectedStore == _customStoreOption
+                  ? customStoreController.text.trim()
+                  : selectedStore);
+          final suggestions = _suggestedSubCategories(
+              appState, selectedCategory, activeStoreName);
 
           final dropdownItems = <DropdownMenuItem<String>>[
             ...storesForCategory.map(
@@ -335,6 +382,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
                       controller: nameController,
@@ -405,11 +453,57 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       TextField(
                         controller: customStoreController,
                         style: const TextStyle(color: Colors.white),
+                        onChanged: (_) => setDialogState(() {}),
                         decoration: const InputDecoration(
                           labelText: 'اكتب اسم المتجر أو المشروع المنزلي *',
                           labelStyle: TextStyle(color: Colors.amberAccent),
                           border: OutlineInputBorder(),
                         ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: subCategoryController,
+                      style: const TextStyle(color: Colors.white),
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText:
+                            'القسم الداخلي للمتجر / المطعم (مثال: الوافل، الكريب، المشويات)',
+                        labelStyle:
+                            TextStyle(color: Colors.amberAccent, fontSize: 12),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (suggestions.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      const Text('أقسام سريعة لهذا النشاط/المتجر:',
+                          style: TextStyle(color: Colors.grey, fontSize: 11)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: suggestions.map((sec) {
+                          final selected =
+                              subCategoryController.text.trim() == sec;
+                          return ChoiceChip(
+                            label:
+                                Text(sec, style: const TextStyle(fontSize: 11)),
+                            selected: selected,
+                            selectedColor: Colors.amber,
+                            backgroundColor: const Color(0xFF121212),
+                            labelStyle: TextStyle(
+                              color: selected ? Colors.black : Colors.white70,
+                              fontWeight: selected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                            onSelected: (_) {
+                              setDialogState(() {
+                                subCategoryController.text = sec;
+                              });
+                            },
+                          );
+                        }).toList(),
                       ),
                     ],
                     const SizedBox(height: 10),
@@ -656,6 +750,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                       restaurantName: finalStoreName,
                       price: parsedPrice,
                       category: selectedCategory,
+                      subCategory: subCategoryController.text.trim(),
                       available: isAvailable,
                       imageUrl: imageController.text.trim(),
                       description: descriptionController.text.trim(),
@@ -701,6 +796,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     priceController.dispose();
     imageController.dispose();
     descriptionController.dispose();
+    subCategoryController.dispose();
     customStoreController.dispose();
     storeLogoController.dispose();
   }
@@ -785,6 +881,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                 itemCount: products.length,
                 itemBuilder: (context, index) {
                   final ProductModel product = products[index];
+                  final subLabel = product.subCategory.trim().isNotEmpty
+                      ? ' | قسم: ${product.subCategory.trim()}'
+                      : '';
                   return Card(
                     color: const Color(0xFF1E1E1E),
                     margin: const EdgeInsets.symmetric(vertical: 6),
@@ -811,7 +910,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                           style: const TextStyle(
                               color: Colors.white, fontWeight: FontWeight.bold)),
                       subtitle: Text(
-                        '${product.restaurantName} | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
+                        '${product.restaurantName}$subLabel | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
                         style:
                             const TextStyle(color: Colors.grey, fontSize: 12),
                       ),
