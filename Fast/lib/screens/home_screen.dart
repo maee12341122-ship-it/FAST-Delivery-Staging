@@ -125,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  List<Map<String, String>> _findMatchingStores(
+  List> _findMatchingStores(
       AppState appState, String query) {
     if (query.isEmpty) return const [];
     final Map<String, Map<String, String>> uniqueStores = {};
@@ -390,7 +390,8 @@ class _HomeScreenState extends State<HomeScreen>
               runSpacing: 4,
               children: matchingStores.map((st) {
                 final sName = st['name'] ?? '';
-                final sCat = st['category'] ?? _resolveStoreCategory(appState, sName);
+                final sCat =
+                    st['category'] ?? _resolveStoreCategory(appState, sName);
                 return ActionChip(
                   avatar: Icon(Icons.storefront, size: 15, color: accent),
                   label: Text(sName, style: const TextStyle(fontSize: 11)),
@@ -563,8 +564,7 @@ class _HomeScreenState extends State<HomeScreen>
                   shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات
-لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(
                           color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
@@ -3275,7 +3275,7 @@ class _HomeScreenState extends State<HomeScreen>
                   return c == targetCat;
                 }
 
-                final List<Map<String, dynamic>> dbStores = [];
+                final List> dbStores = [];
                 final Map<String, int> nameToIndex = {};
 
                 void addOrEnrichStore(Map<String, dynamic> rawStore) {
@@ -4228,21 +4228,14 @@ class _HomeScreenState extends State<HomeScreen>
                                         tooltip: 'مشاركة الفاتورة',
                                         onPressed: () {
                                           final invoiceText =
-                                              'فاتورة تطبيق FAST - تعز
-'
-                                              'رقم الطلب: #${order['id']}
-'
-                                              'المنتجات: ${order['items_desc'] ?? order['items_description']}
-'
-                                              'العنوان: $formattedAddress
-'
-                                              'سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي
-'
-                                              'رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي
-'
-                                              'الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي
-'
-                                              'الحالة: $arabicStatus';
+                                              '''فاتورة تطبيق FAST - تعز
+رقم الطلب: #${order['id']}
+المنتجات: ${order['items_desc'] ?? order['items_description']}
+العنوان: $formattedAddress
+سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي
+رسوم التوصيل: ${deliveryFee.toStringAsFixed(0)} ر.ي
+الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي
+الحالة: $arabicStatus''';
                                           Share.share(invoiceText);
                                         },
                                       ),
