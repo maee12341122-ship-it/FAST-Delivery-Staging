@@ -15,8 +15,14 @@ class AdminProductsScreen extends StatefulWidget {
 
 class _AdminProductsScreenState extends State<AdminProductsScreen> {
   final ImagePicker _picker = ImagePicker();
+  final TextEditingController _searchController = TextEditingController();
+
   bool _isUploadingImage = false;
   bool _isUploadingLogo = false;
+
+  String _filterCategory = 'الكل';
+  String _filterStore = 'الكل';
+  String _filterSubCategory = 'الكل';
 
   static const String _customStoreOption = '__CUSTOM_STORE__';
 
@@ -93,6 +99,12 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     'هدايا واكسسوارات',
   ];
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   List<String> _suggestedSubCategories(
       AppState appState, String category, String storeName) {
     final existingForStore =
@@ -161,6 +173,118 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       }
     }
     return combined;
+  }
+
+  List<String> _getFilterStores(AppState appState) {
+    final result = <String>[];
+    void addUnique(String raw) {
+      final clean = raw.trim();
+      if (clean.isEmpty) return;
+      if (!result.any((e) => e.toLowerCase() == clean.toLowerCase())) {
+        result.add(clean);
+      }
+    }
+
+    if (_filterCategory == 'الكل') {
+      for (final p in appState.products) {
+        addUnique(p.restaurantName);
+      }
+      for (final r in appState.restaurantsList) {
+        if (_isStoreActive(r['is_active'])) {
+          addUnique((r['name'] ?? '').toString());
+        }
+      }
+      for (final list in _categoryShopsMap.values) {
+        for (final s in list) {
+          addUnique(s);
+        }
+      }
+    } else {
+      for (final s in _getStoresForCategory(appState, _filterCategory)) {
+        addUnique(s);
+      }
+      for (final p in appState.products) {
+        if (p.category.trim().toLowerCase() ==
+            _filterCategory.trim().toLowerCase()) {
+          addUnique(p.restaurantName);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  List<String> _getFilterSubCategories(AppState appState) {
+    final result = <String>[];
+    void addUnique(String raw) {
+      final clean = raw.trim();
+      if (clean.isEmpty) return;
+      if (!result.any((e) => e.toLowerCase() == clean.toLowerCase())) {
+        result.add(clean);
+      }
+    }
+
+    if (_filterStore != 'الكل') {
+      for (final sub in appState.getSubCategoriesForStore(
+        _filterStore,
+        category: _filterCategory == 'الكل' ? null : _filterCategory,
+      )) {
+        addUnique(sub);
+      }
+    }
+
+    for (final p in appState.products) {
+      final matchesCat = _filterCategory == 'الكل' ||
+          p.category.trim().toLowerCase() ==
+              _filterCategory.trim().toLowerCase();
+      final matchesStore = _filterStore == 'الكل' ||
+          p.restaurantName.trim().toLowerCase() ==
+              _filterStore.trim().toLowerCase();
+      if (matchesCat && matchesStore) {
+        addUnique(p.subCategory);
+      }
+    }
+
+    return result;
+  }
+
+  List<ProductModel> _filterProducts(List<ProductModel> products) {
+    final query = _searchController.text.trim().toLowerCase();
+
+    return products.where((p) {
+      final matchesCategory = _filterCategory == 'الكل' ||
+          p.category.trim().toLowerCase() ==
+              _filterCategory.trim().toLowerCase();
+
+      final matchesStore = _filterStore == 'الكل' ||
+          p.restaurantName.trim().toLowerCase() ==
+              _filterStore.trim().toLowerCase();
+
+      final matchesSubCat = _filterSubCategory == 'الكل' ||
+          p.subCategory.trim().toLowerCase() ==
+              _filterSubCategory.trim().toLowerCase();
+
+      final matchesSearch = query.isEmpty ||
+          p.name.toLowerCase().contains(query) ||
+          p.restaurantName.toLowerCase().contains(query) ||
+          p.subCategory.toLowerCase().contains(query) ||
+          p.description.toLowerCase().contains(query) ||
+          p.category.toLowerCase().contains(query);
+
+      return matchesCategory &&
+          matchesStore &&
+          matchesSubCat &&
+          matchesSearch;
+    }).toList();
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _filterCategory = 'الكل';
+      _filterStore = 'الكل';
+      _filterSubCategory = 'الكل';
+      _searchController.clear();
+    });
   }
 
   String _findExistingStoreLogo(
@@ -303,10 +427,15 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     String selectedCategory =
         (product != null && _mainCategories.contains(product.category))
             ? product.category
-            : 'المطاعم';
+            : (_filterCategory != 'الكل' &&
+                    _mainCategories.contains(_filterCategory)
+                ? _filterCategory
+                : 'المطاعم');
 
     var storesForCategory = _getStoresForCategory(appState, selectedCategory);
-    final initialStore = (product?.restaurantName ?? '').trim();
+    final initialStore = (product?.restaurantName ??
+            (_filterStore != 'الكل' ? _filterStore : ''))
+        .trim();
 
     bool useCustomStore = initialStore.isNotEmpty &&
         !storesForCategory
@@ -856,10 +985,86 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     );
   }
 
+  Widget _buildFilterChipStrip({
+    required String label,
+    required List<String> items,
+    required String selectedValue,
+    required ValueChanged<String> onSelected,
+  }) {
+    final chips = ['الكل', ...items];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4, top: 6),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.amber,
+              fontSize: 11.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 36,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: chips.length,
+            itemBuilder: (context, index) {
+              final item = chips[index];
+              final isSelected = selectedValue == item;
+              return Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: ChoiceChip(
+                  label: Text(
+                    item,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: isSelected ? Colors.black : Colors.white70,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: Colors.amber,
+                  backgroundColor: const Color(0xFF121212),
+                  side: BorderSide(
+                    color: isSelected
+                        ? Colors.amber
+                        : Colors.white.withOpacity(0.15),
+                  ),
+                  onSelected: (_) => onSelected(item),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
-    final products = appState.products;
+    final allProducts = appState.products;
+    final availableStores = _getFilterStores(appState);
+    final validStoreFilter =
+        _filterStore == 'الكل' || availableStores.contains(_filterStore)
+            ? _filterStore
+            : 'الكل';
+
+    final availableSubCategories = _getFilterSubCategories(appState);
+    final validSubCatFilter = _filterSubCategory == 'الكل' ||
+            availableSubCategories.contains(_filterSubCategory)
+        ? _filterSubCategory
+        : 'الكل';
+
+    final filteredProducts = _filterProducts(allProducts);
+    final hasActiveFilter = _filterCategory != 'الكل' ||
+        validStoreFilter != 'الكل' ||
+        validSubCatFilter != 'الكل' ||
+        _searchController.text.trim().isNotEmpty;
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -871,72 +1076,216 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
               style:
                   TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
           iconTheme: const IconThemeData(color: Colors.amber),
+          actions: [
+            if (hasActiveFilter)
+              TextButton.icon(
+                onPressed: _resetFilters,
+                icon: const Icon(Icons.filter_alt_off,
+                    color: Colors.amber, size: 18),
+                label: const Text('إعادة ضبط',
+                    style: TextStyle(color: Colors.amber, fontSize: 12)),
+              ),
+          ],
         ),
-        body: products.isEmpty
-            ? const Center(
-                child: Text('لا توجد منتجات مسجلة حالياً',
-                    style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: products.length,
-                itemBuilder: (context, index) {
-                  final ProductModel product = products[index];
-                  final subLabel = product.subCategory.trim().isNotEmpty
-                      ? ' | قسم: ${product.subCategory.trim()}'
-                      : '';
-                  return Card(
-                    color: const Color(0xFF1E1E1E),
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.amber.withOpacity(0.2)),
+        body: Column(
+          children: [
+            Container(
+              color: const Color(0xFF1E1E1E),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText:
+                          'ابحث باسم المنتج، المتجر، القسم الداخلي، أو الوصف...',
+                      hintStyle:
+                          const TextStyle(color: Colors.grey, fontSize: 12),
+                      prefixIcon: const Icon(Icons.search, color: Colors.amber),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear,
+                                  color: Colors.grey, size: 20),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFF121212),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            BorderSide(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            BorderSide(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.amber),
+                      ),
                     ),
-                    child: ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: product.imageUrl.isNotEmpty
-                            ? Image.network(
-                                product.imageUrl,
-                                width: 50,
-                                height: 50,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.fastfood,
-                                    color: Colors.amber),
-                              )
-                            : const Icon(Icons.fastfood, color: Colors.amber),
+                  ),
+                  _buildFilterChipStrip(
+                    label: '1. القسم الرئيسي:',
+                    items: _mainCategories,
+                    selectedValue: _filterCategory,
+                    onSelected: (val) {
+                      setState(() {
+                        _filterCategory = val;
+                        _filterStore = 'الكل';
+                        _filterSubCategory = 'الكل';
+                      });
+                    },
+                  ),
+                  _buildFilterChipStrip(
+                    label: '2. المتجر / المشروع:',
+                    items: availableStores,
+                    selectedValue: validStoreFilter,
+                    onSelected: (val) {
+                      setState(() {
+                        _filterStore = val;
+                        _filterSubCategory = 'الكل';
+                      });
+                    },
+                  ),
+                  if (availableSubCategories.isNotEmpty)
+                    _buildFilterChipStrip(
+                      label: '3. القسم الداخلي / الصنف:',
+                      items: availableSubCategories,
+                      selectedValue: validSubCatFilter,
+                      onSelected: (val) {
+                        setState(() {
+                          _filterSubCategory = val;
+                        });
+                      },
+                    ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'عدد المنتجات: ${filteredProducts.length} من ${allProducts.length}',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold),
                       ),
-                      title: Text(product.name,
+                      if (validStoreFilter != 'الكل')
+                        Text(
+                          'المتجر: $validStoreFilter',
                           style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.bold)),
-                      subtitle: Text(
-                        '${product.restaurantName}$subLabel | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 12),
-                      ),
-                      isThreeLine: true,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                              color: Colors.amberAccent, fontSize: 11),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: filteredProducts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit,
-                                color: Colors.blueAccent, size: 20),
-                            onPressed: () => _showProductDialog(
-                                context, appState,
-                                product: product),
+                          const Text(
+                            'لا توجد منتجات مطابقة للتصفية أو البحث',
+                            style: TextStyle(color: Colors.grey, fontSize: 13),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: Colors.redAccent, size: 20),
-                            onPressed: () => _showDeleteConfirmationDialog(
-                                context, appState, product.id, product.name),
-                          ),
+                          if (hasActiveFilter) ...[
+                            const SizedBox(height: 10),
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber,
+                                  side: const BorderSide(color: Colors.amber)),
+                              onPressed: _resetFilters,
+                              child: const Text('عرض جميع المنتجات'),
+                            ),
+                          ],
                         ],
                       ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                      itemCount: filteredProducts.length,
+                      itemBuilder: (context, index) {
+                        final ProductModel product = filteredProducts[index];
+                        final subLabel = product.subCategory.trim().isNotEmpty
+                            ? ' | قسم: ${product.subCategory.trim()}'
+                            : '';
+                        return Card(
+                          color: const Color(0xFF1E1E1E),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                                color: Colors.amber.withOpacity(0.2)),
+                          ),
+                          child: ListTile(
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: product.imageUrl.isNotEmpty
+                                  ? Image.network(
+                                      product.imageUrl,
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                          Icons.fastfood,
+                                          color: Colors.amber),
+                                    )
+                                  : const Icon(Icons.fastfood,
+                                      color: Colors.amber),
+                            ),
+                            title: Text(product.name,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                              '${product.restaurantName}$subLabel | ${product.price} ر.ي\nوصف: ${product.description.isNotEmpty ? product.description : "بدون وصف"}',
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12),
+                            ),
+                            isThreeLine: true,
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.blueAccent, size: 20),
+                                  onPressed: () => _showProductDialog(
+                                      context, appState,
+                                      product: product),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.redAccent, size: 20),
+                                  onPressed: () =>
+                                      _showDeleteConfirmationDialog(
+                                          context,
+                                          appState,
+                                          product.id,
+                                          product.name),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
+            ),
+          ],
+        ),
         floatingActionButton: FloatingActionButton(
           backgroundColor: Colors.amber,
           onPressed: () => _showProductDialog(context, appState),
