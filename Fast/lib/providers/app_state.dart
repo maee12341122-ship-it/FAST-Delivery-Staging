@@ -39,7 +39,7 @@ class LocalStorageService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE local_products (
@@ -49,12 +49,20 @@ class LocalStorageService {
             restaurant_name TEXT,
             price REAL,
             category TEXT,
+            sub_category TEXT,
             available INTEGER,
             image_url TEXT,
             unit TEXT,
             is_variable_price INTEGER
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            "ALTER TABLE local_products ADD COLUMN sub_category TEXT DEFAULT ''",
+          );
+        }
       },
     );
   }
@@ -73,6 +81,7 @@ class LocalStorageService {
             'restaurant_name': p['restaurant_name'] ?? 'متجر عام',
             'price': double.tryParse(p['price'].toString()) ?? 0.0,
             'category': p['category'] ?? 'المطاعم',
+            'sub_category': p['sub_category'] ?? '',
             'available': (p['available'] ?? true) ? 1 : 0,
             'image_url': p['image_url'] ?? '',
             'unit': p['unit'] ?? 'حبة',
@@ -99,6 +108,7 @@ class LocalStorageService {
           restaurantName: p['restaurant_name']?.toString() ?? 'متجر عام',
           price: double.tryParse(p['price'].toString()) ?? 0.0,
           category: p['category']?.toString() ?? 'المطاعم',
+          subCategory: p['sub_category']?.toString() ?? '',
           available: p['available'] == 1,
           imageUrl: p['image_url']?.toString() ?? '',
           unit: p['unit']?.toString() ?? 'حبة',
@@ -613,7 +623,6 @@ class AppState extends ChangeNotifier {
         }).toList();
       }
 
-      // دمج المشاريع المنزلية في restaurantsList إذا لم تكن مضافة هناك مسبقاً
       for (final hp in homeProjectsList) {
         final hpName = (hp['name'] ?? '').toString().trim();
         if (hpName.isEmpty) continue;
@@ -637,7 +646,6 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // استكمال أي لوجو مفقود من السجلات المتطابقة أو منتجات المتجر/المشروع
       for (final r in restaurantsList) {
         if (_extractLogoUrl(r).isEmpty) {
           final name = (r['name'] ?? '').toString().trim();
@@ -664,6 +672,27 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('خطأ في جلب المطاعم والأقسام: $e');
     }
+  }
+
+  List<String> getSubCategoriesForStore(String storeName, {String? category}) {
+    final targetStore = storeName.trim().toLowerCase();
+    final targetCat = (category ?? '').trim().toLowerCase();
+    final List<String> sections = [];
+
+    for (final p in _products) {
+      if (p.restaurantName.trim().toLowerCase() != targetStore) continue;
+      if (targetCat.isNotEmpty &&
+          targetCat != 'الكل' &&
+          p.category.trim().toLowerCase() != targetCat) {
+        continue;
+      }
+      final sub = p.subCategory.trim();
+      if (sub.isNotEmpty &&
+          !sections.any((s) => s.toLowerCase() == sub.toLowerCase())) {
+        sections.add(sub);
+      }
+    }
+    return sections;
   }
 
   List<ProductModel> getProductsByCategoryOrRestaurant(String? query) {
@@ -2766,6 +2795,7 @@ class AppState extends ChangeNotifier {
       'restaurant_name': product.restaurantName.trim(),
       'price': product.price,
       'category': product.category,
+      'sub_category': product.subCategory.trim(),
       'available': product.available,
       'image_url': product.imageUrl,
       'unit': product.unit,
@@ -2803,6 +2833,7 @@ class AppState extends ChangeNotifier {
           restaurantName: p['restaurant_name'] ?? 'متجر عام',
           price: double.tryParse(p['price'].toString()) ?? 0.0,
           category: p['category'] ?? 'المطاعم',
+          subCategory: p['sub_category']?.toString().trim() ?? '',
           available: p['available'] ?? true,
           imageUrl: p['image_url'] ?? '',
           unit: p['unit'] ?? 'حبة',
