@@ -37,8 +37,12 @@ class _HomeScreenState extends State<HomeScreen>
   String selectedCategory = 'الكل';
   String? selectedRestaurantName;
   String selectedStoreSubCategory = 'الكل';
+
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
+  // أقسام البحث: all | products | stores | subCategories
+  String _searchScope = 'all';
 
   final TextEditingController _customItemNameController = TextEditingController();
   final TextEditingController _customItemPriceController = TextEditingController();
@@ -89,6 +93,304 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
     return rawAddress;
+  }
+
+  String _searchHintText() {
+    switch (_searchScope) {
+      case 'products':
+        return 'ابحث في أسماء المنتجات والوجبات...';
+      case 'stores':
+        return 'ابحث عن متجر، مطعم، أو مشروع منزلي...';
+      case 'subCategories':
+        return 'ابحث عن قسم داخلي (مثل: الوافل، الكريب)...';
+      default:
+        return 'ابحث عن منتج، متجر، أو قسم داخلي...';
+    }
+  }
+
+  bool _matchesProductSearch(ProductModel product, String query) {
+    if (query.isEmpty) return true;
+    switch (_searchScope) {
+      case 'products':
+        return product.name.toLowerCase().contains(query);
+      case 'stores':
+        return product.restaurantName.toLowerCase().contains(query);
+      case 'subCategories':
+        return product.subCategory.toLowerCase().contains(query);
+      default:
+        return product.name.toLowerCase().contains(query) ||
+            product.restaurantName.toLowerCase().contains(query) ||
+            product.subCategory.toLowerCase().contains(query) ||
+            product.category.toLowerCase().contains(query);
+    }
+  }
+
+  List> _findMatchingStores(
+      AppState appState, String query) {
+    if (query.isEmpty) return const [];
+    final Map<String, Map<String, String>> uniqueStores = {};
+
+    for (final r in appState.restaurantsList) {
+      final name = (r['name'] ?? '').toString().trim();
+      final cat = (r['category'] ?? r['type'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (name.toLowerCase().contains(query) ||
+          cat.toLowerCase().contains(query)) {
+        uniqueStores.putIfAbsent(
+          name.toLowerCase(),
+          () => {'name': name, 'category': cat.isNotEmpty ? cat : 'المطاعم'},
+        );
+      }
+    }
+
+    for (final hp in appState.homeProjectsList) {
+      final name = (hp['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (name.toLowerCase().contains(query)) {
+        uniqueStores.putIfAbsent(
+          name.toLowerCase(),
+          () => {'name': name, 'category': 'مشاريع منزلية'},
+        );
+      }
+    }
+
+    for (final p in appState.products) {
+      final name = p.restaurantName.trim();
+      if (name.isEmpty) continue;
+      if (name.toLowerCase().contains(query)) {
+        uniqueStores.putIfAbsent(
+          name.toLowerCase(),
+          () => {
+            'name': name,
+            'category': p.category.trim().isNotEmpty
+                ? p.category.trim()
+                : 'المطاعم',
+          },
+        );
+      }
+    }
+
+    return uniqueStores.values.take(6).toList();
+  }
+
+  String _resolveStoreCategory(AppState appState, String storeName) {
+    final lower = storeName.trim().toLowerCase();
+    for (final r in appState.restaurantsList) {
+      if ((r['name'] ?? '').toString().trim().toLowerCase() == lower) {
+        final cat = (r['category'] ?? r['type'] ?? '').toString().trim();
+        if (cat.isNotEmpty) return cat;
+      }
+    }
+    for (final hp in appState.homeProjectsList) {
+      if ((hp['name'] ?? '').toString().trim().toLowerCase() == lower) {
+        return 'مشاريع منزلية';
+      }
+    }
+    for (final p in appState.products) {
+      if (p.restaurantName.trim().toLowerCase() == lower &&
+          p.category.trim().isNotEmpty) {
+        return p.category.trim();
+      }
+    }
+    return 'المطاعم';
+  }
+
+  Widget _buildSmartSearchPanel(
+      AppState appState, Color cardBg, Color textColor) {
+    final accent = _accent(appState);
+    final query = _searchController.text.trim().toLowerCase();
+    final matchingStores = _findMatchingStores(appState, query);
+
+    final searchScopes = [
+      {'key': 'all', 'label': 'الكل', 'icon': Icons.all_inclusive},
+      {'key': 'products', 'label': 'المنتجات', 'icon': Icons.fastfood},
+      {'key': 'stores', 'label': 'المتاجر', 'icon': Icons.storefront},
+      {
+        'key': 'subCategories',
+        'label': 'الأقسام الداخلية',
+        'icon': Icons.category
+      },
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withOpacity(0.45), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  style: TextStyle(color: textColor, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: _searchHintText(),
+                    hintStyle:
+                        const TextStyle(color: Colors.grey, fontSize: 12),
+                    prefixIcon: Icon(Icons.search_rounded, color: accent, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.close_rounded,
+                                color: accent, size: 19),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: appState.isDarkMode
+                        ? const Color(0xFF121212)
+                        : Colors.grey[100],
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 9),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'إغلاق البحث',
+                onPressed: () {
+                  setState(() {
+                    _isSearching = false;
+                    _searchController.clear();
+                    _searchScope = 'all';
+                  });
+                },
+                icon: const Icon(Icons.keyboard_arrow_up_rounded,
+                    color: Colors.grey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 32,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: searchScopes.length,
+              itemBuilder: (context, index) {
+                final item = searchScopes[index];
+                final key = item['key'] as String;
+                final label = item['label'] as String;
+                final icon = item['icon'] as IconData;
+                final isSelected = _searchScope == key;
+
+                return Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _searchScope = key);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? accent
+                            : (appState.isDarkMode
+                                ? const Color(0xFF121212)
+                                : Colors.grey[100]),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? accent
+                              : Colors.grey.withOpacity(0.25),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            icon,
+                            size: 14,
+                            color: isSelected
+                                ? (appState.isDarkMode
+                                    ? Colors.black
+                                    : Colors.white)
+                                : accent,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isSelected
+                                  ? (appState.isDarkMode
+                                      ? Colors.black
+                                      : Colors.white)
+                                  : textColor,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (matchingStores.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'متاجر مطابقة:',
+              style: TextStyle(
+                  color: accent, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: matchingStores.map((st) {
+                final sName = st['name'] ?? '';
+                final sCat = st['category'] ?? 'المطاعم';
+                return ActionChip(
+                  avatar: Icon(Icons.storefront, size: 15, color: accent),
+                  label: Text(sName, style: const TextStyle(fontSize: 11)),
+                  backgroundColor: appState.isDarkMode
+                      ? const Color(0xFF121212)
+                      : Colors.grey[100],
+                  side: BorderSide(color: accent.withOpacity(0.35)),
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      selectedCategory = sCat;
+                      selectedRestaurantName = sName;
+                      selectedStoreSubCategory = 'الكل';
+                      _searchController.clear();
+                      _isSearching = false;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   void _handleNotificationTap(
@@ -169,6 +471,7 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _popupAnimController.dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _customItemNameController.dispose();
     _customItemPriceController.dispose();
     _customItemNotesController.dispose();
@@ -2388,17 +2691,51 @@ class _HomeScreenState extends State<HomeScreen>
                     );
                   },
                 ),
-                IconButton(
-                  icon: Icon(_isSearching ? Icons.close : Icons.search,
-                      color: accent, size: 24),
-                  tooltip: 'البحث السريع',
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      _isSearching = !_isSearching;
-                      if (!_isSearching) _searchController.clear();
-                    });
-                  },
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        _isSearching ? Icons.search_off_rounded : Icons.search,
+                        color: accent,
+                        size: 24,
+                      ),
+                      tooltip: 'البحث والأقسام',
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          _currentIndex = 0;
+                          _isSearching = !_isSearching;
+                          if (!_isSearching) {
+                            _searchController.clear();
+                            _searchScope = 'all';
+                          }
+                        });
+                        if (_isSearching) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              FocusScope.of(context)
+                                  .requestFocus(_searchFocusNode);
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    if (_searchController.text.trim().isNotEmpty ||
+                        _searchScope != 'all')
+                      Positioned(
+                        top: 9,
+                        right: 9,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.greenAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2804,6 +3141,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     final searchQuery = _searchController.text.trim().toLowerCase();
+    final bool hasActiveSearch = searchQuery.isNotEmpty;
     List filteredProducts = [];
 
     final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
@@ -2826,21 +3164,21 @@ class _HomeScreenState extends State<HomeScreen>
         final matchesSubCategory = selectedStoreSubCategory == 'الكل' ||
             p.subCategory.trim().toLowerCase() ==
                 selectedStoreSubCategory.trim().toLowerCase();
-        final matchesSearch =
-            searchQuery.isEmpty || p.name.toLowerCase().contains(searchQuery);
+        final matchesSearch = _matchesProductSearch(p, searchQuery);
         return matchesCategory &&
             matchesRestaurant &&
             matchesSubCategory &&
             matchesSearch;
       }).toList();
-    } else if (!isCategoryWithShops || selectedCategory == 'الكل') {
+    } else if (!isCategoryWithShops ||
+        selectedCategory == 'الكل' ||
+        hasActiveSearch) {
       filteredProducts = appState.products.where((p) {
         final matchesCategory = selectedCategory == 'الكل' ||
+            hasActiveSearch ||
             p.category.trim().toLowerCase() ==
                 selectedCategory.trim().toLowerCase();
-        final matchesSearch = searchQuery.isEmpty ||
-            p.name.toLowerCase().contains(searchQuery) ||
-            p.restaurantName.toLowerCase().contains(searchQuery);
+        final matchesSearch = _matchesProductSearch(p, searchQuery);
         return matchesCategory && matchesSearch;
       }).toList();
     }
@@ -2862,27 +3200,11 @@ class _HomeScreenState extends State<HomeScreen>
               context, appState, appState.userProfile?['id'] ?? 'guest'),
           _buildAdBannerWidget(appState, cardBg, textColor),
           if (_isSearching)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                style: TextStyle(color: textColor),
-                decoration: InputDecoration(
-                  hintText: 'ابحث عن منتج أو مطعم أو مشروع...',
-                  prefixIcon: Icon(Icons.search, color: accent, size: 20),
-                  filled: true,
-                  fillColor: cardBg,
-                  isDense: true,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-                onChanged: (val) => setState(() {}),
-              ),
-            ),
+            _buildSmartSearchPanel(appState, cardBg, textColor),
           _buildCategoriesHorizontalList(appState, textColor, cardBg),
-          if (isCategoryWithShops && selectedRestaurantName == null) ...[
+          if (isCategoryWithShops &&
+              selectedRestaurantName == null &&
+              !hasActiveSearch) ...[
             Builder(
               builder: (context) {
                 final targetCat = selectedCategory.trim().toLowerCase();
