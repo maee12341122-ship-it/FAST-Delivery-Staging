@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +19,8 @@ class PhoneAuthScreen extends StatefulWidget {
 }
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
+  static const Duration _fastNetworkTimeout = Duration(milliseconds: 4500);
+
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
@@ -49,7 +52,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   @override
   void initState() {
     super.initState();
-    _checkExistingAdminOrCourierSession();
+    unawaited(_checkExistingAdminOrCourierSession());
   }
 
   String _normalizePhone(String rawPhone) {
@@ -60,7 +63,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     return clean;
   }
 
-  String _resolveLoginEmailFromRecord(Map<String, dynamic>? record, String rawInput) {
+  String _resolveLoginEmailFromRecord(
+    Map<String, dynamic>? record,
+    String rawInput,
+  ) {
     final directEmail = (record?['email'] ?? '').toString().trim();
     if (directEmail.contains('@')) return directEmail;
 
@@ -84,7 +90,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .from('admins')
             .select('id, username, phone')
             .eq('username', username.trim())
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -93,7 +100,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .from('admins')
             .select('id, username, phone')
             .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -155,7 +163,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 .from('admins')
                 .select('id, username, phone')
                 .eq('username', candidateUsername)
-                .maybeSingle();
+                .maybeSingle()
+                .timeout(_fastNetworkTimeout);
 
             if (adminRes != null && mounted) {
               final appState = Provider.of<AppState>(context, listen: false);
@@ -165,6 +174,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 username: candidateUsername,
                 adminRecord: Map<String, dynamic>.from(adminRes),
               );
+              unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
               if (!mounted) return;
               Navigator.pushReplacement(
                 context,
@@ -180,12 +190,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .from('couriers')
             .select()
             .eq('auth_user_id', user.id)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
 
         if (courierRes != null && courierRes['status']?.toString() != 'disabled') {
           if (!mounted) return;
-          Provider.of<AppState>(context, listen: false).currentCourier =
-              Map<String, dynamic>.from(courierRes);
+          final appState = Provider.of<AppState>(context, listen: false);
+          appState.currentCourier = Map<String, dynamic>.from(courierRes);
+          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const CourierScreen()),
@@ -245,15 +257,30 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  Future<void> _syncOneSignalPlayerId(String customerIdOrPhone) async {
-    try {
-      await NotificationService.saveUserPlayerId(
-        customerIdOrPhone,
-        'customers',
-      );
-    } catch (e) {
-      debugPrint('خطأ في حفظ Player ID: $e');
-    }
+  void _syncOneSignalPlayerIdBackground(
+    AppState appState,
+    String customerIdOrPhone,
+  ) {
+    unawaited(() async {
+      try {
+        await appState
+            .requestLocationAndNotificationPermissions()
+            .timeout(_fastNetworkTimeout);
+      } catch (_) {}
+      try {
+        await NotificationService.saveUserPlayerId(
+          customerIdOrPhone,
+          'customers',
+        ).timeout(_fastNetworkTimeout);
+      } catch (e) {
+        debugPrint('خطأ في حفظ Player ID: $e');
+      }
+      try {
+        await appState
+            .syncOneSignalPlayerIdForCurrentUsers()
+            .timeout(_fastNetworkTimeout);
+      } catch (_) {}
+    }());
   }
 
   // 1️⃣ طلب إرسال كود OTP عبر واتساب وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
@@ -280,7 +307,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           .from('admins')
           .select('id, username, phone')
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (adminRes != null) {
         _detectedRole = 'admin';
@@ -298,7 +326,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           .from('couriers')
           .select('id, username, name, phone, status')
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (courierRes != null) {
         _detectedRole = 'courier';
@@ -316,7 +345,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           .from('customers')
           .select()
           .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (existingCustomer != null) {
         _pendingUserRecord = Map<String, dynamic>.from(existingCustomer);
@@ -340,8 +370,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       // إرسال OTP الحقيقي عبر دالة whatsapp-otp في Supabase باستخدام الصيغة الدولية 967...
       final internationalPhone = '967$_cleanPhoneInput';
-      final otpRes =
-          await ApiService.sendWhatsappOtp(phoneNumber: internationalPhone);
+      final otpRes = await ApiService.sendWhatsappOtp(
+        phoneNumber: internationalPhone,
+      ).timeout(_fastNetworkTimeout);
 
       final msg = otpRes['message']?.toString().isNotEmpty == true
           ? otpRes['message'].toString()
@@ -398,7 +429,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final verifyRes = await ApiService.verifyWhatsappOtp(
         phoneNumber: internationalPhone,
         otpCode: otpCode,
-      );
+      ).timeout(_fastNetworkTimeout);
 
       final bool isValid = verifyRes['verified'] == true ||
           verifyRes['ok'] == true ||
@@ -411,7 +442,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               .from('customers')
               .select()
               .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-              .maybeSingle();
+              .maybeSingle()
+              .timeout(_fastNetworkTimeout);
           if (fetched != null) {
             customerRow = Map<String, dynamic>.from(fetched);
             _pendingUserRecord = customerRow;
@@ -429,21 +461,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
 
         if (_detectedRole == 'customer_existing' && customerRow != null) {
-          final dbPhone =
-              (customerRow['phone'] ?? _cleanPhoneInput).toString();
-          final latestRecord = await _supabase
-              .from('customers')
-              .select()
-              .eq('phone', dbPhone)
-              .maybeSingle();
-
-          final finalRow = latestRecord ?? customerRow;
           final String customerName =
-              (finalRow['name'] ?? '').toString().trim();
+              (customerRow['name'] ?? '').toString().trim();
           final String customerPhone = _normalizePhone(
-              (finalRow['phone'] ?? dbPhone).toString().trim());
+              (customerRow['phone'] ?? _cleanPhoneInput).toString().trim());
           final String customerAddress =
-              (finalRow['address'] ?? '').toString().trim();
+              (customerRow['address'] ?? '').toString().trim();
 
           appState.setUser(
             name: customerName,
@@ -451,9 +474,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             address: customerAddress,
           );
 
-          await appState.requestLocationAndNotificationPermissions();
-          final syncKey = finalRow['id']?.toString() ?? customerPhone;
-          await _syncOneSignalPlayerId(syncKey);
+          final syncKey = customerRow['id']?.toString() ?? customerPhone;
+          _syncOneSignalPlayerIdBackground(appState, syncKey);
 
           if (!mounted) return;
           if (widget.onLoginSuccess != null) {
@@ -513,7 +535,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     if (rawLogin.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('الرجاء إدخال البريد الإلكتروني أو اسم المستخدم وكلمة المرور')),
+            content: Text(
+                'الرجاء إدخال البريد الإلكتروني أو اسم المستخدم وكلمة المرور')),
       );
       return;
     }
@@ -525,10 +548,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
     try {
       if (_detectedRole == 'admin' || _detectedRole.isEmpty) {
-        bool adminSuccess =
-            await appState.loginAdminFromSupabase(resolvedEmail, password);
+        bool adminSuccess = await appState
+            .loginAdminFromSupabase(resolvedEmail, password)
+            .timeout(_fastNetworkTimeout);
         if (adminSuccess) {
           await _syncAdminUserSession(appState, username: rawLogin);
+          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -541,9 +566,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
       }
 
-      bool courierSuccess =
-          await appState.loginCourier(resolvedEmail, password);
+      bool courierSuccess = await appState
+          .loginCourier(resolvedEmail, password)
+          .timeout(_fastNetworkTimeout);
       if (courierSuccess) {
+        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
@@ -607,7 +634,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             'address': address,
           }, onConflict: 'phone')
           .select()
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       final finalName = (savedRecord?['name'] ?? name).toString().trim();
       final finalPhone = _normalizePhone(
@@ -621,9 +649,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         address: finalAddress,
       );
 
-      await appState.requestLocationAndNotificationPermissions();
       final syncKey = savedRecord?['id']?.toString() ?? finalPhone;
-      await _syncOneSignalPlayerId(syncKey);
+      _syncOneSignalPlayerIdBackground(appState, syncKey);
 
       if (!mounted) return;
       if (widget.onLoginSuccess != null) {
