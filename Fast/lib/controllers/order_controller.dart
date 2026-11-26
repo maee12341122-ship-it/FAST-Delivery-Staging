@@ -1,31 +1,29 @@
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order_model.dart';
+import '../services/notification_service.dart';
 
 class OrderController extends GetxController {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // المتغيرات التفاعلية (Reactive)
   var isLoading = false.obs;
   var ordersList = <OrderModel>[].obs;
   var currentOrder = Rxn<OrderModel>();
 
   @override
-  onInit() {
+  void onInit() {
     super.onInit();
-    // يمكنك جلب الطلبات أو تفعيل الاستماع الفوري هنا
   }
 
-  /// 1. إرسال طلب جديد إلى Supabase
   Future<bool> createNewOrder(OrderModel newOrder) async {
     try {
       isLoading.value = true;
-      
-      // تجهيز بيانات الطلب لترسل إلى جدول orders
+
       final Map<String, dynamic> orderData = {
         'customer_name': newOrder.customerName,
         'phone': newOrder.customerPhone,
-        'address': '${newOrder.address.area} - ${newOrder.address.details} (${newOrder.address.title})',
+        'address':
+            '${newOrder.address.area} - ${newOrder.address.details} (${newOrder.address.title})',
         'items_description': newOrder.itemsDescription,
         'products_total': newOrder.subtotal,
         'delivery_fee': newOrder.deliveryFee,
@@ -36,7 +34,6 @@ class OrderController extends GetxController {
         'notes': newOrder.notes,
       };
 
-      // 1. إدخال الطلب الأساسي وجلب الـ ID المتولد
       final response = await _supabase
           .from('orders')
           .insert(orderData)
@@ -45,63 +42,94 @@ class OrderController extends GetxController {
 
       final int generatedOrderId = response['id'];
 
-      // 2. إذا كانت هناك أصناف مرتبطة بالطلب، قم بإدخالها في جدول order_items
       if (newOrder.items.isNotEmpty) {
-        final List> itemsData = newOrder.items.map((item) => {
-          'order_id': generatedOrderId,
-          'product_name': item.name,
-          'price': item.price,
-          'quantity': item.quantity,
-          'total_price': item.totalPrice,
-        }).toList();
+        final List<Map<String, dynamic>> itemsData = newOrder.items
+            .map((item) => {
+                  'order_id': generatedOrderId,
+                  'product_name': item.name,
+                  'price': item.price,
+                  'quantity': item.quantity,
+                  'total_price': item.totalPrice,
+                })
+            .toList();
 
         await _supabase.from('order_items').insert(itemsData);
       }
 
-      Get.snackbar('نجاح', 'تم إرسال طلبك بنجاح', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('نجاح', 'تم إرسال طلبك بنجاح',
+          snackPosition: SnackPosition.BOTTOM);
       return true;
     } catch (e) {
-      Get.snackbar('خطأ', 'فشل إرسال الطلب: $e', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('خطأ', 'فشل إرسال الطلب: $e',
+          snackPosition: SnackPosition.BOTTOM);
       return false;
     } finally {
       isLoading.value = false;
     }
   }
 
-  /// 2. جلب طلبات العميل بناءً على رقم الهواتف
   Future<void> fetchCustomerOrders(String phone) async {
     try {
       isLoading.value = true;
       final response = await _supabase
           .from('orders')
-          .select('*, order_items(*)') // جلب الطلب مع عناصره عبر الـ Join
+          .select('*, order_items(*)')
           .eq('phone', phone)
           .order('created_at', ascending: false);
 
       var list = response as List;
       ordersList.value = list.map((json) => OrderModel.fromJson(json)).toList();
     } catch (e) {
-      Get.snackbar('خطأ', 'تعذر جلب الطلبات: $e', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('خطأ', 'تعذر جلب الطلبات: $e',
+          snackPosition: SnackPosition.BOTTOM);
     } finally {
       isLoading.value = false;
     }
   }
 
-  /// 3. تحديث حالة الطلب (مثلاً للمندوب أو المسؤول)
   Future<void> updateOrderStatus(String orderId, String newStatus) async {
     try {
-      await _supabase
+      final updatedRow = await _supabase
           .from('orders')
           .update({'status': newStatus})
-          .eq('id', orderId);
+          .eq('id', orderId)
+          .select('id, phone, assigned_courier')
+          .maybeSingle();
 
-      Get.snackbar('تحديث', 'تم تغيير حالة الطلب إلى ${OrderStatuses.label(newStatus)}', 
+      if (updatedRow != null) {
+        final customerPhone = updatedRow['phone']?.toString().trim() ?? '';
+        if (customerPhone.isNotEmpty) {
+          final customerRow = await _supabase
+              .from('customers')
+              .select('onesignal_player_id')
+              .eq('phone', customerPhone)
+              .maybeSingle();
+          final playerId =
+              customerRow?['onesignal_player_id']?.toString().trim() ?? '';
+          if (playerId.isNotEmpty) {
+            await NotificationService.sendNotificationToUser(
+              targetPlayerId: playerId,
+              title: 'تحديث حالة الطلب #$orderId 🔔',
+              body: 'تم تحديث حالة طلبك إلى: ${OrderStatuses.label(newStatus)}',
+              orderId: orderId,
+              eventType: 'order_status_updated',
+              additionalData: {
+                'order_id': orderId,
+                'status': newStatus,
+              },
+            );
+          }
+        }
+      }
+
+      Get.snackbar('تحديث',
+          'تم تغيير حالة الطلب إلى ${OrderStatuses.label(newStatus)}',
           snackPosition: SnackPosition.BOTTOM);
-          
-      // تحديث القائمة المحلية إن وجدت
+
       fetchCustomerOrders(currentOrder.value?.customerPhone ?? '');
     } catch (e) {
-      Get.snackbar('خطأ', 'فشل تحديث الحالة: $e', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('خطأ', 'فشل تحديث الحالة: $e',
+          snackPosition: SnackPosition.BOTTOM);
     }
   }
 }
