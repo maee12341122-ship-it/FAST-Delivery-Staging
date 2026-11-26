@@ -48,6 +48,9 @@ class _CourierScreenState extends State<CourierScreen> {
         if (courierId.isNotEmpty) {
           unawaited(_startLiveLocationUpdates(courierId));
         }
+        if (appState.orders.isEmpty) {
+          unawaited(appState.fetchOrders());
+        }
         if (mounted) setState(() => _isLoadingSession = false);
         return;
       }
@@ -63,6 +66,9 @@ class _CourierScreenState extends State<CourierScreen> {
             (courierData['id'] ?? courierData['name'] ?? '').toString().trim();
         if (courierId.isNotEmpty) {
           unawaited(_startLiveLocationUpdates(courierId));
+        }
+        if (appState.orders.isEmpty) {
+          unawaited(appState.fetchOrders());
         }
         if (mounted) setState(() => _isLoadingSession = false);
         return;
@@ -97,6 +103,9 @@ class _CourierScreenState extends State<CourierScreen> {
             (courierRes['id'] ?? courierRes['name'] ?? '').toString().trim();
         if (courierId.isNotEmpty) {
           unawaited(_startLiveLocationUpdates(courierId));
+        }
+        if (appState.orders.isEmpty) {
+          unawaited(appState.fetchOrders());
         }
         if (mounted) setState(() => _isLoadingSession = false);
       }
@@ -162,7 +171,8 @@ class _CourierScreenState extends State<CourierScreen> {
     return myOrders.any((o) {
       if (o is! Map) return false;
       final status = o['status']?.toString().trim() ?? '';
-      return status == 'onTheWay' ||
+      return status == 'acceptedByCourier' ||
+          status == 'onTheWay' ||
           status == 'arrivedToCustomer' ||
           status == 'arrived';
     });
@@ -207,9 +217,7 @@ class _CourierScreenState extends State<CourierScreen> {
           await Supabase.instance.client
               .from('couriers')
               .update({'status': nextStatusLabel}).eq('id', courier['id']);
-        } catch (_) {
-          // يتجاهل الخطأ إن كان العمود غير موجود في الجدول
-        }
+        } catch (_) {}
       }
       if (mounted) {
         appState.notifyListeners();
@@ -333,7 +341,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  // تحديد هل الطلب من خدمة "وصل لي" الخاصة فقط دون التأثير على الطلبات العادية
   bool _isWassalliServiceOrder(Map order) {
     final itemsText =
         '${order['items_description'] ?? ''} ${order['items_desc'] ?? ''} ${order['itemsDesc'] ?? ''} ${order['notes'] ?? ''}';
@@ -343,7 +350,6 @@ class _CourierScreenState extends State<CourierScreen> {
         itemsText.contains('مكان التوصيل:');
   }
 
-  // استخراج نقطة الاستلام وموقع التسليم لطلبات "وصل لي" فقط
   Map<String, String> _parseWassalliRoute(Map order) {
     final rawDesc =
         '${order['items_description'] ?? order['items_desc'] ?? order['itemsDesc'] ?? ''}';
@@ -440,8 +446,6 @@ class _CourierScreenState extends State<CourierScreen> {
             ],
           ),
           const SizedBox(height: 10),
-
-          // الخطوة 1: الذهاب لنقطة الاستلام أولاً
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -545,10 +549,7 @@ class _CourierScreenState extends State<CourierScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 8),
-
-          // الخطوة 2: التوجه لموقع التسليم بعد الاستلام
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -625,7 +626,6 @@ class _CourierScreenState extends State<CourierScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 8),
           Text(
             'الوجهة الحالية للمندوب: $activeTargetLocation',
@@ -639,7 +639,6 @@ class _CourierScreenState extends State<CourierScreen> {
     );
   }
 
-  /// استخراج سعر المنتجات الصحيح دون تكرار إضافة رسوم التوصيل
   double _resolveProductsPrice(Map order, double deliveryFee) {
     if (_isWassalliServiceOrder(order)) return 0.0;
 
@@ -1054,12 +1053,24 @@ class _CourierScreenState extends State<CourierScreen> {
             Expanded(
               child: TabBarView(
                 children: [
-                  _buildOrdersListView(
-                      appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
-                  _buildOrdersListView(
-                      appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
-                  _buildOrdersListView(
-                      appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
+                  RefreshIndicator(
+                    color: Colors.amber,
+                    onRefresh: appState.fetchOrders,
+                    child: _buildOrdersListView(
+                        appState, activeOrders, 'لا توجد طلبات نشطة حالياً 📦'),
+                  ),
+                  RefreshIndicator(
+                    color: Colors.amber,
+                    onRefresh: appState.fetchOrders,
+                    child: _buildOrdersListView(
+                        appState, completedOrders, 'لا توجد طلبات مكتملة 📭'),
+                  ),
+                  RefreshIndicator(
+                    color: Colors.amber,
+                    onRefresh: appState.fetchOrders,
+                    child: _buildOrdersListView(
+                        appState, cancelledOrders, 'لا توجد طلبات ملغية 🚫'),
+                  ),
                 ],
               ),
             ),
@@ -1078,6 +1089,7 @@ class _CourierScreenState extends State<CourierScreen> {
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: ordersList.length,
       itemBuilder: (context, index) {
         final order = ordersList[index] as Map;
@@ -1306,34 +1318,62 @@ class _CourierScreenState extends State<CourierScreen> {
                     ),
                   ] else if (orderStatus == 'waitingCourierApproval' ||
                       orderStatus == 'approvedByCustomer') ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: isUpdating
+                                ? null
+                                : () => _changeOrderStatus(
+                                    context, appState, orderId, 'onTheWay'),
+                            icon: isUpdating
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : const Icon(Icons.check_circle),
+                            label: Text(
+                              isUpdating
+                                  ? 'جاري التحديث...'
+                                  : 'قبول الطلب والبدء 🚀',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
                         ),
-                        onPressed: isUpdating
-                            ? null
-                            : () => _changeOrderStatus(
-                                context, appState, orderId, 'onTheWay'),
-                        icon: isUpdating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.check_circle),
-                        label: Text(
-                          isUpdating
-                              ? 'جاري التحديث...'
-                              : 'قبول الطلب والبدء 🚀',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 1,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.redAccent),
+                              foregroundColor: Colors.redAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            onPressed: isUpdating
+                                ? null
+                                : () => _changeOrderStatus(context, appState,
+                                    orderId, 'rejectedByCourier'),
+                            icon: const Icon(Icons.close, size: 16),
+                            label: const Text(
+                              'رفض',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ] else if (orderStatus == 'onTheWay') ...[
                     SizedBox(
