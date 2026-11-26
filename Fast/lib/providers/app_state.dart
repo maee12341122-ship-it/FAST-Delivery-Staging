@@ -134,6 +134,7 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _ordersChannel;
   RealtimeChannel? _messagesChannel;
   Timer? _ordersResyncTimer;
+  bool _oneSignalObserverRegistered = false;
 
   // مهلة موحدة (12 ثانية) لعمليات الدخول والطلبات والشبكة
   static const Duration _fastNetworkTimeout = Duration(seconds: 12);
@@ -150,8 +151,24 @@ class AppState extends ChangeNotifier {
   Map<String, int> categoryOrderCounts = {};
 
   AppState() {
+    _registerOneSignalSubscriptionObserver();
     unawaited(_initializeApplicationState());
     _initAuthListener();
+  }
+
+  void _registerOneSignalSubscriptionObserver() {
+    if (_oneSignalObserverRegistered) return;
+    _oneSignalObserverRegistered = true;
+    try {
+      OneSignal.User.pushSubscription.addObserver((state) {
+        final newId = state.current.id?.trim() ?? '';
+        if (newId.isNotEmpty) {
+          unawaited(syncOneSignalPlayerIdForCurrentUsers());
+        }
+      });
+    } catch (e) {
+      debugPrint('تعذر تسجيل مراقب اشتراك OneSignal: $e');
+    }
   }
 
   @override
@@ -578,11 +595,13 @@ class AppState extends ChangeNotifier {
 
       final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
       if (phone.isNotEmpty) {
+        final formattedPhone = '+967$phone';
+        final zeroPhone = '0$phone';
         try {
           await supabase
               .from('customers')
               .update({'onesignal_player_id': cleanPlayerId})
-              .eq('phone', phone)
+              .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
               .timeout(_fastNetworkTimeout);
         } catch (_) {}
 
@@ -591,7 +610,7 @@ class AppState extends ChangeNotifier {
             await supabase
                 .from('admins')
                 .update({'onesignal_player_id': cleanPlayerId})
-                .eq('phone', phone)
+                .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
                 .timeout(_fastNetworkTimeout);
           } catch (_) {}
         }
@@ -1060,6 +1079,7 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
+      unawaited(syncOneSignalPlayerIdForCurrentUsers());
       unawaited(_silentRefreshOrders());
       unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
@@ -1723,8 +1743,9 @@ class AppState extends ChangeNotifier {
           .timeout(_fastNetworkTimeout);
 
       return response
-          .map((e) => e['onesignal_player_id'].toString())
+          .map((e) => e['onesignal_player_id']?.toString().trim() ?? '')
           .where((id) => id.isNotEmpty)
+          .toSet()
           .toList();
     } catch (e) {
       return [];
@@ -1733,16 +1754,17 @@ class AppState extends ChangeNotifier {
 
   Future<String?> getCourierPlayerIdByName(String courierName) async {
     try {
+      final cleanName = courierName.trim();
+      if (cleanName.isEmpty) return null;
       final response = await supabase
           .from('couriers')
           .select('onesignal_player_id')
-          .eq('name', courierName.trim())
+          .ilike('name', cleanName)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
 
-      if (response != null && response['onesignal_player_id'] != null) {
-        return response['onesignal_player_id'].toString();
-      }
+      final pid = response?['onesignal_player_id']?.toString().trim() ?? '';
+      return pid.isNotEmpty ? pid : null;
     } catch (e) {
       debugPrint('خطأ: $e');
     }
@@ -3294,6 +3316,20 @@ class AppState extends ChangeNotifier {
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
     notifyListeners();
+
+    unawaited(() async {
+      final custPhone = updated['phone']?.toString() ?? '';
+      final custPid = await getCustomerPlayerIdByPhone(custPhone);
+      if (custPid != null && custPid.isNotEmpty) {
+        await _sendExternalPushNotification(
+          playerIds: [custPid],
+          title: 'تحديث طلبك #$intId',
+          body: 'الحالة الجديدة: ${getArabicStatus(cleanStatus)}',
+          orderId: intId,
+          eventType: cleanStatus,
+        );
+      }
+    }());
   }
 
   Future<void> assignOrderToCourier(String orderId, String courierId) async {
@@ -3789,7 +3825,7 @@ class AppState extends ChangeNotifier {
             playerIds: adminPids,
             title: 'طلب جديد #${orderId ?? ''}',
             body:
-                'طلب من $customerName (${normalizedPhone}) بانتظار التسعير.',
+                'طلب من $customerName ($normalizedPhone) بانتظار التسعير.',
             orderId: orderId,
             eventType: 'new_order',
           );
@@ -3953,6 +3989,17 @@ class AppState extends ChangeNotifier {
             eventType: 'approved_by_customer',
           );
         }
+      } else if (action != 'approve') {
+        final adminPids = await getAllAdminPlayerIds();
+        if (adminPids.isNotEmpty) {
+          await _sendExternalPushNotification(
+            playerIds: adminPids,
+            title: 'ألغى العميل الطلب #$intOrderId',
+            body: 'قام العميل بإلغاء الطلب #$intOrderId.',
+            orderId: intOrderId,
+            eventType: 'cancelled_by_customer',
+          );
+        }
       }
     }());
   }
@@ -4048,6 +4095,19 @@ class AppState extends ChangeNotifier {
           orderId: intOrderId,
           eventType: newStatus,
         );
+      }
+
+      if (newStatus == 'rejectedByCourier' || newStatus == 'delivered') {
+        final adminPids = await getAllAdminPlayerIds();
+        if (adminPids.isNotEmpty) {
+          await _sendExternalPushNotification(
+            playerIds: adminPids,
+            title: 'تحديث من المندوب على الطلب #$intOrderId',
+            body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
+            orderId: intOrderId,
+            eventType: newStatus,
+          );
+        }
       }
     }());
   }
