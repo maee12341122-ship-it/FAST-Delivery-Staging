@@ -18,6 +18,20 @@ class NotificationService {
     return DateTime.now().microsecondsSinceEpoch % 2147483647;
   }
 
+  static String _normalizePhone(String phone) {
+    var clean = phone.trim().replaceAll(' ', '');
+    if (clean.startsWith('+967')) {
+      clean = clean.substring(4);
+    }
+    if (clean.startsWith('0')) {
+      clean = clean.substring(1);
+    }
+    if (clean.startsWith('967')) {
+      clean = clean.substring(3);
+    }
+    return clean;
+  }
+
   /// ربط المستخدم الحالي بـ OneSignal عبر External ID لتسهيل الاستهداف
   static Future<void> loginUser(String? userId) async {
     try {
@@ -194,6 +208,21 @@ class NotificationService {
               .update({'onesignal_player_id': playerId})
               .eq('id', cleanId);
         }
+      } else if (cleanTable == 'customers') {
+        final normalizedPhone = _normalizePhone(cleanId);
+        if (normalizedPhone.isNotEmpty) {
+          final formattedPhone = '+967$normalizedPhone';
+          final zeroPhone = '0$normalizedPhone';
+          await client
+              .from('customers')
+              .update({'onesignal_player_id': playerId})
+              .or('phone.eq.$normalizedPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
+        } else {
+          await client
+              .from('customers')
+              .update({'onesignal_player_id': playerId})
+              .eq('id', cleanId);
+        }
       } else {
         await client
             .from(cleanTable)
@@ -208,29 +237,40 @@ class NotificationService {
     }
   }
 
-  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-onesignal-push) بدون الحاجة لـ Node.js
+  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-onesignal-push)
   static Future<void> sendNotificationToUser({
-    required String targetPlayerId,
+    List<String>? playerIds,
+    String? targetPlayerId,
     required String title,
     required String body,
+    dynamic orderId,
+    String? eventType,
     Map<String, dynamic>? additionalData,
   }) async {
-    final cleanPlayerId = targetPlayerId.trim();
-    if (cleanPlayerId.isEmpty) return;
+    final ids = <String>{
+      ...?playerIds?.map((e) => e.trim()).where((e) => e.isNotEmpty),
+      if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
+        targetPlayerId.trim(),
+    }.toList();
+
+    if (ids.isEmpty) return;
 
     try {
       final payload = <String, dynamic>{
-        'player_ids': [cleanPlayerId],
-        'target_player_id': cleanPlayerId,
+        'player_ids': ids,
+        'target_player_id': ids.first,
         'title': title.trim(),
         'body': body.trim(),
+        if (orderId != null) 'order_id': orderId.toString(),
+        if (eventType != null && eventType.trim().isNotEmpty)
+          'event_type': eventType.trim(),
         if (additionalData != null && additionalData.isNotEmpty)
           'additional_data': additionalData,
       };
 
       final res = await Supabase.instance.client.functions
           .invoke('send-onesignal-push', body: payload)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 12));
 
       debugPrint(
           '📨 استجابة send-onesignal-push (${res.status}): ${jsonEncode(res.data)}');
@@ -300,6 +340,8 @@ class NotificationService {
         body: orderId != null && orderId.isNotEmpty
             ? '$senderName: $messageBody'
             : messageBody,
+        orderId: orderId,
+        eventType: 'chat_message',
         additionalData: {
           'type': 'chat',
           if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
