@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 🔔 إذن عرض الإشعارات المطلوب على أندرويد 13 (API 33) فأعلى -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:label="Fast Delivery"
         android:name="${applicationName}"
