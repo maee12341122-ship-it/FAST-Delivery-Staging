@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../main.dart' show navigatorKey;
 import '../screens/order_tracking_screen.dart';
 import 'api_service.dart';
 
@@ -16,10 +17,6 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static final http.Client _httpClient = http.Client();
-
-  // مفتاح ملاحة عالمي (GlobalKey) للانتقال للشاشات بدون الحاجة لـ BuildContext حصري
-  static final GlobalKey<NavigatorState> navigatorKey =
-      GlobalKey<NavigatorState>();
 
   static Uri _buildBackendUri(String path) {
     final base = ApiService.baseUrl.endsWith('/')
@@ -108,7 +105,7 @@ class NotificationService {
         debugPrint('📱 [OneSignal Player ID الجديد]: ${state.current.id}');
       });
 
-      String? playerId = OneSignal.User.pushSubscription.id;
+      final String? playerId = OneSignal.User.pushSubscription.id;
       debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
 
       debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal & Local) بنجاح');
@@ -117,7 +114,7 @@ class NotificationService {
     }
   }
 
-  /// 🧭 دالة عامة للانتقال لشاشة تتبع الطلب باستخدام الـ NavigatorKey
+  /// 🧭 دالة عامة للانتقال لشاشة تتبع الطلب باستخدام الـ NavigatorKey الموحد
   static void navigateToOrderTracking(String orderId) {
     if (navigatorKey.currentState != null) {
       navigatorKey.currentState!.push(
@@ -133,7 +130,7 @@ class NotificationService {
 
   /// دالة مساعدة لاستخراج رقم الطلب من النص تلقائياً (مثل #60)
   static String? _extractOrderIdFromText(String text) {
-    final RegExp regExp = RegExp(r'#(\d+)');
+    final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
     final match = regExp.firstMatch(text);
     if (match != null && match.groupCount >= 1) {
       return match.group(1);
@@ -283,7 +280,7 @@ class NotificationService {
         iOS: iOSPlatformChannelSpecifics,
       );
 
-      String? orderIdPayload =
+      final String? orderIdPayload =
           payload ?? _extractOrderIdFromText('$title $body');
 
       await _localNotificationsPlugin.show(
@@ -304,12 +301,21 @@ class NotificationService {
     required String targetPlayerId,
     required String senderName,
     required String messageBody,
+    String? orderId,
   }) async {
     if (targetPlayerId.isNotEmpty) {
       await sendNotificationToUser(
         targetPlayerId: targetPlayerId,
-        title: 'رسالة جديدة من $senderName 💬',
-        body: messageBody,
+        title: orderId != null && orderId.isNotEmpty
+            ? 'رسالة جديدة في الطلب #$orderId 💬'
+            : 'رسالة جديدة من $senderName 💬',
+        body: orderId != null && orderId.isNotEmpty
+            ? '$senderName: $messageBody'
+            : messageBody,
+        additionalData: {
+          'type': 'chat',
+          if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+        },
       );
     }
   }
