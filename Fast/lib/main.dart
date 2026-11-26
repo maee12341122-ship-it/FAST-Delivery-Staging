@@ -8,6 +8,7 @@ import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/order_tracking_screen.dart';
+import 'screens/chat_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -16,33 +17,6 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final bool hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-
-  try {
-    OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
-    await OneSignal.Notifications.requestPermission(true);
-
-    OneSignal.Notifications.addClickListener((event) {
-      final data = event.notification.additionalData;
-      final String? orderId = data?['order_id']?.toString() ??
-          data?['related_id']?.toString() ??
-          _extractOrderIdFromNotification(
-            event.notification.title ?? '',
-            event.notification.body ?? '',
-          );
-
-      if (orderId != null && orderId.isNotEmpty) {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
-          ),
-        );
-      }
-    });
-
-    debugPrint("✅ تمت تهيئة OneSignal ومستمع النقر بنجاح");
-  } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
-  }
 
   try {
     await Supabase.initialize(
@@ -60,6 +34,51 @@ void main() async {
   }
 
   final appState = AppState();
+
+  try {
+    OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
+    await OneSignal.Notifications.requestPermission(true);
+
+    OneSignal.Notifications.addClickListener((event) {
+      final data = event.notification.additionalData;
+      final String title = event.notification.title ?? '';
+      final String body = event.notification.body ?? '';
+      final String? orderId = data?['order_id']?.toString() ??
+          data?['related_id']?.toString() ??
+          _extractOrderIdFromNotification(title, body);
+
+      if (orderId != null && orderId.isNotEmpty) {
+        final bool isChatNotification =
+            data?['type']?.toString() == 'chat' || title.contains('رسالة جديدة');
+
+        if (isChatNotification) {
+          final String role = appState.isAdminLoggedIn
+              ? 'admin'
+              : (appState.currentCourier != null ? 'courier' : 'customer');
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (context) => ChatScreen(
+                orderId: orderId,
+                userRole: role,
+                targetChat: 'unified_order_chat',
+              ),
+            ),
+          );
+        } else {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+            ),
+          );
+        }
+      }
+    });
+
+    debugPrint("✅ تمت تهيئة OneSignal ومستمع النقر بنجاح");
+  } catch (e) {
+    debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
+  }
+
   runApp(
     MultiProvider(
       providers: [
