@@ -32,17 +32,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   LatLng _selectedLocation = const LatLng(13.5779, 44.0219);
   final MapController _mapController = MapController();
   bool _isLoadingLocation = false;
+  bool _isSubmittingOrder = false;
 
   @override
   void initState() {
     super.initState();
     final appState = Provider.of<AppState>(context, listen: false);
     if (appState.userProfile != null) {
-      _nameController.text = appState.userProfile!['name'] ?? '';
-      _phoneController.text = appState.userProfile!['phone'] ?? '';
-      _addressDescriptionController.text = appState.userProfile!['address'] ?? '';
+      _nameController.text = appState.userProfile!['name']?.toString() ?? '';
+      _phoneController.text = appState.userProfile!['phone']?.toString() ?? '';
+      _addressDescriptionController.text =
+          appState.userProfile!['address']?.toString() ?? '';
     }
-    _determinePosition();
+    Future<void>.microtask(_determinePosition);
   }
 
   @override
@@ -59,26 +61,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _determinePosition() async {
+    if (!mounted) return;
     setState(() => _isLoadingLocation = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled()
+          .timeout(const Duration(seconds: 4));
       if (!serviceEnabled) {
         if (mounted) setState(() => _isLoadingLocation = false);
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      LocationPermission permission = await Geolocator.checkPermission()
+          .timeout(const Duration(seconds: 4));
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        permission = await Geolocator.requestPermission()
+            .timeout(const Duration(seconds: 5));
         if (permission == LocationPermission.denied) {
           if (mounted) setState(() => _isLoadingLocation = false);
           return;
         }
       }
 
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) setState(() => _isLoadingLocation = false);
+        return;
+      }
+
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-      );
+      ).timeout(const Duration(seconds: 6));
 
       if (mounted) {
         setState(() {
@@ -87,7 +98,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         });
         _mapController.move(_selectedLocation, 16.0);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
@@ -140,6 +151,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         .from('user_addresses')
                         .select()
                         .eq('user_id', userId ?? '')
+                        .timeout(const Duration(seconds: 5))
                         .then((response) => List.from(response)),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -147,7 +159,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             child:
                                 CircularProgressIndicator(color: Colors.amber));
                       }
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      if (snapshot.hasError ||
+                          !snapshot.hasData ||
+                          snapshot.data!.isEmpty) {
                         return const Center(
                           child: Text(
                               'لا توجد عناوين محفوظة. أضف عنوانك الأول!',
@@ -166,11 +180,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             child: ListTile(
                               leading: const Icon(Icons.location_on,
                                   color: Colors.amber),
-                              title: Text(addr['title'] ?? 'عنوان',
+                              title: Text(addr['title']?.toString() ?? 'عنوان',
                                   style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold)),
-                              subtitle: Text(addr['address_text'] ?? '',
+                              subtitle: Text(
+                                  addr['address_text']?.toString() ?? '',
                                   style: const TextStyle(
                                       color: Colors.grey, fontSize: 12)),
                               trailing: const Icon(Icons.check_circle_outline,
@@ -178,7 +193,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               onTap: () {
                                 setState(() {
                                   _addressDescriptionController.text =
-                                      "${addr['title']}: ${addr['address_text']}";
+                                      "${addr['title'] ?? ''}: ${addr['address_text'] ?? ''}";
                                 });
                                 Navigator.pop(context);
                               },
@@ -239,8 +254,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
                 onPressed: () async {
-                  if (titleController.text.isNotEmpty &&
-                      textController.text.isNotEmpty) {
+                  if (titleController.text.trim().isNotEmpty &&
+                      textController.text.trim().isNotEmpty) {
                     final userId =
                         Supabase.instance.client.auth.currentUser?.id;
                     await Supabase.instance.client
@@ -249,11 +264,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       'user_id': userId,
                       'title': titleController.text.trim(),
                       'address_text': textController.text.trim(),
-                    });
+                    }).timeout(const Duration(seconds: 5));
                     if (context.mounted) {
                       Navigator.pop(context);
                       _addressDescriptionController.text =
-                          "${titleController.text}: ${textController.text}";
+                          "${titleController.text.trim()}: ${textController.text.trim()}";
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                           content: Text('تمت إضافة وحفظ العنوان بنجاح ✅')));
                     }
@@ -271,14 +286,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // دالة إرسال الطلب النهائي مع تمرير السعر الحقيقي للمنتجات
   Future<void> _submitOrder(AppState appState) async {
-    if (_nameController.text.isEmpty ||
-        _phoneController.text.isEmpty ||
-        _addressDescriptionController.text.isEmpty) {
+    if (_isSubmittingOrder) return;
+
+    if (_nameController.text.trim().isEmpty ||
+        _phoneController.text.trim().isEmpty ||
+        _addressDescriptionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('الرجاء إكمال جميع بيانات الاسم ورقم الهاتف والعنوان')),
       );
       return;
+    }
+
+    if (mounted) {
+      setState(() => _isSubmittingOrder = true);
     }
 
     // 🎯 تنسيق الإحداثيات بشكل نظيف ومنسق
@@ -288,7 +309,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         '(${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})';
 
     final fullAddress =
-        '${_addressDescriptionController.text} (الإحداثيات: $formattedCoords)';
+        '${_addressDescriptionController.text.trim()} (الإحداثيات: $formattedCoords)';
 
     // 🛒 حساب وتنسيق أسماء المنتجات مع أسعارها الفعلية لتظهر بدقة في لوحة المشرف والمندوب والعميل
     final itemsDesc = appState.cartItems
@@ -296,32 +317,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             '${item.name} (x${item.quantity}) - ${item.price * item.quantity} ر.ي')
         .join(', ');
 
-    await appState.saveUserProfileDetails(_nameController.text, fullAddress);
     try {
-      await appState.createOrder(
-        customerName: _nameController.text,
-        phone: _phoneController.text,
-        address: fullAddress,
-        itemsDesc: itemsDesc,
-        productsTotal: appState.totalAmount, // تمرير الإجمالي الصحيح للمنتجات
-        paymentMethod: _selectedPaymentMethod,
-        paymentAccount: 'نقدي',
+      await appState
+          .saveUserProfileDetails(_nameController.text.trim(), fullAddress)
+          .timeout(const Duration(seconds: 5));
+      await appState
+          .createOrder(
+            customerName: _nameController.text.trim(),
+            phone: _phoneController.text.trim(),
+            address: fullAddress,
+            itemsDesc: itemsDesc,
+            productsTotal: appState.totalAmount,
+            paymentMethod: _selectedPaymentMethod,
+            paymentAccount: 'نقدي',
+          )
+          .timeout(const Duration(seconds: 6));
+
+      if (!mounted) return;
+      final trackingCode = appState.lastOrderTrackingCode ?? '—';
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
       );
-      if (context.mounted) {
-        final trackingCode = appState.lastOrderTrackingCode ?? '—';
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: $trackingCode')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم استلام الطلب. رمز المتابعة: $trackingCode')),
+      );
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('تعذر إرسال الطلب: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmittingOrder = false);
       }
     }
   }
@@ -596,12 +625,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                 ),
-                onPressed: () => _submitOrder(appState),
-                child: const Text('تأكيد وإرسال الطلب للمشرف 🚀',
-                    style: TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16)),
+                onPressed:
+                    _isSubmittingOrder ? null : () => _submitOrder(appState),
+                child: _isSubmittingOrder
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                            color: Colors.black, strokeWidth: 2),
+                      )
+                    : const Text('تأكيد وإرسال الطلب للمشرف 🚀',
+                        style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16)),
               ),
             ],
           ),
