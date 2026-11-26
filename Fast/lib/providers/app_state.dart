@@ -523,9 +523,10 @@ class AppState extends ChangeNotifier {
     initializeInternetListener();
   }
 
+  // تم تعديل المؤقت الدوري لمزامنة الطلبات من 20 ثانية إلى 5 ثواني
   void _startPeriodicOrdersResync() {
     _ordersResyncTimer?.cancel();
-    _ordersResyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    _ordersResyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!isConnectedToInternet) return;
       unawaited(_silentRefreshOrders());
     });
