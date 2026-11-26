@@ -38,6 +38,12 @@ class _HomeScreenState extends State<HomeScreen>
   String? selectedRestaurantName;
   String selectedStoreSubCategory = 'الكل';
 
+  final Map<String, double> _restaurantAvgRatings = {};
+  final Map<String, int> _restaurantRatingCounts = {};
+  final Map<String, double> _productAvgRatings = {};
+  final Map<String, int> _productRatingCounts = {};
+  bool _isLoadingRatings = false;
+
   final ScrollController _shopScrollController = ScrollController();
   final ScrollController _otherOrdersScrollController = ScrollController();
 
@@ -96,6 +102,77 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
     return rawAddress;
+  }
+
+  Future<void> _fetchCustomerRatingsSummaries() async {
+    if (_isLoadingRatings) return;
+    _isLoadingRatings = true;
+    try {
+      final rows = await Supabase.instance.client
+          .from('ratings_and_reviews')
+          .select('target_type, target_id, rating');
+
+      final Map<String, List<double>> restaurantScores = {};
+      final Map<String, List<double>> productScores = {};
+
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final type = (row['target_type'] ?? '').toString().trim().toLowerCase();
+        final targetId = (row['target_id'] ?? '').toString().trim();
+        final ratingVal = double.tryParse(row['rating']?.toString() ?? '');
+        if (targetId.isEmpty || ratingVal == null || ratingVal <= 0) continue;
+
+        if (type == 'restaurant' || type == 'restaurants' || type == 'store') {
+          restaurantScores
+              .putIfAbsent(targetId.toLowerCase(), () => [])
+              .add(ratingVal);
+        } else if (type == 'product' || type == 'products' || type == 'item') {
+          productScores
+              .putIfAbsent(targetId.toLowerCase(), () => [])
+              .add(ratingVal);
+        }
+      }
+
+      final Map<String, double> rAvg = {};
+      final Map<String, int> rCnt = {};
+      restaurantScores.forEach((key, list) {
+        if (list.isNotEmpty) {
+          final sum = list.fold<double>(0, (a, b) => a + b);
+          rAvg[key] = sum / list.length;
+          rCnt[key] = list.length;
+        }
+      });
+
+      final Map<String, double> pAvg = {};
+      final Map<String, int> pCnt = {};
+      productScores.forEach((key, list) {
+        if (list.isNotEmpty) {
+          final sum = list.fold<double>(0, (a, b) => a + b);
+          pAvg[key] = sum / list.length;
+          pCnt[key] = list.length;
+        }
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _restaurantAvgRatings
+          ..clear()
+          ..addAll(rAvg);
+        _restaurantRatingCounts
+          ..clear()
+          ..addAll(rCnt);
+        _productAvgRatings
+          ..clear()
+          ..addAll(pAvg);
+        _productRatingCounts
+          ..clear()
+          ..addAll(pCnt);
+      });
+    } catch (e) {
+      debugPrint('⚠️ تعذر جلب ملخص تقييمات العميل: $e');
+    } finally {
+      _isLoadingRatings = false;
+    }
   }
 
   String _searchHintText() {
@@ -200,6 +277,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   double? _resolveStoreRating(AppState appState, String storeName,
       {Map<String, dynamic>? storeMap}) {
+    final lower = storeName.trim().toLowerCase();
+    if (_restaurantAvgRatings.containsKey(lower)) {
+      return _restaurantAvgRatings[lower];
+    }
+
     final direct = storeMap?['rating'] ??
         storeMap?['avg_rating'] ??
         storeMap?['average_rating'];
@@ -208,7 +290,6 @@ class _HomeScreenState extends State<HomeScreen>
       if (parsed != null && parsed > 0) return parsed;
     }
 
-    final lower = storeName.trim().toLowerCase();
     for (final r in appState.restaurantsList) {
       if ((r['name'] ?? '').toString().trim().toLowerCase() == lower) {
         final rVal = r['rating'] ?? r['avg_rating'] ?? r['average_rating'];
@@ -464,7 +545,6 @@ class _HomeScreenState extends State<HomeScreen>
     return null;
   }
 
-  /// إرجاع التمرير لبداية تبويب الرئيسية بشكل متسلسل بعد إعادة البناء
   void _scrollHomeToTop({bool animated = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -487,7 +567,6 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  /// إعادة ضبط شاشة الرئيسية بالكامل إلى البداية (القسم الرئيسي، بدون متجر أو قسم فرعي أو بحث، ومن أعلى الصفحة)
   void _resetToHomeView({bool clearSearch = true, bool animateScroll = false}) {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -523,6 +602,7 @@ class _HomeScreenState extends State<HomeScreen>
       unawaited(appState.fetchStoreSettings());
       unawaited(appState.fetchRestaurantsAndCategories());
       unawaited(appState.fetchProductsFromSupabase());
+      unawaited(_fetchCustomerRatingsSummaries());
 
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
@@ -1932,6 +2012,7 @@ class _HomeScreenState extends State<HomeScreen>
                             reviewText: commentController.text.trim(),
                             restaurantName: restaurantName,
                           );
+                          unawaited(_fetchCustomerRatingsSummaries());
                           if (mounted) setState(() {});
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
@@ -3278,6 +3359,7 @@ class _HomeScreenState extends State<HomeScreen>
         await appState.fetchStoreSettings();
         await appState.fetchRestaurantsAndCategories();
         await appState.fetchProductsFromSupabase();
+        await _fetchCustomerRatingsSummaries();
       },
       child: ListView(
         controller: _shopScrollController,
@@ -3637,7 +3719,7 @@ class _HomeScreenState extends State<HomeScreen>
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.75,
+                      childAspectRatio: 0.72,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
                     ),
@@ -3651,6 +3733,9 @@ class _HomeScreenState extends State<HomeScreen>
                       final bool isFav = appState.isProductFavorite(product.id);
                       final int qtyInCart =
                           appState.getProductQuantityInCart(product.id);
+                      final pKey = product.id.trim().toLowerCase();
+                      final double? pRating = _productAvgRatings[pKey];
+                      final int pCount = _productRatingCounts[pKey] ?? 0;
 
                       return Container(
                         padding: const EdgeInsets.all(10),
@@ -3761,6 +3846,27 @@ class _HomeScreenState extends State<HomeScreen>
                               style: const TextStyle(
                                   color: Colors.grey, fontSize: 11),
                             ),
+                            if (pRating != null) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(Icons.star_rounded,
+                                      size: 14,
+                                      color: appState.isDarkMode
+                                          ? Colors.amber
+                                          : Colors.amber.shade700),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    '${pRating.toStringAsFixed(1)} ($pCount)',
+                                    style: TextStyle(
+                                      color: textColor.withOpacity(0.85),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 4),
                             Text(
                               isVariable
