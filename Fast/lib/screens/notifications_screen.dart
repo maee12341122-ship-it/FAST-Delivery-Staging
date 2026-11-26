@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import 'order_tracking_screen.dart';
 
-
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -49,14 +48,18 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         notif['related_id']?.toString().trim();
     if (directId != null && directId.isNotEmpty) return directId;
 
-    final additional = notif['additionalData'];
-    if (additional is Map && additional['order_id'] != null) {
-      final addId = additional['order_id'].toString().trim();
-      if (addId.isNotEmpty) return addId;
+    final additional = notif['additionalData'] ?? notif['additional_data'];
+    if (additional is Map) {
+      final addId = (additional['order_id'] ??
+              additional['related_id'] ??
+              additional['orderId'])
+          ?.toString()
+          .trim();
+      if (addId != null && addId.isNotEmpty) return addId;
     }
 
     final combinedText = '${notif['title'] ?? ''} ${notif['body'] ?? ''}';
-    final match = RegExp(r'#(\d+)').firstMatch(combinedText);
+    final match = RegExp(r'(?:طلب|#)\s*(\d+)').firstMatch(combinedText);
     if (match != null && match.groupCount >= 1) {
       return match.group(1);
     }
