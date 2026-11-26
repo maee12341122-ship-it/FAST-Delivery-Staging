@@ -19,7 +19,7 @@ class PhoneAuthScreen extends StatefulWidget {
 }
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
-  static const Duration _fastNetworkTimeout = Duration(milliseconds: 4500);
+  static const Duration _fastNetworkTimeout = Duration(seconds: 12);
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
@@ -74,6 +74,16 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         (record?['username'] ?? rawInput).toString().trim().toLowerCase();
     if (candidate.isEmpty) return '';
     return candidate.contains('@') ? candidate : '$candidate@fast.com';
+  }
+
+  String _formatFriendlyError(Object error, String fallbackMessage) {
+    if (error is TimeoutException) {
+      return 'استغرق الاتصال وقتاً أطول من المعتاد، تحقق من الإنترنت وأعد المحاولة';
+    }
+    final rawErr =
+        error.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '').trim();
+    if (rawErr.isEmpty) return fallbackMessage;
+    return rawErr;
   }
 
   // ربط بيانات المشرف في الحساب الشخصي (appState.userProfile) برقم هاتفه
@@ -393,14 +403,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الرمز: $e');
       if (mounted) {
-        final rawErr =
-            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              rawErr.isNotEmpty
-                  ? rawErr
-                  : 'تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً',
+              _formatFriendlyError(
+                e,
+                'تعذر إرسال رمز التحقق، يرجى المحاولة لاحقاً',
+              ),
             ),
           ),
         );
@@ -508,14 +517,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     } catch (e) {
       debugPrint('❌ خطأ في التحقق من OTP: $e');
       if (mounted) {
-        final rawErr =
-            e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              rawErr.isNotEmpty
-                  ? rawErr
-                  : 'رمز التحقق غير صحيح أو انتهت صلاحيته ❌',
+              _formatFriendlyError(
+                e,
+                'رمز التحقق غير صحيح أو انتهت صلاحيته ❌',
+              ),
             ),
           ),
         );
@@ -595,7 +603,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تعذر إتمام تسجيل الدخول: $e'),
+            content: Text(
+              _formatFriendlyError(
+                  e, 'تعذر إتمام تسجيل الدخول، يرجى المحاولة لاحقاً'),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -667,8 +678,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       debugPrint('❌ خطأ في حفظ بيانات العميل: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('تعذر حفظ البيانات، يرجى المحاولة مرة أخرى')),
+          SnackBar(
+            content: Text(
+              _formatFriendlyError(
+                e,
+                'تعذر حفظ البيانات، يرجى المحاولة مرة أخرى',
+              ),
+            ),
+          ),
         );
       }
     } finally {
