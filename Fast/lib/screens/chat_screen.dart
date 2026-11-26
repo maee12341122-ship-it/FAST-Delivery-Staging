@@ -216,7 +216,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = Provider.of<AppState>(context, listen: false);
+    final appState = context.watch<AppState>();
     final parsedOrderId = int.tryParse(widget.orderId) ?? widget.orderId;
 
     return GestureDetector(
