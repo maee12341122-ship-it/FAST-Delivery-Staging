@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/order_tracking_screen.dart';
-import 'api_service.dart';
 
 class NotificationService {
   static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
@@ -16,33 +14,24 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static final http.Client _httpClient = http.Client();
-
-  static Uri _buildBackendUri(String path) {
-    final base = ApiService.baseUrl.endsWith('/')
-        ? ApiService.baseUrl.substring(0, ApiService.baseUrl.length - 1)
-        : ApiService.baseUrl;
-    final normalizedPath = path.startsWith('/') ? path : '/$path';
-    return Uri.parse('$base$normalizedPath');
-  }
-
-  static Map<String, String> _authHeaders() {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    return headers;
-  }
-
   static int _nextNotificationId() {
     return DateTime.now().microsecondsSinceEpoch % 2147483647;
   }
 
-  /// 1. تهيئة الاستماع للإشعارات والنقر عليها والتنبيهات المحلية
+  /// ربط المستخدم الحالي بـ OneSignal عبر External ID لتسهيل الاستهداف
+  static Future<void> loginUser(String? userId) async {
+    try {
+      final cleanId = (userId ?? '').trim();
+      if (cleanId.isNotEmpty) {
+        await OneSignal.login(cleanId);
+      } else {
+        await OneSignal.logout();
+      }
+    } catch (e) {
+      debugPrint('⚠️ تعذر تحديث جلسة OneSignal login/logout: $e');
+    }
+  }
+
   static Future<void> initialize({
     void Function(String playerId)? onPlayerIdChanged,
   }) async {
@@ -74,11 +63,8 @@ class NotificationService {
       );
 
       OneSignal.initialize(_appId);
-
-      // طلب إذن الإشعارات من المستخدم نظامياً
       await OneSignal.Notifications.requestPermission(true);
 
-      // 🚀 الاستماع للنقر على إشعار OneSignal وتوجيه المستخدم للطلب مباشرة
       OneSignal.Notifications.addClickListener((event) {
         debugPrint(
             '🚀 [النقر على إشعار OneSignal]: ${event.notification.title}');
@@ -102,10 +88,9 @@ class NotificationService {
         }
       });
 
-      // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
       OneSignal.User.pushSubscription.addObserver((state) {
         final newId = state.current.id;
-        debugPrint('📱 [OneSignal Player ID الجديد]: $newId');
+        debugPrint('📱 [OneSignal Subscription ID الجديد]: $newId');
         if (newId != null &&
             newId.trim().isNotEmpty &&
             onPlayerIdChanged != null) {
@@ -114,7 +99,7 @@ class NotificationService {
       });
 
       final String? playerId = OneSignal.User.pushSubscription.id;
-      debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
+      debugPrint('📱 [OneSignal Subscription ID الحالي]: $playerId');
       if (playerId != null &&
           playerId.trim().isNotEmpty &&
           onPlayerIdChanged != null) {
@@ -127,7 +112,6 @@ class NotificationService {
     }
   }
 
-  /// 🧭 دالة عامة للانتقال لشاشة تتبع الطلب باستخدام الـ NavigatorKey الموحد
   static void navigateToOrderTracking(String orderId) {
     if (navigatorKey.currentState != null) {
       navigatorKey.currentState!.push(
@@ -141,7 +125,6 @@ class NotificationService {
     }
   }
 
-  /// دالة مساعدة لاستخراج رقم الطلب من النص تلقائياً (مثل #60)
   static String? _extractOrderIdFromText(String text) {
     final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
     final match = regExp.firstMatch(text);
@@ -151,7 +134,6 @@ class NotificationService {
     return null;
   }
 
-  /// 2. حفظ معرف الجهاز الحالي في جدول Supabase للمستخدم المسجل بشكل آمن ومتوافق مع المخطط
   static Future<void> saveUserPlayerId(
     String userId,
     String tableName, {
@@ -220,13 +202,13 @@ class NotificationService {
       }
 
       debugPrint(
-          '✅ تم حفظ OneSignal Player ID ($playerId) في جدول $cleanTable بنجاح');
+          '✅ تم حفظ OneSignal Subscription ID ($playerId) في جدول $cleanTable بنجاح');
     } catch (e) {
       debugPrint('⚠️ خطأ في حفظ Player ID في Supabase: $e');
     }
   }
 
-  /// 3. إرسال الإشعار الفوري عبر Node.js Backend (حيث تُخزن مفاتيح OneSignal السرية)
+  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-onesignal-push) بدون الحاجة لـ Node.js
   static Future<void> sendNotificationToUser({
     required String targetPlayerId,
     required String title,
@@ -238,6 +220,7 @@ class NotificationService {
 
     try {
       final payload = <String, dynamic>{
+        'player_ids': [cleanPlayerId],
         'target_player_id': cleanPlayerId,
         'title': title.trim(),
         'body': body.trim(),
@@ -245,24 +228,17 @@ class NotificationService {
           'additional_data': additionalData,
       };
 
-      final response = await _httpClient
-          .post(
-            _buildBackendUri('/api/notifications/send'),
-            headers: _authHeaders(),
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 5));
+      final res = await Supabase.instance.client.functions
+          .invoke('send-onesignal-push', body: payload)
+          .timeout(const Duration(seconds: 10));
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint(
-            '⚠️ تعذر إرسال الإشعار عبر الخادم (${response.statusCode}): ${response.body}');
-      }
+      debugPrint(
+          '📨 استجابة send-onesignal-push (${res.status}): ${jsonEncode(res.data)}');
     } catch (e) {
-      debugPrint('❌ خطأ في إرسال الإشعار عبر NotificationService: $e');
+      debugPrint('❌ خطأ في إرسال الإشعار عبر Supabase Edge Function: $e');
     }
   }
 
-  /// 4. إظهار إشعار محلي مع الصوت والاهتزاز (مع تمرير رقم الطلب كـ payload)
   static Future<void> showLocalNotification(
     String title,
     String body, {
@@ -309,7 +285,6 @@ class NotificationService {
     }
   }
 
-  /// 5. دالة شاملة مخصصة للشات
   static Future<void> sendChatMessageNotification({
     required String targetPlayerId,
     required String senderName,
