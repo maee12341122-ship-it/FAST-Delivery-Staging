@@ -135,10 +135,6 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _messagesChannel;
   Timer? _ordersResyncTimer;
 
-  // ضع هنا OneSignal App ID و REST API Key لإرسال إشعارات الخلفية عند غلق التطبيق
-  static const String _oneSignalAppId = '';
-  static const String _oneSignalRestApiKey = '';
-
   // مهلة موحدة قصيرة (4.5 ثوانٍ) لمنع تعليق العمليات حتى 20 ثانية
   static const Duration _fastNetworkTimeout = Duration(milliseconds: 4500);
 
@@ -1811,7 +1807,7 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// إرسال إشعار Push خارج التطبيق عبر OneSignal REST API أو Backend إذا كان متاحاً
+  /// إرسال إشعار Push خارج التطبيق عبر Supabase Edge Function (send-onesignal-push)
   Future<void> _sendExternalPushNotification({
     required List<String> playerIds,
     required String title,
@@ -1826,50 +1822,27 @@ class AppState extends ChangeNotifier {
         .toList();
     if (cleanIds.isEmpty) return;
 
-    if (_hasConfiguredBackend) {
-      try {
-        await _postBackend(
-          '/api/notifications/send',
-          {
-            'title': title,
-            'body': body,
-            'player_ids': cleanIds,
-            'target_player_id': cleanIds.first,
-            if (orderId != null) 'order_id': orderId,
-            if (eventType != null && eventType.trim().isNotEmpty)
-              'event_type': eventType.trim(),
-          },
-          timeout: _fastNetworkTimeout,
-        );
-        return;
-      } catch (_) {}
-    }
+    try {
+      final res = await supabase.functions
+          .invoke(
+            'send-onesignal-push',
+            body: {
+              'player_ids': cleanIds,
+              'target_player_id': cleanIds.first,
+              'title': title.trim(),
+              'body': body.trim(),
+              if (orderId != null) 'order_id': orderId,
+              if (eventType != null && eventType.trim().isNotEmpty)
+                'event_type': eventType.trim(),
+            },
+          )
+          .timeout(const Duration(seconds: 5));
 
-    if (_oneSignalAppId.trim().isNotEmpty &&
-        _oneSignalRestApiKey.trim().isNotEmpty) {
-      try {
-        await _httpClient
-            .post(
-              Uri.parse('https://api.onesignal.com/notifications'),
-              headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Authorization': 'Key ${_oneSignalRestApiKey.trim()}',
-              },
-              body: jsonEncode({
-                'app_id': _oneSignalAppId.trim(),
-                'include_subscription_ids': cleanIds,
-                'headings': {'en': title, 'ar': title},
-                'contents': {'en': body, 'ar': body},
-                'data': {
-                  if (orderId != null) 'order_id': orderId.toString(),
-                  if (eventType != null) 'event_type': eventType,
-                },
-              }),
-            )
-            .timeout(_fastNetworkTimeout);
-      } catch (e) {
-        debugPrint('تعذر إرسال OneSignal Push: $e');
-      }
+      debugPrint(
+        'OneSignal Function status: ${res.status}, data: ${res.data}',
+      );
+    } catch (e) {
+      debugPrint('تعذر إرسال إشعار OneSignal عبر Edge Function: $e');
     }
   }
 
