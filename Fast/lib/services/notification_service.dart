@@ -106,14 +106,18 @@ class NotificationService {
       OneSignal.User.pushSubscription.addObserver((state) {
         final newId = state.current.id;
         debugPrint('📱 [OneSignal Player ID الجديد]: $newId');
-        if (newId != null && newId.trim().isNotEmpty && onPlayerIdChanged != null) {
+        if (newId != null &&
+            newId.trim().isNotEmpty &&
+            onPlayerIdChanged != null) {
           onPlayerIdChanged(newId.trim());
         }
       });
 
       final String? playerId = OneSignal.User.pushSubscription.id;
       debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
-      if (playerId != null && playerId.trim().isNotEmpty && onPlayerIdChanged != null) {
+      if (playerId != null &&
+          playerId.trim().isNotEmpty &&
+          onPlayerIdChanged != null) {
         onPlayerIdChanged(playerId.trim());
       }
 
