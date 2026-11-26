@@ -38,6 +38,9 @@ class _HomeScreenState extends State<HomeScreen>
   String? selectedRestaurantName;
   String selectedStoreSubCategory = 'الكل';
 
+  final ScrollController _shopScrollController = ScrollController();
+  final ScrollController _otherOrdersScrollController = ScrollController();
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearching = false;
@@ -408,6 +411,7 @@ class _HomeScreenState extends State<HomeScreen>
                       _searchController.clear();
                       _isSearching = false;
                     });
+                    _scrollHomeToTop(animated: false);
                   },
                 );
               }).toList(),
@@ -460,7 +464,32 @@ class _HomeScreenState extends State<HomeScreen>
     return null;
   }
 
-  void _resetToHomeView({bool clearSearch = true}) {
+  /// إرجاع التمرير لبداية تبويب الرئيسية بشكل متسلسل بعد إعادة البناء
+  void _scrollHomeToTop({bool animated = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final controller in [
+        _shopScrollController,
+        _otherOrdersScrollController,
+      ]) {
+        if (controller.hasClients && controller.offset > 0) {
+          if (animated) {
+            controller.animateTo(
+              0.0,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+            );
+          } else {
+            controller.jumpTo(0.0);
+          }
+        }
+      }
+    });
+  }
+
+  /// إعادة ضبط شاشة الرئيسية بالكامل إلى البداية (القسم الرئيسي، بدون متجر أو قسم فرعي أو بحث، ومن أعلى الصفحة)
+  void _resetToHomeView({bool clearSearch = true, bool animateScroll = false}) {
+    FocusScope.of(context).unfocus();
     setState(() {
       _currentIndex = 0;
       selectedCategory = 'الكل';
@@ -472,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen>
         _isSearching = false;
       }
     });
+    _scrollHomeToTop(animated: animateScroll);
   }
 
   @override
@@ -508,6 +538,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _shopScrollController.dispose();
+    _otherOrdersScrollController.dispose();
     _popupAnimController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -933,6 +965,7 @@ class _HomeScreenState extends State<HomeScreen>
                   selectedStoreSubCategory = 'الكل';
                   _searchController.clear();
                 });
+                _scrollHomeToTop(animated: false);
               },
               child: Container(
                 padding:
@@ -1074,6 +1107,7 @@ class _HomeScreenState extends State<HomeScreen>
                 selectedStoreSubCategory = 'الكل';
                 _searchController.clear();
               });
+              _scrollHomeToTop(animated: false);
             },
             child: Container(
               width: 74,
@@ -2669,16 +2703,16 @@ class _HomeScreenState extends State<HomeScreen>
               selectedRestaurantName = null;
               selectedStoreSubCategory = 'الكل';
             });
+            _scrollHomeToTop(animated: false);
           } else if (_currentIndex == 0 && selectedCategory != 'الكل') {
             setState(() {
               selectedCategory = 'الكل';
               selectedRestaurantName = null;
               selectedStoreSubCategory = 'الكل';
             });
+            _scrollHomeToTop(animated: false);
           } else if (_currentIndex != 0) {
-            setState(() {
-              _currentIndex = 0;
-            });
+            _resetToHomeView(clearSearch: false, animateScroll: false);
           } else {
             showExitConfirmationDialog(context, appState, cardBg, textColor);
           }
@@ -2694,7 +2728,7 @@ class _HomeScreenState extends State<HomeScreen>
                 borderRadius: BorderRadius.circular(10),
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  _resetToHomeView();
+                  _resetToHomeView(clearSearch: true, animateScroll: false);
                 },
                 child: Padding(
                   padding:
@@ -3023,7 +3057,7 @@ class _HomeScreenState extends State<HomeScreen>
               onTap: (index) {
                 HapticFeedback.selectionClick();
                 if (index == 0) {
-                  _resetToHomeView();
+                  _resetToHomeView(clearSearch: true, animateScroll: false);
                   return;
                 }
                 if (index == 1 && appState.userProfile == null) {
@@ -3106,6 +3140,7 @@ class _HomeScreenState extends State<HomeScreen>
       return Padding(
         padding: const EdgeInsets.all(12.0),
         child: ListView(
+          controller: _otherOrdersScrollController,
           children: [
             _buildStoreHoursStatusBar(appState, cardBg, textColor),
             _buildWasalliAndOtherOrdersRow(
@@ -3245,6 +3280,7 @@ class _HomeScreenState extends State<HomeScreen>
         await appState.fetchProductsFromSupabase();
       },
       child: ListView(
+        controller: _shopScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         children: [
@@ -3381,6 +3417,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 selectedRestaurantName = storeName;
                                 selectedStoreSubCategory = 'الكل';
                               });
+                              _scrollHomeToTop(animated: false);
                             },
                             child: Container(
                               width: 116,
@@ -3514,10 +3551,13 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         ),
                         TextButton(
-                          onPressed: () => setState(() {
-                            selectedRestaurantName = null;
-                            selectedStoreSubCategory = 'الكل';
-                          }),
+                          onPressed: () {
+                            setState(() {
+                              selectedRestaurantName = null;
+                              selectedStoreSubCategory = 'الكل';
+                            });
+                            _scrollHomeToTop(animated: false);
+                          },
                           child: Text('تغيير المتجر',
                               style: TextStyle(color: accent, fontSize: 12)),
                         ),
@@ -3571,6 +3611,7 @@ class _HomeScreenState extends State<HomeScreen>
                               setState(() {
                                 selectedStoreSubCategory = sectionName;
                               });
+                              _scrollHomeToTop(animated: false);
                             },
                           ),
                         );
@@ -4119,7 +4160,7 @@ class _HomeScreenState extends State<HomeScreen>
                       'لم تقم بإنشاء أي طلبات معنا حتى الآن. ابدأ طلبك الأول الآن واستمتع بأسرع خدمة توصيل في تعز',
                   buttonText: 'اطلب الآن',
                   onButtonPressed: () {
-                    setState(() => _currentIndex = 0);
+                    _resetToHomeView(clearSearch: true, animateScroll: false);
                   },
                 )
               : ListView.builder(
