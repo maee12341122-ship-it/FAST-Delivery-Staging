@@ -21,9 +21,9 @@ class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final http.Client _httpClient = http.Client();
 
-  static const Duration _requestTimeout = Duration(seconds: 8);
-  static const Duration _orderTimeout = Duration(seconds: 8);
-  static const Duration _otpTimeout = Duration(seconds: 12);
+  static const Duration _requestTimeout = Duration(seconds: 5);
+  static const Duration _orderTimeout = Duration(seconds: 5);
+  static const Duration _otpTimeout = Duration(seconds: 5);
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
