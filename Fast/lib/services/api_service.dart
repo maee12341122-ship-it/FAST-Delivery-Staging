@@ -21,8 +21,9 @@ class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final http.Client _httpClient = http.Client();
 
-  static const Duration _requestTimeout = Duration(seconds: 25);
-  static const Duration _orderTimeout = Duration(seconds: 20);
+  static const Duration _requestTimeout = Duration(seconds: 8);
+  static const Duration _orderTimeout = Duration(seconds: 8);
+  static const Duration _otpTimeout = Duration(seconds: 12);
   static bool _isCreatingOrder = false;
 
   // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
@@ -36,6 +37,14 @@ class ApiService {
     'SUPABASE_URL',
     defaultValue: '',
   );
+
+  static bool get _isUnconfiguredLocalhost {
+    final trimmed = baseUrl.trim().toLowerCase();
+    return trimmed.isEmpty ||
+        trimmed.contains('10.0.2.2') ||
+        trimmed.contains('localhost') ||
+        trimmed.contains('127.0.0.1');
+  }
 
   static Uri _buildUri(String path, [Map<String, String>? queryParams]) {
     final normalizedBase = baseUrl.endsWith('/')
@@ -99,7 +108,10 @@ class ApiService {
   }) async {
     final uri = _buildUri(path, queryParams);
     final headers = _headers(explicitToken: explicitToken);
-    final timeout = timeoutOverride ?? _requestTimeout;
+    final timeout = timeoutOverride ??
+        (_isUnconfiguredLocalhost
+            ? const Duration(milliseconds: 1200)
+            : _requestTimeout);
 
     try {
       http.Response response;
@@ -180,7 +192,10 @@ class ApiService {
   // 1. جلب الكتالوج العام من جدول products في Supabase
   static Future<JsonMap> fetchCatalog() async {
     try {
-      final response = await _supabase.from('products').select();
+      final response = await _supabase
+          .from('products')
+          .select()
+          .timeout(_requestTimeout);
       return {'products': response};
     } catch (e) {
       debugPrint('❌ خطأ في جلب الكتالوج: $e');
@@ -194,7 +209,8 @@ class ApiService {
       final response = await _supabase
           .from('restaurants')
           .select()
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .timeout(_requestTimeout);
       return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب المطاعم: $e');
@@ -208,7 +224,8 @@ class ApiService {
       final response = await _supabase
           .from('categories')
           .select()
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .timeout(_requestTimeout);
       return response;
     } catch (e) {
       debugPrint('❌ خطأ في جلب الأقسام: $e');
@@ -324,7 +341,9 @@ class ApiService {
         path: '/api/orders',
         body: payload,
         explicitToken: token,
-        timeoutOverride: _orderTimeout,
+        timeoutOverride: _isUnconfiguredLocalhost
+            ? const Duration(milliseconds: 1200)
+            : _orderTimeout,
       );
 
       if (data is Map<String, dynamic>) {
@@ -546,7 +565,7 @@ class ApiService {
               'phone_number': cleanedPhone,
             },
           )
-          .timeout(_requestTimeout);
+          .timeout(_otpTimeout);
 
       final parsed = _parseFunctionPayload(res.data);
       if (parsed['ok'] == false) {
@@ -567,7 +586,8 @@ class ApiService {
     } on ApiException {
       rethrow;
     } on FunctionException catch (e) {
-      debugPrint('❌ خطأ FunctionException في إرسال OTP: status=${e.status}, details=${e.details}');
+      debugPrint(
+          '❌ خطأ FunctionException في إرسال OTP: status=${e.status}, details=${e.details}');
       throw ApiException(
         'تعذر إرسال رمز التحقق (${e.status}): ${e.details ?? e.reasonPhrase ?? 'خطأ في الدالة'}',
         statusCode: e.status,
@@ -604,15 +624,16 @@ class ApiService {
               'otp_code': cleanedCode,
             },
           )
-          .timeout(_requestTimeout);
+          .timeout(_otpTimeout);
 
       final parsed = _parseFunctionPayload(res.data);
       if (parsed.isEmpty) {
         throw ApiException('استجابة غير متوقعة أثناء التحقق من الرمز.');
       }
 
-      final bool isVerified =
-          parsed['verified'] == true || parsed['ok'] == true || parsed['success'] == true;
+      final bool isVerified = parsed['verified'] == true ||
+          parsed['ok'] == true ||
+          parsed['success'] == true;
       if (!isVerified) {
         throw ApiException(
           (parsed['error'] ??
@@ -630,7 +651,8 @@ class ApiService {
     } on ApiException {
       rethrow;
     } on FunctionException catch (e) {
-      debugPrint('❌ خطأ FunctionException في التحقق من OTP: status=${e.status}, details=${e.details}');
+      debugPrint(
+          '❌ خطأ FunctionException في التحقق من OTP: status=${e.status}, details=${e.details}');
       throw ApiException(
         'تعذر التحقق من الرمز (${e.status}): ${e.details ?? e.reasonPhrase ?? 'خطأ في الدالة'}',
         statusCode: e.status,
