@@ -21,18 +21,16 @@ class ApiService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final http.Client _httpClient = http.Client();
 
-  static const Duration _requestTimeout = Duration(seconds: 5);
-  static const Duration _orderTimeout = Duration(seconds: 5);
-  static const Duration _otpTimeout = Duration(seconds: 5);
+  static const Duration _requestTimeout = Duration(seconds: 12);
+  static const Duration _orderTimeout = Duration(seconds: 12);
+  static const Duration _otpTimeout = Duration(seconds: 12);
   static bool _isCreatingOrder = false;
 
-  // عنوان الخادم المركزي للـ Node.js Backend (يُضبط عبر --dart-define=BACKEND_URL=...)
   static const String baseUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'http://10.0.2.2:3000',
   );
 
-  // رابط Supabase (يمكن تمريره عبر --dart-define=SUPABASE_URL=...)
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: '',
@@ -110,7 +108,7 @@ class ApiService {
     final headers = _headers(explicitToken: explicitToken);
     final timeout = timeoutOverride ??
         (_isUnconfiguredLocalhost
-            ? const Duration(milliseconds: 1200)
+            ? const Duration(milliseconds: 2000)
             : _requestTimeout);
 
     try {
@@ -189,7 +187,6 @@ class ApiService {
     return <String, dynamic>{};
   }
 
-  // 1. جلب الكتالوج العام من جدول products في Supabase
   static Future<JsonMap> fetchCatalog() async {
     try {
       final response = await _supabase
@@ -203,7 +200,6 @@ class ApiService {
     }
   }
 
-  // 1. أ) جلب قائمة المطاعم/المتاجر النشطة من جدول restaurants
   static Future<List<dynamic>> fetchRestaurants() async {
     try {
       final response = await _supabase
@@ -218,7 +214,6 @@ class ApiService {
     }
   }
 
-  // 1. ب) جلب الأقسام العامة النشطة من جدول categories
   static Future<List<dynamic>> fetchCategories() async {
     try {
       final response = await _supabase
@@ -233,7 +228,6 @@ class ApiService {
     }
   }
 
-  // 2. التحقق من الكوبون وحساب الخصم عبر Node.js Backend
   static Future<JsonMap> validateCoupon(
     String code,
     double subtotal, {
@@ -260,7 +254,6 @@ class ApiService {
     }
   }
 
-  // 3. إنشاء الطلب حصرياً عبر Node.js Backend
   static Future<JsonMap> createOrder({
     required JsonList items,
     required String address,
@@ -342,7 +335,7 @@ class ApiService {
         body: payload,
         explicitToken: token,
         timeoutOverride: _isUnconfiguredLocalhost
-            ? const Duration(milliseconds: 1200)
+            ? const Duration(milliseconds: 2000)
             : _orderTimeout,
       );
 
@@ -362,7 +355,6 @@ class ApiService {
     }
   }
 
-  // 4. جلب طلبات العميل الشخصية عبر Node.js Backend
   static Future<List<dynamic>> fetchMyOrders({String? token}) async {
     try {
       final data = await _sendJsonRequest(
@@ -382,7 +374,6 @@ class ApiService {
     }
   }
 
-  // 5. [لوحة المشرف] جلب جميع الطلبات عبر Node.js Backend
   static Future<List<dynamic>> fetchAdminOrders(
     String token, {
     String? status,
@@ -411,7 +402,6 @@ class ApiService {
     }
   }
 
-  // 6. [لوحة المشرف] تحديد رسوم التوصيل وتعيين المندوب عبر Node.js Backend
   static Future<JsonMap> adminPricingOrder(
     String token,
     int orderId,
@@ -442,7 +432,6 @@ class ApiService {
     }
   }
 
-  // 7. [لوحة المشرف] تحديث حالة الطلب عبر Node.js Backend
   static Future<JsonMap> adminUpdateOrderStatus(
     String token,
     int orderId,
@@ -466,7 +455,6 @@ class ApiService {
     }
   }
 
-  // 8. [لوحة المندوب] جلب الطلبات المسندة للمندوب عبر Node.js Backend
   static Future<List<dynamic>> fetchCourierOrders(
     String courierName, {
     String? courierId,
@@ -499,7 +487,6 @@ class ApiService {
     }
   }
 
-  // 9. [لوحة المندوب] تحديث حالة الطلب عبر Node.js Backend
   static Future<JsonMap> courierUpdateOrderStatus(
     String token,
     int orderId,
@@ -523,7 +510,6 @@ class ApiService {
     }
   }
 
-  // 10. [لوحة المندوب] إرسال وتحديث الموقع الجغرافي للمندوب عبر Node.js Backend
   static Future<void> updateCourierLocation(
     String token,
     double latitude,
@@ -547,7 +533,6 @@ class ApiService {
     }
   }
 
-  // 11. إرسال رمز تحقق OTP عبر واتساب (عبر Supabase Edge Function: whatsapp-otp)
   static Future<JsonMap> sendWhatsappOtp({
     required String phoneNumber,
   }) async {
@@ -602,7 +587,6 @@ class ApiService {
     }
   }
 
-  // 12. التحقق من رمز OTP المدخل (عبر Supabase Edge Function: whatsapp-otp)
   static Future<JsonMap> verifyWhatsappOtp({
     required String phoneNumber,
     required String otpCode,
