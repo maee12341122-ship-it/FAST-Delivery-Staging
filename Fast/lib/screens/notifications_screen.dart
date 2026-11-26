@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
+import '../order_tracking_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({Key? key}) : super(key: key);
+  const NotificationsScreen({super.key});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -26,6 +27,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       parent: _badgeAnimController,
       curve: Curves.elasticOut,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final count = context.read<AppState>().notifications.length;
+      _previousCount = count;
+      if (count > 0) {
+        _badgeAnimController.forward(from: 0.0);
+      }
+    });
   }
 
   @override
@@ -34,13 +43,44 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     super.dispose();
   }
 
+  String? _extractOrderIdFromNotification(Map<String, dynamic> notif) {
+    final directId = notif['order_id']?.toString().trim() ??
+        notif['related_id']?.toString().trim();
+    if (directId != null && directId.isNotEmpty) return directId;
+
+    final additional = notif['additionalData'];
+    if (additional is Map && additional['order_id'] != null) {
+      final addId = additional['order_id'].toString().trim();
+      if (addId.isNotEmpty) return addId;
+    }
+
+    final combinedText = '${notif['title'] ?? ''} ${notif['body'] ?? ''}';
+    final match = RegExp(r'#(\d+)').firstMatch(combinedText);
+    if (match != null && match.groupCount >= 1) {
+      return match.group(1);
+    }
+    return null;
+  }
+
+  void _handleNotificationTap(
+      BuildContext context, Map<String, dynamic> notif) {
+    final orderId = _extractOrderIdFromNotification(notif);
+    if (orderId != null && orderId.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OrderTrackingScreen(orderIdParam: orderId),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final notifications = appState.notifications;
     final isDark = appState.isDarkMode;
 
-    // تفعيل الحركة المنبثقة البسيطة تلقائياً كلما زاد عدد الإشعارات (مع كل حركة جديدة)
     if (notifications.length > _previousCount) {
       _badgeAnimController.forward(from: 0.0);
       _previousCount = notifications.length;
@@ -51,7 +91,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF0F2F5),
+        backgroundColor:
+            isDark ? const Color(0xFF121212) : const Color(0xFFF0F2F5),
         appBar: AppBar(
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           title: Row(
@@ -65,12 +106,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 ),
               ),
               const Spacer(),
-              // 🌟 الإشعار المنبثق البسيط المتحرك بجوار العنوان/الأيقونة مع كل حركة جديدة
               if (notifications.isNotEmpty)
                 ScaleTransition(
                   scale: _scaleAnimation,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.amber[700],
                       borderRadius: BorderRadius.circular(12),
@@ -108,7 +149,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.notifications_off_outlined, size: 60, color: Colors.grey),
+                    Icon(Icons.notifications_off_outlined,
+                        size: 60, color: Colors.grey),
                     SizedBox(height: 12),
                     Text(
                       'لا توجد إشعارات جديدة حالياً 📭',
@@ -121,10 +163,15 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 padding: const EdgeInsets.all(12),
                 itemCount: notifications.length,
                 itemBuilder: (context, index) {
-                  final notif = notifications[index];
-                  final String title = notif['title'] ?? 'إشعار جديد';
-                  final String body = notif['body'] ?? '';
-                  final DateTime? time = notif['time'] as DateTime?;
+                  final notif = Map<String, dynamic>.from(notifications[index]);
+                  final String title =
+                      notif['title']?.toString() ?? 'إشعار جديد';
+                  final String body = notif['body']?.toString() ?? '';
+                  final DateTime? time = notif['time'] is DateTime
+                      ? notif['time'] as DateTime
+                      : DateTime.tryParse(notif['time']?.toString() ?? '');
+                  final String? linkedOrderId =
+                      _extractOrderIdFromNotification(notif);
 
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
@@ -141,6 +188,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       ],
                     ),
                     child: ListTile(
+                      onTap: linkedOrderId != null
+                          ? () => _handleNotificationTap(context, notif)
+                          : null,
                       contentPadding: const EdgeInsets.all(12),
                       leading: Container(
                         padding: const EdgeInsets.all(10),
@@ -148,7 +198,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           color: Colors.amber.withOpacity(0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.notifications_active, color: Colors.amber, size: 22),
+                        child: const Icon(Icons.notifications_active,
+                            color: Colors.amber, size: 22),
                       ),
                       title: Text(
                         title,
@@ -173,11 +224,16 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                             const SizedBox(height: 6),
                             Text(
                               '${time.hour}:${time.minute.toString().padLeft(2, '0')} - ${time.year}/${time.month}/${time.day}',
-                              style: const TextStyle(color: Colors.grey, fontSize: 10),
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 10),
                             ),
                           ],
                         ],
                       ),
+                      trailing: linkedOrderId != null
+                          ? const Icon(Icons.arrow_forward_ios,
+                              color: Colors.amber, size: 15)
+                          : null,
                     ),
                   );
                 },
