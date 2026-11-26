@@ -31,15 +31,7 @@ void main() async {
   try {
     await NotificationService.initialize();
   } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة الإشعارات المحلية: $e');
-  }
-
-  try {
-    OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
-    await OneSignal.Notifications.requestPermission(true);
-    debugPrint("✅ تمت تهيئة OneSignal وطلب الإذن بنجاح");
-  } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
+    debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
   }
 
   final appState = AppState();
@@ -55,8 +47,11 @@ void main() async {
           _extractOrderIdFromNotification(title, body);
 
       if (orderId != null && orderId.isNotEmpty) {
-        final bool isChatNotification =
-            data?['type']?.toString() == 'chat' || title.contains('رسالة جديدة');
+        final String eventType =
+            data?['type']?.toString() ?? data?['event_type']?.toString() ?? '';
+        final bool isChatNotification = eventType == 'chat' ||
+            eventType == 'chat_message' ||
+            title.contains('رسالة جديدة');
 
         if (isChatNotification) {
           final String role = appState.isAdminLoggedIn
@@ -81,7 +76,7 @@ void main() async {
       }
     });
 
-    debugPrint("✅ تم تسجيل مستمع النقر على إشعارات OneSignal بنجاح");
+    debugPrint('✅ تم تسجيل مستمع النقر الموحد على إشعارات OneSignal بنجاح');
   } catch (e) {
     debugPrint('⚠️ خطأ في تسجيل مستمع النقر لـ OneSignal: $e');
   }
