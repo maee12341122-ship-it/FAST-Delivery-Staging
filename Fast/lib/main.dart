@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -33,12 +34,18 @@ void main() async {
     debugPrint('⚠️ خطأ في تهيئة الإشعارات المحلية: $e');
   }
 
-  final appState = AppState();
-
   try {
     OneSignal.initialize("60850bed-4af8-4df1-a2f5-77411630f447");
     await OneSignal.Notifications.requestPermission(true);
+    debugPrint("✅ تمت تهيئة OneSignal وطلب الإذن بنجاح");
+  } catch (e) {
+    debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
+  }
 
+  final appState = AppState();
+  unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+
+  try {
     OneSignal.Notifications.addClickListener((event) {
       final data = event.notification.additionalData;
       final String title = event.notification.title ?? '';
@@ -74,9 +81,9 @@ void main() async {
       }
     });
 
-    debugPrint("✅ تمت تهيئة OneSignal ومستمع النقر بنجاح");
+    debugPrint("✅ تم تسجيل مستمع النقر على إشعارات OneSignal بنجاح");
   } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة OneSignal: $e');
+    debugPrint('⚠️ خطأ في تسجيل مستمع النقر لـ OneSignal: $e');
   }
 
   runApp(
