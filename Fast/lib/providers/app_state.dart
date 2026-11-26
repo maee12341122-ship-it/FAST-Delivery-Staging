@@ -135,13 +135,12 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _messagesChannel;
   Timer? _ordersResyncTimer;
 
-  // مهلة موحدة قصيرة (4.5 ثوانٍ) لمنع تعليق العمليات حتى 20 ثانية
-  static const Duration _fastNetworkTimeout = Duration(milliseconds: 4500);
+  // مهلة موحدة (12 ثانية) لعمليات الدخول والطلبات والشبكة
+  static const Duration _fastNetworkTimeout = Duration(seconds: 12);
+  static const Duration _authTimeout = Duration(seconds: 12);
 
-  // تخزين مؤقت لرموز OTP في الذاكرة عند العمل بدون Node.js Backend
-  final Map<String, String> _localFallbackOtps = {};
-
-  static const bool _useSandboxOtpProvider = true;
+  // إيقاف الدخول التجريبي بالكامل واعتماد التحقق الفعلي فقط
+  static const bool _useSandboxOtpProvider = false;
 
   bool _isCreatingOrder = false;
 
@@ -257,7 +256,7 @@ class AppState extends ChangeNotifier {
           .select('id, status')
           .eq('auth_user_id', user.id)
           .maybeSingle()
-          .timeout(_fastNetworkTimeout);
+          .timeout(_authTimeout);
       if (byAuth != null && byAuth['status']?.toString() != 'disabled') {
         return true;
       }
@@ -282,7 +281,7 @@ class AppState extends ChangeNotifier {
             .select('id, status')
             .ilike('username', candidate)
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authTimeout);
         if (byUsername != null &&
             byUsername['status']?.toString() != 'disabled') {
           return true;
@@ -312,7 +311,7 @@ class AppState extends ChangeNotifier {
           final res = await _postBackend(
             '/api/auth/admin/verify',
             {},
-            timeout: _fastNetworkTimeout,
+            timeout: _authTimeout,
           );
           if (res['is_admin'] == true || res['valid'] == true) {
             return res['admin'] is Map
@@ -332,7 +331,7 @@ class AppState extends ChangeNotifier {
             .select('id, username, phone')
             .or('phone.eq.$phone,phone.eq.$formattedPhone')
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authTimeout);
         if (rowByPhone != null) {
           return Map<String, dynamic>.from(rowByPhone);
         }
@@ -359,7 +358,7 @@ class AppState extends ChangeNotifier {
             .select('id, username, phone')
             .ilike('username', candidate)
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authTimeout);
         if (row != null) {
           return Map<String, dynamic>.from(row);
         }
@@ -428,7 +427,7 @@ class AppState extends ChangeNotifier {
               'name': fallbackName,
               'address': fallbackAddress,
             }, onConflict: 'phone')
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authTimeout);
       } catch (e) {
         debugPrint('تعذر حفظ سجل العميل للموظف: $e');
       }
@@ -1836,7 +1835,7 @@ class AppState extends ChangeNotifier {
                 'event_type': eventType.trim(),
             },
           )
-          .timeout(const Duration(seconds: 5));
+          .timeout(_fastNetworkTimeout);
 
       debugPrint(
         'OneSignal Function status: ${res.status}, data: ${res.data}',
@@ -2347,7 +2346,7 @@ class AppState extends ChangeNotifier {
             email: email,
             password: password,
           )
-          .timeout(_fastNetworkTimeout);
+          .timeout(_authTimeout);
       if (response.user == null ||
           await _isCourierAccount(response.user, usernameInput: raw)) {
         unawaited(supabase.auth.signOut());
@@ -2468,7 +2467,7 @@ class AppState extends ChangeNotifier {
         .select()
         .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
         .maybeSingle()
-        .timeout(_fastNetworkTimeout);
+        .timeout(_authTimeout);
 
     if (record == null) return null;
 
@@ -2570,43 +2569,21 @@ class AppState extends ChangeNotifier {
     }
 
     if (_useSandboxOtpProvider) {
-      final generatedCode = (1000 + Random().nextInt(9000)).toString();
-      _localFallbackOtps[cleanPhone] = generatedCode;
-      notifyListeners();
-      return {
-        'exists': existsInDb,
-        'provider': 'sandbox',
-        'is_sandbox': true,
-        'otp_code': generatedCode,
-        'message': 'رمز التحقق التجريبي: $generatedCode',
-      };
+      throw Exception('تم إيقاف الدخول التجريبي، يرجى تفعيل مزود التحقق الفعلي.');
     }
 
-    try {
-      final res = await ApiService.sendWhatsappOtp(
-        phoneNumber: internationalPhone,
-      ).timeout(_fastNetworkTimeout);
-      notifyListeners();
-      return {
-        'exists': existsInDb,
-        'provider': 'whatsapp_cloud_api',
-        'is_sandbox': false,
-        'message': res['message']?.toString().isNotEmpty == true
-            ? res['message'].toString()
-            : 'تم إرسال رمز التحقق عبر واتساب إلى +$internationalPhone',
-      };
-    } catch (e) {
-      final generatedCode = (1000 + Random().nextInt(9000)).toString();
-      _localFallbackOtps[cleanPhone] = generatedCode;
-      notifyListeners();
-      return {
-        'exists': existsInDb,
-        'provider': 'fallback',
-        'is_sandbox': true,
-        'otp_code': generatedCode,
-        'message': e.toString().replaceFirst(RegExp(r'^ApiException:\s*'), ''),
-      };
-    }
+    final res = await ApiService.sendWhatsappOtp(
+      phoneNumber: internationalPhone,
+    ).timeout(_authTimeout);
+    notifyListeners();
+    return {
+      'exists': existsInDb,
+      'provider': 'whatsapp_cloud_api',
+      'is_sandbox': false,
+      'message': res['message']?.toString().isNotEmpty == true
+          ? res['message'].toString()
+          : 'تم إرسال رمز التحقق عبر واتساب إلى +$internationalPhone',
+    };
   }
 
   Future<bool> verifyOtpAndLogin(String phone, String enteredOtp) async {
@@ -2615,33 +2592,27 @@ class AppState extends ChangeNotifier {
     final cleanPhone = _normalizePhone(phone);
     if (cleanPhone.isEmpty) return false;
 
+    if (_useSandboxOtpProvider) {
+      return false;
+    }
+
     final internationalPhone = '967$cleanPhone';
     var isValid = false;
 
-    if (!_useSandboxOtpProvider) {
-      try {
-        final verifyRes = await ApiService.verifyWhatsappOtp(
-          phoneNumber: internationalPhone,
-          otpCode: code,
-        ).timeout(_fastNetworkTimeout);
-        isValid = verifyRes['verified'] == true ||
-            verifyRes['ok'] == true ||
-            verifyRes['success'] == true;
-      } catch (e) {
-        debugPrint('تعذر التحقق عبر دالة واتساب، التحقق من الاحتياطي: $e');
-        if (_localFallbackOtps[cleanPhone] == code) {
-          isValid = true;
-        }
-      }
-    }
-
-    if (!isValid && _localFallbackOtps[cleanPhone] == code) {
-      isValid = true;
+    try {
+      final verifyRes = await ApiService.verifyWhatsappOtp(
+        phoneNumber: internationalPhone,
+        otpCode: code,
+      ).timeout(_authTimeout);
+      isValid = verifyRes['verified'] == true ||
+          verifyRes['ok'] == true ||
+          verifyRes['success'] == true;
+    } catch (e) {
+      debugPrint('فشل التحقق عبر واتساب: $e');
+      rethrow;
     }
 
     if (!isValid) return false;
-
-    _localFallbackOtps.remove(cleanPhone);
 
     JsonMapNullable dbRecord;
     try {
@@ -2672,7 +2643,7 @@ class AppState extends ChangeNotifier {
               'name': '',
               'address': '',
             }, onConflict: 'phone')
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authTimeout);
       } catch (e) {
         debugPrint('خطأ في إنشاء سجل العميل في customers: $e');
       }
@@ -2725,7 +2696,7 @@ class AppState extends ChangeNotifier {
                 'name': name,
                 'address': address,
               }, onConflict: 'phone')
-              .timeout(_fastNetworkTimeout);
+              .timeout(_authTimeout);
 
           await requestLocationAndNotificationPermissions();
           await syncOneSignalPlayerIdForCurrentUsers();
@@ -2771,7 +2742,7 @@ class AppState extends ChangeNotifier {
         .select()
         .eq('auth_user_id', user.id)
         .maybeSingle()
-        .timeout(_fastNetworkTimeout);
+        .timeout(_authTimeout);
     if (byAuthId != null) {
       return Map<String, dynamic>.from(byAuthId);
     }
@@ -2796,7 +2767,7 @@ class AppState extends ChangeNotifier {
           .select()
           .ilike('username', candidate)
           .maybeSingle()
-          .timeout(_fastNetworkTimeout);
+          .timeout(_authTimeout);
       if (byUsername != null) {
         unawaited(() async {
           try {
@@ -2804,7 +2775,7 @@ class AppState extends ChangeNotifier {
                 .from('couriers')
                 .update({'auth_user_id': user.id})
                 .eq('id', byUsername['id'])
-                .timeout(_fastNetworkTimeout);
+                .timeout(_authTimeout);
           } catch (_) {}
         }());
         return Map<String, dynamic>.from(byUsername);
@@ -3141,7 +3112,7 @@ class AppState extends ChangeNotifier {
             email: email,
             password: password,
           )
-          .timeout(_fastNetworkTimeout);
+          .timeout(_authTimeout);
 
       if (auth.user == null) {
         unawaited(supabase.auth.signOut());
@@ -3170,7 +3141,7 @@ class AppState extends ChangeNotifier {
               .from('couriers')
               .update({'is_logged_in': true})
               .eq('id', row['id'])
-              .timeout(_fastNetworkTimeout);
+              .timeout(_authTimeout);
         } catch (_) {}
       }());
 
@@ -3206,7 +3177,7 @@ class AppState extends ChangeNotifier {
               .from('couriers')
               .update({'is_logged_in': false})
               .eq('id', courierId)
-              .timeout(_fastNetworkTimeout);
+              .timeout(_authTimeout);
         } catch (e) {
           debugPrint('خطأ في تحرير جلسة المندوب: $e');
         }
