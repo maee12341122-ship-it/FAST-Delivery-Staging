@@ -26,7 +26,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
 
-  // حقول شاشة تسجيل الدخول الخاصة بالأدمن والمندوب
   final TextEditingController _loginUsernameController = TextEditingController();
   final TextEditingController _loginPasswordController = TextEditingController();
 
@@ -35,7 +34,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final FocusNode _nameFocus = FocusNode();
   final FocusNode _addressFocus = FocusNode();
 
-  // المراحل: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال بروفايل العميل، 3 = شاشة تسجيل الدخول الخاصة (أدمن أو مندوب)
   int _currentStep = 0;
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -43,11 +41,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
   String _cleanPhoneInput = '';
-  String _detectedRole =
-      'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
+  String _detectedRole = 'customer_new';
   Map<String, dynamic>? _pendingUserRecord;
 
-  // عداد النقرات المخفية للوصول لإدارة النظام سراً
   int _secretTapCount = 0;
 
   @override
@@ -87,7 +83,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     return rawErr;
   }
 
-  // ربط بيانات المشرف في الحساب الشخصي (appState.userProfile) برقم هاتفه
   Future<void> _syncAdminUserSession(
     AppState appState, {
     String? username,
@@ -160,7 +155,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 🛡️ التحقق التلقائي إذا كان المشرف أو المندوب مسجل الدخول مسبقاً لتخطي تسجيل الدخول
   Future<void> _checkExistingAdminOrCourierSession() async {
     try {
       final session = _supabase.auth.currentSession;
@@ -171,7 +165,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final candidateUsername =
           email.contains('@') ? email.split('@').first : email;
 
-      // فحص متوازي وسريع للمشرف والمندوب
       final results = await Future.wait<dynamic>([
         if (candidateUsername.isNotEmpty)
           _supabase
@@ -279,6 +272,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   ) {
     unawaited(() async {
       try {
+        await NotificationService.loginUser(customerIdOrPhone)
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+      try {
         await appState
             .requestLocationAndNotificationPermissions()
             .timeout(const Duration(seconds: 8));
@@ -299,7 +296,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }());
   }
 
-  // 1️⃣ طلب إرسال كود OTP عبر واتساب وفحص دور المستخدم بالتوازي لتسريع الاستجابة
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -320,7 +316,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
       final filterOr = 'phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone';
 
-      // تنفيذ استعلامات الفحص الثلاثة بالتوازي في طلب واحد سريع بدلاً من الانتظار المتسلسل
       final lookupResults = await Future.wait<dynamic>([
         _supabase
             .from('admins')
@@ -381,7 +376,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'customer_new';
       }
 
-      // إرسال OTP الحقيقي عبر دالة whatsapp-otp في Supabase باستخدام الصيغة الدولية 967...
       final internationalPhone = '967$_cleanPhoneInput';
       final otpRes = await ApiService.sendWhatsappOtp(
         phoneNumber: internationalPhone,
@@ -424,7 +418,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 2️⃣ التحقق من كود OTP وتفعيل الجلسة للعميل أو الانتقال لاستكمال البروفايل
   Future<void> _verifyOTPAndProceed(AppState appState) async {
     final otpCode = _otpController.text.trim();
     if (otpCode.isEmpty || otpCode.length < 4) {
@@ -538,7 +531,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 3️⃣ التحقق السريع من بيانات المشرف أو المندوب والانتقال الفوري للوحة
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
     final rawLogin = _loginUsernameController.text.trim();
     final password = _loginPasswordController.text.trim();
@@ -592,7 +584,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           return;
         }
       } else {
-        // إذا دخل المستخدم من الوضع السري دون تحديد الدور مسبقاً: نجرب المشرف ثم المندوب
         final bool adminSuccess = await appState
             .loginAdminFromSupabase(resolvedEmail, password)
             .timeout(_authNetworkTimeout);
@@ -649,7 +640,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 4️⃣ حفظ بيانات العميل النهائية في قاعدة البيانات وتحديث AppState
   Future<void> _saveCustomerProfile(AppState appState) async {
     final name = _nameController.text.trim();
     final address = _addressController.text.trim();
@@ -776,7 +766,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 🕵️‍♂️ النقرة المخفية السريعة (الضغط 5 مرات متتالية على الأيقونة يفتح شاشة الأدمن سراً)
                     GestureDetector(
                       onTap: () {
                         setState(() {
@@ -813,8 +802,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
-                    // ---------------- المرحلة 0: إدخال رقم الهاتف ----------------
                     if (_currentStep == 0) ...[
                       const Text(
                         'تسجيل الدخول برقم الهاتف',
@@ -876,10 +863,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15)),
                       ),
-                    ]
-
-                    // ---------------- المرحلة 1: إدخال رمز OTP ----------------
-                    else if (_currentStep == 1) ...[
+                    ] else if (_currentStep == 1) ...[
                       const Text(
                         'أدخل رمز التحقق (OTP)',
                         style: TextStyle(
@@ -953,10 +937,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         child: const Text('تغيير رقم الهاتف',
                             style: TextStyle(color: primaryGold)),
                       ),
-                    ]
-
-                    // ---------------- المرحلة 3: شاشة تسجيل دخول المشرف أو المندوب السرّية ----------------
-                    else if (_currentStep == 3) ...[
+                    ] else if (_currentStep == 3) ...[
                       Text(
                         _detectedRole == 'admin'
                             ? 'تسجيل دخول المشرف الآمن 🛡️'
@@ -1064,10 +1045,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         child: const Text('العودة لتسجيل العملاء',
                             style: TextStyle(color: primaryGold)),
                       ),
-                    ]
-
-                    // ---------------- المرحلة 2: إكمال بروفايل العميل الجديد ----------------
-                    else ...[
+                    ] else ...[
                       const Text(
                         'استكمال وتأكيد البيانات الشخصية',
                         style: TextStyle(
