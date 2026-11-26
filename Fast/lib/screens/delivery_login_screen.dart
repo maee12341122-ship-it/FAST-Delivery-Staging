@@ -76,8 +76,11 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
         return;
       }
 
+      final targetIdForPush =
+          rawId != null && rawId.isNotEmpty ? rawId : courierId;
+      await NotificationService.loginUser(targetIdForPush);
       await NotificationService.saveUserPlayerId(
-        rawId != null && rawId.isNotEmpty ? rawId : courierId,
+        targetIdForPush,
         'couriers',
       );
 
