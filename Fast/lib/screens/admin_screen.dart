@@ -36,6 +36,13 @@ class _AdminScreenState extends State<AdminScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verifyAdminSecurity();
+      final appState = Provider.of<AppState>(context, listen: false);
+      if (appState.couriers.isEmpty) {
+        appState.fetchCouriersFromSupabase();
+      }
+      if (appState.orders.isEmpty) {
+        appState.fetchOrders();
+      }
     });
   }
 
@@ -104,15 +111,18 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   String _getArabicStatus(String status) {
-    switch (status) {
+    switch (status.trim()) {
       case 'waitingForPricing':
         return '⏳ بانتظار التسعير';
       case 'pricingSentToCustomer':
         return '🔔 بانتظار موافقة العميل';
+      case 'approvedByCustomer':
       case 'waitingCourierApproval':
         return '🛵 بانتظار قبول المندوب';
       case 'acceptedByCourier':
         return '🚀 وافق المندوب';
+      case 'rejectedByCourier':
+        return '⚠️ رفض المندوب (أعد التعيين)';
       case 'onTheWay':
         return '🟢 المندوب في الطريق';
       case 'arrived':
@@ -136,7 +146,6 @@ class _AdminScreenState extends State<AdminScreen>
     final courierId = courier['id']?.toString().trim() ?? '';
 
     return appState.orders.any((o) {
-      if (o is! Map) return false;
       final assigned =
           (o['assigned_courier'] ?? '').toString().trim().toLowerCase();
       final nameField =
@@ -146,7 +155,8 @@ class _AdminScreenState extends State<AdminScreen>
           (courierId.isNotEmpty && assigned == courierId);
       if (!matchesCourier) return false;
       final status = o['status']?.toString().trim() ?? '';
-      return status == 'onTheWay' ||
+      return status == 'acceptedByCourier' ||
+          status == 'onTheWay' ||
           status == 'arrivedToCustomer' ||
           status == 'arrived';
     });
@@ -567,292 +577,284 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   Widget _buildCouriersManagement(AppState appState) {
-    return FutureBuilder<List<dynamic>>(
-      future: Supabase.instance.client.from('couriers').select(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child: CircularProgressIndicator(color: Colors.amber));
-        }
-        final couriers = snapshot.data ?? [];
-        if (couriers.isEmpty) {
-          return const Center(
-              child: Text('لا يوجد مناديب مسجلين حالياً 🛵',
-                  style: TextStyle(color: Colors.grey)));
-        }
+    final couriers = appState.couriers;
+    if (couriers.isEmpty) {
+      return const Center(
+          child: Text('لا يوجد مناديب مسجلين حالياً 🛵',
+              style: TextStyle(color: Colors.grey)));
+    }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: couriers.length,
-          itemBuilder: (context, index) {
-            final courier = couriers[index];
-            final courierMap = courier is Map
-                ? Map<String, dynamic>.from(courier)
-                : <String, dynamic>{};
-            final courierName = courierMap['name']?.toString().trim() ??
-                courierMap['full_name']?.toString().trim() ??
-                '';
-            final courierKey =
-                courierMap['id']?.toString() ?? '$courierName-$index';
-            final isSettlingThis = _settlingCourierKeys.contains(courierKey);
-            final isBusy = _isCourierBusy(appState, courierMap);
+    return RefreshIndicator(
+      color: Colors.amber,
+      onRefresh: appState.fetchCouriersFromSupabase,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: couriers.length,
+        itemBuilder: (context, index) {
+          final courierMap = Map<String, dynamic>.from(couriers[index]);
+          final courierName = courierMap['name']?.toString().trim() ??
+              courierMap['full_name']?.toString().trim() ??
+              '';
+          final courierKey =
+              courierMap['id']?.toString() ?? '$courierName-$index';
+          final isSettlingThis = _settlingCourierKeys.contains(courierKey);
+          final isBusy = _isCourierBusy(appState, courierMap);
 
-            final courierUnsettledOrders = appState.orders.where((o) {
-              final assigned = o['assigned_courier']?.toString().trim() ?? '';
-              final name = o['courier_name']?.toString().trim() ?? '';
-              final isDelivered =
-                  o['status']?.toString().trim() == 'delivered';
-              final isSettled = o['is_settled'] == true;
-              return (assigned == courierName || name == courierName) &&
-                  isDelivered &&
-                  !isSettled;
-            }).toList();
+          final courierUnsettledOrders = appState.orders.where((o) {
+            final assigned = o['assigned_courier']?.toString().trim() ?? '';
+            final name = o['courier_name']?.toString().trim() ?? '';
+            final isDelivered =
+                o['status']?.toString().trim() == 'delivered';
+            final isSettled = o['is_settled'] == true;
+            return (assigned == courierName || name == courierName) &&
+                isDelivered &&
+                !isSettled;
+          }).toList();
 
-            var totalCourierEarnings = 0.0;
-            for (final order in courierUnsettledOrders) {
-              totalCourierEarnings +=
-                  double.tryParse(order['delivery_fee']?.toString() ?? '0') ??
-                      0.0;
-            }
+          var totalCourierEarnings = 0.0;
+          for (final order in courierUnsettledOrders) {
+            totalCourierEarnings +=
+                double.tryParse(order['delivery_fee']?.toString() ?? '0') ??
+                    0.0;
+          }
 
-            final adminCommission = totalCourierEarnings * 0.20;
-            final netCourierEarnings = totalCourierEarnings - adminCommission;
+          final adminCommission = totalCourierEarnings * 0.20;
+          final netCourierEarnings = totalCourierEarnings - adminCommission;
 
-            return Card(
-              color: const Color(0xFF1E1E1E),
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.amber.withOpacity(0.4)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.two_wheeler,
-                                color: Colors.amber, size: 24),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                    courierName.isNotEmpty
-                                        ? courierName
-                                        : 'مندوب',
-                                    style: const TextStyle(
-                                        color: Colors.amber,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16)),
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: isBusy
-                                        ? Colors.orange.withOpacity(0.2)
-                                        : Colors.green.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    isBusy ? 'مشغول بطلب' : 'متاح',
-                                    style: TextStyle(
-                                      color: isBusy
-                                          ? Colors.orangeAccent
-                                          : Colors.greenAccent,
-                                      fontSize: 11,
+          return Card(
+            color: const Color(0xFF1E1E1E),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.two_wheeler,
+                              color: Colors.amber, size: 24),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  courierName.isNotEmpty
+                                      ? courierName
+                                      : 'مندوب',
+                                  style: const TextStyle(
+                                      color: Colors.amber,
                                       fontWeight: FontWeight.bold,
-                                    ),
+                                      fontSize: 16)),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isBusy
+                                      ? Colors.orange.withOpacity(0.2)
+                                      : Colors.green.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  isBusy ? 'مشغول بطلب' : 'متاح',
+                                  style: TextStyle(
+                                    color: isBusy
+                                        ? Colors.orangeAccent
+                                        : Colors.greenAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.green),
                               ),
-                              child: Text(
-                                  '📞 ${courierMap['phone'] ?? 'غير متوفر'}',
-                                  style: const TextStyle(
-                                      color: Colors.greenAccent,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold)),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: isSettlingThis
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.redAccent),
-                                    )
-                                  : const Icon(Icons.delete_sweep,
-                                      color: Colors.redAccent, size: 24),
-                              tooltip: 'تصفير الحساب والعمولات',
-                              onPressed: isSettlingThis
-                                  ? null
-                                  : () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (ctx) => Directionality(
-                                          textDirection: TextDirection.rtl,
-                                          child: AlertDialog(
-                                            backgroundColor:
-                                                const Color(0xFF1E1E1E),
-                                            title: const Text(
-                                                'تصفير حساب المندوب ⚠️',
-                                                style: TextStyle(
-                                                    color: Colors.amber,
-                                                    fontSize: 16)),
-                                            content: Text(
-                                                'هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\n• صافي لك (20%): ${adminCommission.toStringAsFixed(0)} ر.ي\n• صافي المندوب (80%): ${netCourierEarnings.toStringAsFixed(0)} ر.ي',
-                                                style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 13)),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx),
-                                                child: const Text('إلغاء',
-                                                    style: TextStyle(
-                                                        color: Colors.grey)),
-                                              ),
-                                              ElevatedButton(
-                                                style: ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        Colors.redAccent,
-                                                    foregroundColor:
-                                                        Colors.white),
-                                                onPressed: () async {
-                                                  Navigator.pop(ctx);
-                                                  if (mounted) {
-                                                    setState(() =>
-                                                        _settlingCourierKeys
-                                                            .add(courierKey));
-                                                  }
-                                                  try {
-                                                    await _settleCourierSafely(
-                                                      context: context,
-                                                      appState: appState,
-                                                      courierName: courierName,
-                                                      unsettledOrders:
-                                                          courierUnsettledOrders,
-                                                      totalCourierEarnings:
-                                                          totalCourierEarnings,
-                                                      adminCommission:
-                                                          adminCommission,
-                                                      netCourierEarnings:
-                                                          netCourierEarnings,
-                                                    );
-                                                  } catch (e) {
-                                                    if (context.mounted) {
-                                                      ScaffoldMessenger.of(
-                                                              context)
-                                                          .showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(e
-                                                              .toString()
-                                                              .replaceAll(
-                                                                  'Exception: ',
-                                                                  '')),
-                                                          backgroundColor:
-                                                              Colors.orange,
-                                                        ),
-                                                      );
-                                                    }
-                                                  } finally {
-                                                    if (mounted) {
-                                                      setState(() =>
-                                                          _settlingCourierKeys
-                                                              .remove(
-                                                                  courierKey));
-                                                    }
-                                                  }
-                                                },
-                                                child: const Text(
-                                                    'نعم، تصفير الحساب'),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12, height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatColumn(
-                            'طلبات غير مسوية',
-                            '${courierUnsettledOrders.length} طلب',
-                            Colors.white70),
-                        _buildStatColumn(
-                            'إجمالي التوصيل',
-                            '${totalCourierEarnings.toStringAsFixed(0)} ر.ي',
-                            Colors.amber),
-                        _buildStatColumn(
-                            'صافي المندوب (80%)',
-                            '${netCourierEarnings.toStringAsFixed(0)} ر.ي',
-                            Colors.greenAccent),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border:
-                            Border.all(color: Colors.amber.withOpacity(0.35)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            '💰 الصافي لك بعد خصم العمولة (20%):',
-                            style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            '${adminCommission.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(
-                                color: Colors.amber,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold),
+                            ],
                           ),
                         ],
                       ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.green),
+                            ),
+                            child: Text(
+                                '📞 ${courierMap['phone'] ?? 'غير متوفر'}',
+                                style: const TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: isSettlingThis
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.redAccent),
+                                  )
+                                : const Icon(Icons.delete_sweep,
+                                    color: Colors.redAccent, size: 24),
+                            tooltip: 'تصفير الحساب والعمولات',
+                            onPressed: isSettlingThis
+                                ? null
+                                : () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => Directionality(
+                                        textDirection: TextDirection.rtl,
+                                        child: AlertDialog(
+                                          backgroundColor:
+                                              const Color(0xFF1E1E1E),
+                                          title: const Text(
+                                              'تصفير حساب المندوب ⚠️',
+                                              style: TextStyle(
+                                                  color: Colors.amber,
+                                                  fontSize: 16)),
+                                          content: Text(
+                                              'هل أنت متأكد من رغبتك في تصفير حساب العمولة والطلبات للمندوب "$courierName"؟\n\n• صافي لك (20%): ${adminCommission.toStringAsFixed(0)} ر.ي\n• صافي المندوب (80%): ${netCourierEarnings.toStringAsFixed(0)} ر.ي',
+                                              style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 13)),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx),
+                                              child: const Text('إلغاء',
+                                                  style: TextStyle(
+                                                      color: Colors.grey)),
+                                            ),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      Colors.redAccent,
+                                                  foregroundColor:
+                                                      Colors.white),
+                                              onPressed: () async {
+                                                Navigator.pop(ctx);
+                                                if (mounted) {
+                                                  setState(() =>
+                                                      _settlingCourierKeys
+                                                          .add(courierKey));
+                                                }
+                                                try {
+                                                  await _settleCourierSafely(
+                                                    context: context,
+                                                    appState: appState,
+                                                    courierName: courierName,
+                                                    unsettledOrders:
+                                                        courierUnsettledOrders,
+                                                    totalCourierEarnings:
+                                                        totalCourierEarnings,
+                                                    adminCommission:
+                                                        adminCommission,
+                                                    netCourierEarnings:
+                                                        netCourierEarnings,
+                                                  );
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(e
+                                                            .toString()
+                                                            .replaceAll(
+                                                                'Exception: ',
+                                                                '')),
+                                                        backgroundColor:
+                                                            Colors.orange,
+                                                      ),
+                                                    );
+                                                  }
+                                                } finally {
+                                                  if (mounted) {
+                                                    setState(() =>
+                                                        _settlingCourierKeys
+                                                            .remove(
+                                                                courierKey));
+                                                  }
+                                                }
+                                              },
+                                              child: const Text(
+                                                  'نعم، تصفير الحساب'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white12, height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatColumn(
+                          'طلبات غير مسوية',
+                          '${courierUnsettledOrders.length} طلب',
+                          Colors.white70),
+                      _buildStatColumn(
+                          'إجمالي التوصيل',
+                          '${totalCourierEarnings.toStringAsFixed(0)} ر.ي',
+                          Colors.amber),
+                      _buildStatColumn(
+                          'صافي المندوب (80%)',
+                          '${netCourierEarnings.toStringAsFixed(0)} ر.ي',
+                          Colors.greenAccent),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border:
+                          Border.all(color: Colors.amber.withOpacity(0.35)),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '💰 الصافي لك بعد خصم العمولة (20%):',
+                          style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${adminCommission.toStringAsFixed(0)} ر.ي',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1150,7 +1152,9 @@ class _AdminScreenState extends State<AdminScreen>
                   },
                 ),
                 if (appState.orders
-                    .where((o) => o['status'] == 'waitingForPricing')
+                    .where((o) =>
+                        o['status'] == 'waitingForPricing' ||
+                        o['status'] == 'rejectedByCourier')
                     .isNotEmpty)
                   Positioned(
                     top: 8,
@@ -1162,7 +1166,7 @@ class _AdminScreenState extends State<AdminScreen>
                       constraints:
                           const BoxConstraints(minWidth: 18, minHeight: 18),
                       child: Text(
-                        '${appState.orders.where((o) => o['status'] == 'waitingForPricing').length}',
+                        '${appState.orders.where((o) => o['status'] == 'waitingForPricing' || o['status'] == 'rejectedByCourier').length}',
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
@@ -1486,451 +1490,475 @@ class _AdminScreenState extends State<AdminScreen>
               style: const TextStyle(color: Colors.grey, fontSize: 15)));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: ordersList.length,
-      itemBuilder: (context, index) {
-        final order = ordersList[index];
-        final orderId = order['id'].toString();
-        final intOrderId = int.tryParse(orderId);
-        final rawStatus = order['status']?.toString() ?? '';
-        final arabicStatus = _getArabicStatus(rawStatus);
+    final couriersInTurn = appState.couriersInTurnOrder;
 
-        final isWaitingPricing = rawStatus == 'waitingForPricing';
-        final isPricingThisOrder = _pricingOrderIds.contains(orderId);
+    return RefreshIndicator(
+      color: Colors.amber,
+      onRefresh: appState.fetchOrders,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: ordersList.length,
+        itemBuilder: (context, index) {
+          final order = ordersList[index];
+          final orderId = order['id'].toString();
+          final intOrderId = int.tryParse(orderId);
+          final rawStatus = order['status']?.toString().trim() ?? '';
+          final arabicStatus = _getArabicStatus(rawStatus);
 
-        final projectName = (order['home_project_name'] ??
-                order['project_name'] ??
-                order['store_name'] ??
-                '')
-            .toString()
-            .trim();
-        final isHomeProjectOrder = order['is_home_project'] == true ||
-            projectName == 'عنباتي' ||
-            projectName.toUpperCase() == 'TWISTA';
+          final needsPricingOrReassign = rawStatus == 'waitingForPricing' ||
+              rawStatus == 'rejectedByCourier';
+          final isPricingThisOrder = _pricingOrderIds.contains(orderId);
 
-        final deliveryFeeAmount = _parseDouble(order['delivery_fee']);
+          final projectName = (order['home_project_name'] ??
+                  order['project_name'] ??
+                  order['store_name'] ??
+                  '')
+              .toString()
+              .trim();
+          final isHomeProjectOrder = order['is_home_project'] == true ||
+              projectName == 'عنباتي' ||
+              projectName.toUpperCase() == 'TWISTA';
 
-        final explicitProductsPrice = _parseDouble(
-          order['products_total'] ??
-              order['items_price'] ??
-              order['products_price'],
-        );
+          final deliveryFeeAmount = _parseDouble(order['delivery_fee']);
 
-        final rawTotalPrice = _parseDouble(
-          order['total_price'] ?? order['total_amount'] ?? order['total'],
-        );
+          final explicitProductsPrice = _parseDouble(
+            order['products_total'] ??
+                order['items_price'] ??
+                order['products_price'],
+          );
 
-        var finalProductsPrice = explicitProductsPrice;
-        if (finalProductsPrice <= 0 && rawTotalPrice > 0) {
-          finalProductsPrice = rawTotalPrice > deliveryFeeAmount &&
-                  rawStatus != 'waitingForPricing'
-              ? (rawTotalPrice - deliveryFeeAmount)
-              : rawTotalPrice;
-        }
+          final rawTotalPrice = _parseDouble(
+            order['total_price'] ?? order['total_amount'] ?? order['total'],
+          );
 
-        final grandTotal = rawTotalPrice > 0
-            ? rawTotalPrice
-            : (finalProductsPrice + deliveryFeeAmount);
+          var finalProductsPrice = explicitProductsPrice;
+          if (finalProductsPrice <= 0 && rawTotalPrice > 0) {
+            finalProductsPrice = rawTotalPrice > deliveryFeeAmount &&
+                    rawStatus != 'waitingForPricing'
+                ? (rawTotalPrice - deliveryFeeAmount)
+                : rawTotalPrice;
+          }
 
-        if (!_feeControllers.containsKey(orderId)) {
-          _feeControllers[orderId] = TextEditingController(
-              text: order['delivery_fee']?.toString() ?? '0');
-        }
+          final grandTotal = rawTotalPrice > 0
+              ? rawTotalPrice
+              : (finalProductsPrice + deliveryFeeAmount);
 
-        return Card(
-          color: const Color(0xFF1E1E1E),
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          elevation: 4,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-                color: isWaitingPricing
-                    ? Colors.amber
-                    : Colors.green.withOpacity(0.4),
-                width: 1.5),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      OrderTrackingScreen(orderIdParam: orderId),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('طلب #$orderId',
-                          style: const TextStyle(
-                              color: Colors.amber,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
-                      Row(
-                        children: [
-                          IconButton(
-                            style: IconButton.styleFrom(
-                                backgroundColor: Colors.red.withOpacity(0.2)),
-                            icon: const Icon(Icons.delete_forever,
-                                color: Colors.redAccent, size: 20),
-                            tooltip: 'حذف الطلب',
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (ctx) => Directionality(
-                                  textDirection: TextDirection.rtl,
-                                  child: AlertDialog(
-                                    backgroundColor: const Color(0xFF1E1E1E),
-                                    title: const Row(
-                                      children: [
-                                        Icon(Icons.warning_amber_rounded,
-                                            color: Colors.redAccent),
-                                        SizedBox(width: 8),
-                                        Text('تأكيد الحذف 🗑️',
-                                            style: TextStyle(
-                                                color: Colors.amber,
-                                                fontSize: 16)),
+          if (!_feeControllers.containsKey(orderId)) {
+            _feeControllers[orderId] = TextEditingController(
+                text: order['delivery_fee']?.toString() ?? '0');
+          }
+
+          final assignedCourierDisplay =
+              (order['assigned_courier'] ?? '').toString().trim();
+
+          return Card(
+            color: const Color(0xFF1E1E1E),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                  color: needsPricingOrReassign
+                      ? Colors.amber
+                      : Colors.green.withOpacity(0.4),
+                  width: 1.5),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        OrderTrackingScreen(orderIdParam: orderId),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('طلب #$orderId',
+                            style: const TextStyle(
+                                color: Colors.amber,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16)),
+                        Row(
+                          children: [
+                            IconButton(
+                              style: IconButton.styleFrom(
+                                  backgroundColor:
+                                      Colors.red.withOpacity(0.2)),
+                              icon: const Icon(Icons.delete_forever,
+                                  color: Colors.redAccent, size: 20),
+                              tooltip: 'حذف الطلب',
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => Directionality(
+                                    textDirection: TextDirection.rtl,
+                                    child: AlertDialog(
+                                      backgroundColor:
+                                          const Color(0xFF1E1E1E),
+                                      title: const Row(
+                                        children: [
+                                          Icon(Icons.warning_amber_rounded,
+                                              color: Colors.redAccent),
+                                          SizedBox(width: 8),
+                                          Text('تأكيد الحذف 🗑️',
+                                              style: TextStyle(
+                                                  color: Colors.amber,
+                                                  fontSize: 16)),
+                                        ],
+                                      ),
+                                      content: Text(
+                                          'هل تريد الحذف حقاً للطلب #$orderId؟\n(لن يمكنك التراجع عن هذا الإجراء بعد الحذف).',
+                                          style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 13)),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('إلغاء',
+                                              style: TextStyle(
+                                                  color: Colors.grey)),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.redAccent,
+                                              foregroundColor: Colors.white),
+                                          onPressed: () async {
+                                            Navigator.pop(ctx);
+                                            try {
+                                              if (intOrderId != null) {
+                                                await Supabase.instance.client
+                                                    .from('orders')
+                                                    .delete()
+                                                    .eq('id', intOrderId);
+                                              }
+                                              await appState.fetchOrders();
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                      content: Text(
+                                                          'تم حذف الطلب #$orderId بنجاح ✅'),
+                                                      backgroundColor:
+                                                          Colors.green),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(
+                                                  SnackBar(
+                                                      content: Text(
+                                                          'فشل حذف الطلب: $e'),
+                                                      backgroundColor:
+                                                          Colors.red),
+                                                );
+                                              }
+                                            }
+                                          },
+                                          child: const Text('نعم، احذف الطلب'),
+                                        ),
                                       ],
                                     ),
-                                    content: Text(
-                                        'هل تريد الحذف حقاً للطلب #$orderId؟\n(لن يمكنك التراجع عن هذا الإجراء بعد الحذف).',
-                                        style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 13)),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('إلغاء',
-                                            style:
-                                                TextStyle(color: Colors.grey)),
-                                      ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.redAccent,
-                                            foregroundColor: Colors.white),
-                                        onPressed: () async {
-                                          Navigator.pop(ctx);
-                                          try {
-                                            if (intOrderId != null) {
-                                              await Supabase.instance.client
-                                                  .from('orders')
-                                                  .delete()
-                                                  .eq('id', intOrderId);
-                                            }
-                                            await appState.fetchOrders();
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(
-                                                        'تم حذف الطلب #$orderId بنجاح ✅'),
-                                                    backgroundColor:
-                                                        Colors.green),
-                                              );
-                                            }
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(
-                                                        'فشل حذف الطلب: $e'),
-                                                    backgroundColor: Colors.red),
-                                              );
-                                            }
-                                          }
-                                        },
-                                        child: const Text('نعم، احذف الطلب'),
-                                      ),
-                                    ],
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            style: IconButton.styleFrom(
-                                backgroundColor: Colors.amber.withOpacity(0.2)),
-                            icon: const Icon(Icons.map,
-                                color: Colors.amber, size: 20),
-                            tooltip: 'تتبع الطلب',
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      OrderTrackingScreen(orderIdParam: orderId),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            style: IconButton.styleFrom(
-                                backgroundColor: Colors.blueGrey[800]),
-                            icon: const Icon(Icons.chat,
-                                color: Colors.amber, size: 20),
-                            tooltip: 'محادثة العميل أو المندوب',
-                            onPressed: () =>
-                                _openAdminChatPicker(context, orderId),
-                          ),
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isWaitingPricing
-                                  ? Colors.amber.withOpacity(0.15)
-                                  : Colors.green.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: isWaitingPricing
-                                      ? Colors.amber
-                                      : Colors.green),
+                                );
+                              },
                             ),
-                            child: Text(arabicStatus,
-                                style: TextStyle(
-                                    color: isWaitingPricing
+                            const SizedBox(width: 4),
+                            IconButton(
+                              style: IconButton.styleFrom(
+                                  backgroundColor:
+                                      Colors.amber.withOpacity(0.2)),
+                              icon: const Icon(Icons.map,
+                                  color: Colors.amber, size: 20),
+                              tooltip: 'تتبع الطلب',
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => OrderTrackingScreen(
+                                        orderIdParam: orderId),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              style: IconButton.styleFrom(
+                                  backgroundColor: Colors.blueGrey[800]),
+                              icon: const Icon(Icons.chat,
+                                  color: Colors.amber, size: 20),
+                              tooltip: 'محادثة العميل أو المندوب',
+                              onPressed: () =>
+                                  _openAdminChatPicker(context, orderId),
+                            ),
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: needsPricingOrReassign
+                                    ? Colors.amber.withOpacity(0.15)
+                                    : Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: needsPricingOrReassign
                                         ? Colors.amber
-                                        : Colors.greenAccent,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
+                                        : Colors.green),
+                              ),
+                              child: Text(arabicStatus,
+                                  style: TextStyle(
+                                      color: needsPricingOrReassign
+                                          ? Colors.amber
+                                          : Colors.greenAccent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (isHomeProjectOrder || projectName.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border:
+                              Border.all(color: Colors.amber.withOpacity(0.5)),
+                        ),
+                        child: Text(
+                          '🏠 مشروع منزلي: ${projectName.isNotEmpty ? projectName : 'مشاريع منزلية'}',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                    const Divider(color: Colors.white12, height: 16),
+                    Text(
+                        '👤 العميل: ${order['customer_name'] ?? 'غير معروف'} \n📞 ${order['phone'] ?? ''}',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Text('📍 العنوان: ${order['address'] ?? ''}',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
+                    if (assignedCourierDisplay.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text('🛵 المندوب المعين: $assignedCourierDisplay',
+                          style: const TextStyle(
+                              color: Colors.lightBlueAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                        '🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}',
+                        style: const TextStyle(
+                            color: Colors.amberAccent, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    Text(
+                        '🕒 وقت الطلب: ${OrderTimeHelper.formatDateTime(order['created_at'])}',
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Divider(color: Colors.white12, height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              '🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(
+                              '🏍️ رسوم التوصيل: ${deliveryFeeAmount.toStringAsFixed(0)} ر.ي',
+                              style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold)),
+                          const Divider(color: Colors.white12, height: 8),
+                          Text(
+                              '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
+                              style: const TextStyle(
+                                  color: Colors.greenAccent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (needsPricingOrReassign) ...[
+                      Text(
+                          rawStatus == 'rejectedByCourier'
+                              ? '⚠️ المندوب السابق رفض الطلب — أعد تعيين مندوب جديد:'
+                              : '⚙️ تسعير الطلب وتعيين المندوب:',
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _feeControllers[orderId],
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'رسوم التوصيل (ر.ي)',
+                                labelStyle:
+                                    TextStyle(color: Colors.grey, fontSize: 12),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedCouriersForOrder[orderId],
+                              dropdownColor: const Color(0xFF1E1E1E),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 12),
+                              decoration: const InputDecoration(
+                                labelText: 'اختر المندوب (بالدور)',
+                                labelStyle:
+                                    TextStyle(color: Colors.grey, fontSize: 12),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              items: couriersInTurn
+                                  .where((c) =>
+                                      c['status']?.toString() != 'disabled')
+                                  .map<DropdownMenuItem<String>>((courier) {
+                                final cMap =
+                                    Map<String, dynamic>.from(courier);
+                                final name = cMap['name']?.toString() ??
+                                    cMap['full_name']?.toString() ??
+                                    'مندوب';
+                                final busy = _isCourierBusy(appState, cMap);
+                                return DropdownMenuItem<String>(
+                                  value: name,
+                                  child: Text(
+                                    '$name (${busy ? 'مشغول' : 'متاح'})',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: busy
+                                          ? Colors.orangeAccent
+                                          : Colors.greenAccent,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() {
+                                    _selectedCouriersForOrder[orderId] = val;
+                                  });
+                                }
+                              },
+                            ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  if (isHomeProjectOrder || projectName.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border:
-                            Border.all(color: Colors.amber.withOpacity(0.5)),
-                      ),
-                      child: Text(
-                        '🏠 مشروع منزلي: ${projectName.isNotEmpty ? projectName : 'مشاريع منزلية'}',
-                        style: const TextStyle(
-                            color: Colors.amber,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                  const Divider(color: Colors.white12, height: 16),
-                  Text(
-                      '👤 العميل: ${order['customer_name'] ?? 'غير معروف'} \n📞 ${order['phone'] ?? ''}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13)),
-                  const SizedBox(height: 6),
-                  Text('📍 العنوان: ${order['address'] ?? ''}',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  Text(
-                      '🛒 تفاصيل الطلب: ${order['items_description'] ?? order['items_desc'] ?? 'بدون وصف'}',
-                      style: const TextStyle(
-                          color: Colors.amberAccent, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  Text(
-                      '🕒 وقت الطلب: ${OrderTimeHelper.formatDateTime(order['created_at'])}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  const Divider(color: Colors.white12, height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            '🛒 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 13)),
-                        const SizedBox(height: 4),
-                        Text(
-                            '🏍️ رسوم التوصيل: ${deliveryFeeAmount.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(
-                                color: Colors.amber,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold)),
-                        const Divider(color: Colors.white12, height: 8),
-                        Text(
-                            '💰 الإجمالي الكلي: ${grandTotal.toStringAsFixed(0)} ر.ي',
-                            style: const TextStyle(
-                                color: Colors.greenAccent,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (isWaitingPricing) ...[
-                    const Text('⚙️ تسعير الطلب وتعيين المندوب:',
-                        style: TextStyle(
-                            color: Colors.amber,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _feeControllers[orderId],
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'رسوم التوصيل (ر.ي)',
-                              labelStyle:
-                                  TextStyle(color: Colors.grey, fontSize: 12),
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                          ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.amber,
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size(double.infinity, 38),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FutureBuilder<List<dynamic>>(
-                            future: Supabase.instance.client
-                                .from('couriers')
-                                .select(),
-                            builder: (context, courierSnapshot) {
-                              final couriersList = courierSnapshot.data ?? [];
-                              return DropdownButtonFormField<String>(
-                                value: _selectedCouriersForOrder[orderId],
-                                dropdownColor: const Color(0xFF1E1E1E),
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12),
-                                decoration: const InputDecoration(
-                                  labelText: 'اختر المندوب',
-                                  labelStyle: TextStyle(
-                                      color: Colors.grey, fontSize: 12),
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
-                                ),
-                                items: couriersList
-                                    .map<DropdownMenuItem<String>>((courier) {
-                                  final cMap = courier is Map
-                                      ? Map<String, dynamic>.from(courier)
-                                      : <String, dynamic>{};
-                                  final name = cMap['name']?.toString() ??
-                                      cMap['full_name']?.toString() ??
-                                      'مندوب';
-                                  final busy = _isCourierBusy(appState, cMap);
-                                  return DropdownMenuItem<String>(
-                                    value: name,
-                                    child: Text(
-                                      '$name (${busy ? 'مشغول' : 'متاح'})',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: busy
-                                            ? Colors.orangeAccent
-                                            : Colors.greenAccent,
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() {
-                                      _selectedCouriersForOrder[orderId] = val;
-                                    });
-                                  }
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.amber,
-                        foregroundColor: Colors.black,
-                        minimumSize: const Size(double.infinity, 38),
-                      ),
-                      onPressed: isPricingThisOrder
-                          ? null
-                          : () async {
-                              final fee = double.tryParse(
-                                  _feeControllers[orderId]?.text ?? '0');
-                              final selectedCourier =
-                                  _selectedCouriersForOrder[orderId];
+                        onPressed: isPricingThisOrder
+                            ? null
+                            : () async {
+                                final fee = double.tryParse(
+                                    _feeControllers[orderId]?.text ?? '0');
+                                final selectedCourier =
+                                    _selectedCouriersForOrder[orderId];
 
-                              if (fee == null || fee < 0) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
-                                return;
-                              }
-                              if (selectedCourier == null ||
-                                  selectedCourier.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
-                                return;
-                              }
-
-                              setState(() => _pricingOrderIds.add(orderId));
-                              try {
-                                await appState.setOrderDeliveryFee(
-                                    orderId, fee, selectedCourier);
-                                if (context.mounted) {
+                                if (fee == null || fee < 0) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                           content: Text(
-                                              'تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
+                                              'الرجاء إدخال رسوم توصيل صحيحة ⚠️')));
+                                  return;
                                 }
-                              } catch (e) {
-                                if (context.mounted) {
+                                if (selectedCourier == null ||
+                                    selectedCourier.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
+                                      const SnackBar(
                                           content: Text(
-                                              'تعذر إرسال التسعير: $e'),
-                                          backgroundColor: Colors.red));
+                                              'الرجاء اختيار المندوب لتوصيل الطلب 🛵')));
+                                  return;
                                 }
-                              } finally {
-                                if (mounted) {
-                                  setState(
-                                      () => _pricingOrderIds.remove(orderId));
+
+                                setState(() => _pricingOrderIds.add(orderId));
+                                try {
+                                  await appState.setOrderDeliveryFee(
+                                      orderId, fee, selectedCourier);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'تم إرسال التسعير وتعيين المندوب بنجاح ✅')));
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                'تعذر إرسال التسعير: $e'),
+                                            backgroundColor: Colors.red));
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(
+                                        () => _pricingOrderIds.remove(orderId));
+                                  }
                                 }
-                              }
-                            },
-                      child: isPricingThisOrder
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  color: Colors.black, strokeWidth: 2),
-                            )
-                          : const Text('إرسال التسعير وتعيين المندوب 🚀',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
+                              },
+                        child: isPricingThisOrder
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    color: Colors.black, strokeWidth: 2),
+                              )
+                            : Text(
+                                rawStatus == 'rejectedByCourier'
+                                    ? 'إعادة تعيين المندوب وإرسال الطلب 🚀'
+                                    : 'إرسال التسعير وتعيين المندوب 🚀',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
