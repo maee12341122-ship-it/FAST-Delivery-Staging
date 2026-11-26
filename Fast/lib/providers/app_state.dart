@@ -132,6 +132,12 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<Map<String, dynamic>>>? _storeSettingsSub;
   StreamSubscription<dynamic>? _connectivitySub;
   RealtimeChannel? _ordersChannel;
+  RealtimeChannel? _messagesChannel;
+  Timer? _ordersResyncTimer;
+
+  // مفاتيح OneSignal (اضبط OneSignal App ID و REST API Key عند الرغبة في إرسال Push خارج التطبيق مباشرة)
+  static const String _oneSignalAppId = '';
+  static const String _oneSignalRestApiKey = '';
 
   // تخزين مؤقت لرموز OTP في الذاكرة عند العمل بدون Node.js Backend
   final Map<String, String> _localFallbackOtps = {};
@@ -152,12 +158,16 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _ordersResyncTimer?.cancel();
     unawaited(_authSub?.cancel());
     unawaited(_settingsSub?.cancel());
     unawaited(_storeSettingsSub?.cancel());
     unawaited(_connectivitySub?.cancel());
     if (_ordersChannel != null) {
       unawaited(supabase.removeChannel(_ordersChannel!));
+    }
+    if (_messagesChannel != null) {
+      unawaited(supabase.removeChannel(_messagesChannel!));
     }
     _httpClient.close();
     super.dispose();
@@ -378,6 +388,7 @@ class AppState extends ChangeNotifier {
           'city': currentCity,
         };
         await _persistUserSessionToPrefs(userProfile!);
+        await syncOneSignalPlayerIdForCurrentUsers();
         await fetchUserAddressesFromSupabase();
         notifyListeners();
         return;
@@ -411,6 +422,7 @@ class AppState extends ChangeNotifier {
       debugPrint('تعذر حفظ سجل العميل للموظف: $e');
     }
 
+    await syncOneSignalPlayerIdForCurrentUsers();
     await fetchUserAddressesFromSupabase();
     notifyListeners();
   }
@@ -443,6 +455,7 @@ class AppState extends ChangeNotifier {
         name: adminName,
       );
     }
+    await syncOneSignalPlayerIdForCurrentUsers();
   }
 
   Future<void> _applyAuthenticatedUserRole(User? user) async {
@@ -484,6 +497,7 @@ class AppState extends ChangeNotifier {
           await _loadUserSession();
         }
       }
+      await syncOneSignalPlayerIdForCurrentUsers();
       notifyListeners();
     });
   }
@@ -492,6 +506,7 @@ class AppState extends ChangeNotifier {
     await checkPrivacyPolicyStatus();
     await _loadUserSession();
     await _checkInitialSessions();
+    unawaited(syncOneSignalPlayerIdForCurrentUsers());
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
     await fetchProductsFromSupabase();
@@ -502,8 +517,76 @@ class AppState extends ChangeNotifier {
     await fetchTotalVisitorsCount();
     unawaited(fetchAdminFinancialReports());
     listenToOrdersRealtime();
+    listenToMessagesRealtime();
     listenToStoreSettingsRealtime();
+    _startPeriodicOrdersResync();
     initializeInternetListener();
+  }
+
+  void _startPeriodicOrdersResync() {
+    _ordersResyncTimer?.cancel();
+    _ordersResyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!isConnectedToInternet) return;
+      unawaited(_silentRefreshOrders());
+    });
+  }
+
+  Future<void> _silentRefreshOrders() async {
+    try {
+      final data = await supabase.from('orders').select();
+      final list = List<Map<String, dynamic>>.from(data);
+      final oldSerialized = jsonEncode(orders);
+      orders = list;
+      _sortOrders();
+      final newSerialized = jsonEncode(orders);
+      if (oldSerialized != newSerialized) {
+        unawaited(fetchPopularStats());
+        unawaited(fetchAdminFinancialReports());
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  /// مزامنة OneSignal Player ID / Subscription ID مع العميل والمندوب والمشرف
+  Future<void> syncOneSignalPlayerIdForCurrentUsers() async {
+    try {
+      String? playerId = OneSignal.User.pushSubscription.id;
+      if (playerId == null || playerId.trim().isEmpty) {
+        playerId = OneSignal.User.pushSubscription.token;
+      }
+      if (playerId == null || playerId.trim().isEmpty) return;
+      final cleanPlayerId = playerId.trim();
+
+      final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+      if (phone.isNotEmpty) {
+        try {
+          await supabase
+              .from('customers')
+              .update({'onesignal_player_id': cleanPlayerId})
+              .eq('phone', phone);
+        } catch (_) {}
+
+        if (isAdminLoggedIn) {
+          try {
+            await supabase
+                .from('admins')
+                .update({'onesignal_player_id': cleanPlayerId})
+                .eq('phone', phone);
+          } catch (_) {}
+        }
+      }
+
+      if (currentCourier != null && currentCourier!['id'] != null) {
+        try {
+          await supabase
+              .from('couriers')
+              .update({'onesignal_player_id': cleanPlayerId})
+              .eq('id', currentCourier!['id']);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('تعذر مزامنة OneSignal Player ID: $e');
+    }
   }
 
   /// حساب الأكثر طلباً للمنتجات، المتاجر/المطاعم، والأقسام
@@ -940,6 +1023,7 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
+      unawaited(_silentRefreshOrders());
       unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
       unawaited(fetchRestaurantAverages());
@@ -1593,6 +1677,24 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> getCustomerPlayerIdByPhone(String phone) async {
+    try {
+      final cleanPhone = _normalizePhone(phone);
+      if (cleanPhone.isEmpty) return null;
+      final formattedPhone = '+967$cleanPhone';
+      final zeroPhone = '0$cleanPhone';
+      final cust = await supabase
+          .from('customers')
+          .select('onesignal_player_id')
+          .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
+          .maybeSingle();
+      final pid = cust?['onesignal_player_id']?.toString().trim() ?? '';
+      return pid.isNotEmpty ? pid : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> getReceiverPlayerIdForChat({
     dynamic orderId,
     String? targetChat,
@@ -1621,19 +1723,71 @@ class AppState extends ChangeNotifier {
       } else {
         final custPhone = _normalizePhone(orderRow?['phone']?.toString() ?? '');
         if (custPhone.isNotEmpty) {
-          final cust = await supabase
-              .from('customers')
-              .select('onesignal_player_id')
-              .eq('phone', custPhone)
-              .maybeSingle();
-          final pid = cust?['onesignal_player_id']?.toString();
-          if (pid != null && pid.isNotEmpty) return pid;
+          return await getCustomerPlayerIdByPhone(custPhone);
         }
       }
     } catch (e) {
       debugPrint('تعذر تحديد معرف المستلم للشات: $e');
     }
     return null;
+  }
+
+  /// إرسال إشعار Push خارج التطبيق عبر OneSignal REST API أو Backend إذا كان متاحاً
+  Future<void> _sendExternalPushNotification({
+    required List<String> playerIds,
+    required String title,
+    required String body,
+    dynamic orderId,
+    String? eventType,
+  }) async {
+    final cleanIds = playerIds
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    if (cleanIds.isEmpty) return;
+
+    if (_hasConfiguredBackend) {
+      try {
+        await _postBackend('/api/notifications/send', {
+          'title': title,
+          'body': body,
+          'player_ids': cleanIds,
+          'target_player_id': cleanIds.first,
+          if (orderId != null) 'order_id': orderId,
+          if (eventType != null && eventType.trim().isNotEmpty)
+            'event_type': eventType.trim(),
+        });
+        return;
+      } catch (_) {}
+    }
+
+    if (_oneSignalAppId.trim().isNotEmpty &&
+        _oneSignalRestApiKey.trim().isNotEmpty) {
+      try {
+        await _httpClient
+            .post(
+              Uri.parse('https://api.onesignal.com/notifications'),
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Authorization': 'Key ${_oneSignalRestApiKey.trim()}',
+              },
+              body: jsonEncode({
+                'app_id': _oneSignalAppId.trim(),
+                'include_subscription_ids': cleanIds,
+                'headings': {'en': title, 'ar': title},
+                'contents': {'en': body, 'ar': body},
+                'data': {
+                  if (orderId != null) 'order_id': orderId.toString(),
+                  if (eventType != null) 'event_type': eventType,
+                },
+              }),
+            )
+            .timeout(const Duration(seconds: 6));
+      } catch (e) {
+        debugPrint('تعذر إرسال OneSignal Push: $e');
+      }
+    }
   }
 
   Future<void> sendAutoNotification({
@@ -1648,6 +1802,23 @@ class AppState extends ChangeNotifier {
     final content = (body ?? message ?? '').trim();
     if (title.trim().isEmpty && content.isEmpty) return;
 
+    final targets = <String>[
+      if (playerId != null && playerId.trim().isNotEmpty) playerId.trim(),
+      if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
+        targetPlayerId.trim(),
+    ];
+
+    if (targets.isNotEmpty) {
+      await _sendExternalPushNotification(
+        playerIds: targets,
+        title: title.trim(),
+        body: content,
+        orderId: orderId,
+        eventType: eventType,
+      );
+      return;
+    }
+
     if (!_hasConfiguredBackend) return;
 
     try {
@@ -1657,10 +1828,6 @@ class AppState extends ChangeNotifier {
         if (orderId != null) 'order_id': orderId,
         if (eventType != null && eventType.trim().isNotEmpty)
           'event_type': eventType.trim(),
-        if (playerId != null && playerId.trim().isNotEmpty)
-          'player_id': playerId.trim(),
-        if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
-          'target_player_id': targetPlayerId.trim(),
       });
     } catch (e) {
       debugPrint('تعذر إرسال الإشعار عبر Backend: $e');
@@ -1713,6 +1880,68 @@ class AppState extends ChangeNotifier {
         });
   }
 
+  void listenToMessagesRealtime() {
+    try {
+      if (_messagesChannel != null) {
+        unawaited(supabase.removeChannel(_messagesChannel!));
+      }
+      _messagesChannel = supabase
+          .channel('public_messages_realtime_channel')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'messages',
+            callback: (payload) {
+              final msg = payload.newRecord;
+              final sender = (msg['sender_type'] ?? '').toString().trim();
+              final text = (msg['message_text'] ?? '').toString().trim();
+              final orderId = msg['order_id']?.toString() ?? '';
+              if (text.isEmpty) return;
+
+              final myPhone =
+                  _normalizePhone(userProfile?['phone']?.toString() ?? '');
+              final matchedOrder = orders.firstWhere(
+                (o) => o['id']?.toString() == orderId,
+                orElse: () => <String, dynamic>{},
+              );
+              final orderPhone =
+                  _normalizePhone(matchedOrder['phone']?.toString() ?? '');
+              final assignedCourier =
+                  (matchedOrder['assigned_courier'] ?? '').toString().trim();
+
+              if (sender != 'customer' &&
+                  myPhone.isNotEmpty &&
+                  orderPhone == myPhone &&
+                  !isAdminLoggedIn) {
+                addLocalNotification(
+                  'رسالة جديدة بخصوص الطلب #$orderId',
+                  text,
+                  type: 'chat_message',
+                );
+              } else if (sender == 'customer' && isAdminLoggedIn) {
+                addLocalNotification(
+                  'رسالة من عميل على الطلب #$orderId',
+                  text,
+                  type: 'chat_message',
+                );
+              } else if (currentCourier != null &&
+                  assignedCourier ==
+                      (currentCourier!['name'] ?? '').toString().trim() &&
+                  sender != 'courier') {
+                addLocalNotification(
+                  'رسالة جديدة على الطلب #$orderId',
+                  text,
+                  type: 'chat_message',
+                );
+              }
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('خطأ في Realtime الرسائل: $e');
+    }
+  }
+
   Future<void> sendChatMessage(
     dynamic orderId,
     String senderRole,
@@ -1722,15 +1951,30 @@ class AppState extends ChangeNotifier {
     if (messageText.trim().isEmpty) return;
 
     final parsedId = int.tryParse(orderId.toString()) ?? orderId;
+    final cleanText = messageText.trim();
     final newMessage = {
       'order_id': parsedId,
       'sender_type': senderRole,
       'target_chat': 'unified_order_chat',
-      'message_text': messageText.trim(),
+      'message_text': cleanText,
     };
 
     try {
       await supabase.from('messages').insert(newMessage);
+      final receiverPid = await getReceiverPlayerIdForChat(
+        orderId: parsedId,
+        targetChat: targetChat,
+        senderRole: senderRole,
+      );
+      if (receiverPid != null && receiverPid.isNotEmpty) {
+        unawaited(_sendExternalPushNotification(
+          playerIds: [receiverPid],
+          title: 'رسالة جديدة على الطلب #$parsedId',
+          body: cleanText,
+          orderId: parsedId,
+          eventType: 'chat_message',
+        ));
+      }
     } catch (e) {
       debugPrint('خطأ في إرسال الرسالة: $e');
     }
@@ -1797,6 +2041,7 @@ class AppState extends ChangeNotifier {
       if (notificationStatus.isGranted) {
         try {
           await OneSignal.Notifications.requestPermission(true);
+          await syncOneSignalPlayerIdForCurrentUsers();
         } catch (e) {
           debugPrint('OneSignal Error: $e');
         }
@@ -2109,6 +2354,7 @@ class AppState extends ChangeNotifier {
           'city': (userProfile!['city'] ?? currentCity).toString(),
         };
         unawaited(_persistUserSessionToPrefs(userProfile!));
+        unawaited(syncOneSignalPlayerIdForCurrentUsers());
       }
     }
 
@@ -2147,6 +2393,7 @@ class AppState extends ChangeNotifier {
 
     userProfile = normalizedData;
     await _persistUserSessionToPrefs(normalizedData);
+    await syncOneSignalPlayerIdForCurrentUsers();
     await fetchUserAddressesFromSupabase();
     notifyListeners();
     return normalizedData;
@@ -2324,6 +2571,7 @@ class AppState extends ChangeNotifier {
       debugPrint('خطأ في إنشاء سجل العميل في customers: $e');
     }
 
+    await syncOneSignalPlayerIdForCurrentUsers();
     await fetchUserAddressesFromSupabase();
     notifyListeners();
     return true;
@@ -2473,6 +2721,7 @@ class AppState extends ChangeNotifier {
             name: courierName,
           );
         }
+        await syncOneSignalPlayerIdForCurrentUsers();
         notifyListeners();
       }
     } catch (e) {
@@ -2782,6 +3031,7 @@ class AppState extends ChangeNotifier {
         );
       }
 
+      await syncOneSignalPlayerIdForCurrentUsers();
       listenToOrdersRealtime();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('loggedCourierId', row['id'].toString());
@@ -2879,12 +3129,14 @@ class AppState extends ChangeNotifier {
       throw Exception('معرف الطلب غير صالح.');
     }
 
+    final cleanStatus = status.trim();
+
     if (_hasConfiguredBackend) {
       try {
         final res = await ApiService.adminUpdateOrderStatus(
           _accessToken ?? '',
           intId,
-          status,
+          cleanStatus,
         ).timeout(const Duration(seconds: 8));
         if (res['order'] is Map) {
           _upsertOrderInList(res['order']);
@@ -2901,7 +3153,7 @@ class AppState extends ChangeNotifier {
     final updated = await supabase
         .from('orders')
         .update({
-          'status': status.trim(),
+          'status': cleanStatus,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('id', intId)
@@ -2921,7 +3173,7 @@ class AppState extends ChangeNotifier {
     }
     final courier = await supabase
         .from('couriers')
-        .select('id, name')
+        .select('id, name, onesignal_player_id')
         .eq('id', courierId)
         .single();
 
@@ -2932,11 +3184,23 @@ class AppState extends ChangeNotifier {
     final currentFee =
         double.tryParse(currentOrder['delivery_fee']?.toString() ?? '0') ?? 0.0;
 
+    final courierName = courier['name']?.toString() ?? '';
     await setOrderDeliveryFee(
       intOrderId,
       currentFee,
-      courier['name']?.toString() ?? '',
+      courierName,
     );
+
+    final courierPid = courier['onesignal_player_id']?.toString().trim() ?? '';
+    if (courierPid.isNotEmpty) {
+      unawaited(_sendExternalPushNotification(
+        playerIds: [courierPid],
+        title: 'طلب جديد مخصص لك #$intOrderId',
+        body: 'تم إسناد الطلب #$intOrderId إليك، يرجى مراجعته.',
+        orderId: intOrderId,
+        eventType: 'courier_assigned',
+      ));
+    }
   }
 
   Future<void> addProduct(ProductModel product) async {
@@ -3136,55 +3400,64 @@ class AppState extends ChangeNotifier {
             table: 'orders',
             callback: (payload) {
               if (payload.eventType == PostgresChangeEvent.insert) {
-                final alreadyExists = orders.any((o) =>
-                    o['id'].toString() == payload.newRecord['id'].toString());
-                _upsertOrderInList(payload.newRecord);
+                final newRow = payload.newRecord;
+                final alreadyExists = orders.any(
+                    (o) => o['id'].toString() == newRow['id'].toString());
+                _upsertOrderInList(newRow);
                 if (!alreadyExists && isAdminLoggedIn) {
                   addLocalNotification(
-                    'طلب جديد',
-                    'تم إضافة طلب جديد إلى النظام من قبل العميل',
+                    'طلب جديد #${newRow['id']}',
+                    'تم إضافة طلب جديد من العميل ${newRow['customer_name'] ?? ''}',
                     type: 'admin_new_order',
                   );
                 }
               } else if (payload.eventType == PostgresChangeEvent.update) {
-                _upsertOrderInList(payload.newRecord);
+                final newRow = payload.newRecord;
+                final oldRow = payload.oldRecord;
+                _upsertOrderInList(newRow);
 
-                final newStatus =
-                    getArabicStatus(payload.newRecord['status']?.toString());
+                final rawNewStatus =
+                    (newRow['status'] ?? '').toString().trim();
+                final rawOldStatus =
+                    (oldRow['status'] ?? '').toString().trim();
+                final newStatusAr = getArabicStatus(rawNewStatus);
                 final assignedCourier =
-                    payload.newRecord['assigned_courier']?.toString() ?? '';
+                    (newRow['assigned_courier'] ?? '').toString().trim();
 
-                final orderPhone = _normalizePhone(
-                    payload.newRecord['phone']?.toString() ?? '');
+                final orderPhone =
+                    _normalizePhone(newRow['phone']?.toString() ?? '');
                 final myPhone =
                     _normalizePhone(userProfile?['phone']?.toString() ?? '');
 
-                if (myPhone.isNotEmpty &&
+                final statusChanged =
+                    rawOldStatus.isEmpty || rawOldStatus != rawNewStatus;
+
+                if (statusChanged &&
+                    myPhone.isNotEmpty &&
                     orderPhone.isNotEmpty &&
                     orderPhone == myPhone &&
                     !isAdminLoggedIn) {
-                  final rawNewStatus =
-                      payload.newRecord['status']?.toString().trim() ?? '';
                   final bodyText = rawNewStatus == 'pricingSentToCustomer'
-                      ? 'تم تحديد رسوم التوصيل (${payload.newRecord['delivery_fee'] ?? 0} ر.ي) للطلب #${payload.newRecord['id']}، يرجى التأكيد.'
-                      : 'تم تحديث حالة الطلب #${payload.newRecord['id']} إلى: $newStatus';
+                      ? 'تم تحديد رسوم التوصيل (${newRow['delivery_fee'] ?? 0} ر.ي) للطلب #${newRow['id']}، يرجى التأكيد.'
+                      : 'تم تحديث حالة الطلب #${newRow['id']} إلى: $newStatusAr';
                   addLocalNotification(
-                    'تحديث طلبك #${payload.newRecord['id']}',
+                    'تحديث طلبك #${newRow['id']}',
                     bodyText,
                     type: 'customer_order_update',
                   );
-                } else if (currentCourier != null &&
-                    assignedCourier.trim() ==
-                        currentCourier!['name']?.toString().trim()) {
+                } else if (statusChanged &&
+                    currentCourier != null &&
+                    assignedCourier ==
+                        (currentCourier!['name'] ?? '').toString().trim()) {
                   addLocalNotification(
-                    'تحديث الطلب #${payload.newRecord['id']}',
-                    'تم تعيينك لتوصيل هذا الطلب. الحالة: $newStatus',
+                    'تحديث الطلب #${newRow['id']}',
+                    'الحالة الجديدة: $newStatusAr',
                     type: 'courier_order_update',
                   );
-                } else if (isAdminLoggedIn) {
+                } else if (statusChanged && isAdminLoggedIn) {
                   addLocalNotification(
-                    'تحديث الطلب #${payload.newRecord['id']}',
-                    'الحالة الجديدة: $newStatus',
+                    'تحديث الطلب #${newRow['id']}',
+                    'الحالة الجديدة: $newStatusAr',
                     type: 'admin_order_update',
                   );
                 }
@@ -3328,6 +3601,7 @@ class AppState extends ChangeNotifier {
       };
 
       await _persistUserSessionToPrefs(userProfile!);
+      await syncOneSignalPlayerIdForCurrentUsers();
       if (orderId != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fast_last_order_id', orderId.toString());
@@ -3342,6 +3616,17 @@ class AppState extends ChangeNotifier {
       removeCoupon();
       unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
+
+      final adminPids = await getAllAdminPlayerIds();
+      if (adminPids.isNotEmpty) {
+        unawaited(_sendExternalPushNotification(
+          playerIds: adminPids,
+          title: 'طلب جديد #${orderId ?? ''}',
+          body: 'طلب من $customerName (${normalizedPhone}) بانتظار التسعير.',
+          orderId: orderId,
+          eventType: 'new_order',
+        ));
+      }
 
       addNotification(
         'تم استلام الطلب',
@@ -3425,11 +3710,17 @@ class AppState extends ChangeNotifier {
 
       unawaited(fetchAdminFinancialReports());
 
-      addLocalNotification(
-        'تم تحديد سعر الطلب #$orderId',
-        'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
-        type: 'pricing_sent',
-      );
+      final custPhone = updatedOrder['phone']?.toString() ?? '';
+      final custPid = await getCustomerPlayerIdByPhone(custPhone);
+      if (custPid != null) {
+        unawaited(_sendExternalPushNotification(
+          playerIds: [custPid],
+          title: 'تم تحديد سعر التوصيل للطلب #$intOrderId',
+          body: 'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
+          orderId: intOrderId,
+          eventType: 'pricing_sent',
+        ));
+      }
 
       notifyListeners();
     } catch (e) {
@@ -3444,6 +3735,10 @@ class AppState extends ChangeNotifier {
       throw Exception('معرف الطلب غير صالح.');
     }
 
+    final newStatus =
+        action == 'approve' ? 'approvedByCustomer' : 'cancelledByCustomer';
+    JsonMap updatedMap = {};
+
     if (_hasConfiguredBackend) {
       try {
         final responseData =
@@ -3452,31 +3747,45 @@ class AppState extends ChangeNotifier {
         });
 
         if (responseData['order'] is Map) {
-          _upsertOrderInList(responseData['order']);
+          updatedMap = Map<String, dynamic>.from(responseData['order']);
+          _upsertOrderInList(updatedMap);
         } else {
           await fetchOrders();
         }
-
-        unawaited(fetchAdminFinancialReports());
-        notifyListeners();
-        return;
       } catch (_) {}
     }
 
-    final newStatus =
-        action == 'approve' ? 'approvedByCustomer' : 'cancelledByCustomer';
-    final updated = await supabase
-        .from('orders')
-        .update({
-          'status': newStatus,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', intOrderId)
-        .select()
-        .single();
+    if (updatedMap.isEmpty) {
+      final updated = await supabase
+          .from('orders')
+          .update({
+            'status': newStatus,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', intOrderId)
+          .select()
+          .single();
 
-    _upsertOrderInList(updated);
+      updatedMap = Map<String, dynamic>.from(updated);
+      _upsertOrderInList(updatedMap);
+    }
+
     unawaited(fetchAdminFinancialReports());
+
+    final courierName = updatedMap['assigned_courier']?.toString() ?? '';
+    if (action == 'approve' && courierName.isNotEmpty) {
+      final cPid = await getCourierPlayerIdByName(courierName);
+      if (cPid != null && cPid.isNotEmpty) {
+        unawaited(_sendExternalPushNotification(
+          playerIds: [cPid],
+          title: 'وافق العميل على الطلب #$intOrderId',
+          body: 'الطلب #$intOrderId جاهز لقبولك وتوصيله.',
+          orderId: intOrderId,
+          eventType: 'approved_by_customer',
+        ));
+      }
+    }
+
     notifyListeners();
   }
 
@@ -3512,9 +3821,13 @@ class AppState extends ChangeNotifier {
       newStatus = 'rejectedByCourier';
     } else if (action == 'arrived') {
       newStatus = 'arrivedToCustomer';
+    } else if (action == 'on_the_way') {
+      newStatus = 'onTheWay';
     } else {
       newStatus = 'delivered';
     }
+
+    JsonMap updatedMap = {};
 
     if (_hasConfiguredBackend) {
       try {
@@ -3525,39 +3838,56 @@ class AppState extends ChangeNotifier {
         ).timeout(const Duration(seconds: 8));
 
         if (responseData['order'] is Map) {
-          _upsertOrderInList(responseData['order']);
+          updatedMap = Map<String, dynamic>.from(responseData['order']);
+          _upsertOrderInList(updatedMap);
         } else {
           await fetchOrders();
         }
-
-        unawaited(fetchPopularStats());
-        unawaited(fetchAdminFinancialReports());
-        notifyListeners();
-        return;
       } catch (_) {}
     }
 
-    final updatePayload = <String, dynamic>{
-      'status': newStatus,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-      if (newStatus == 'delivered') 'payment_status': 'paid',
-    };
+    if (updatedMap.isEmpty) {
+      final updatePayload = <String, dynamic>{
+        'status': newStatus,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        if (newStatus == 'delivered') 'payment_status': 'paid',
+      };
 
-    final updated = await supabase
-        .from('orders')
-        .update(updatePayload)
-        .eq('id', intOrderId)
-        .select()
-        .single();
+      final updated = await supabase
+          .from('orders')
+          .update(updatePayload)
+          .eq('id', intOrderId)
+          .select()
+          .single();
 
-    _upsertOrderInList(updated);
+      updatedMap = Map<String, dynamic>.from(updated);
+      _upsertOrderInList(updatedMap);
+    }
+
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
+
+    final custPhone = updatedMap['phone']?.toString() ?? '';
+    final custPid = await getCustomerPlayerIdByPhone(custPhone);
+    if (custPid != null) {
+      unawaited(_sendExternalPushNotification(
+        playerIds: [custPid],
+        title: 'تحديث طلبك #$intOrderId',
+        body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
+        orderId: intOrderId,
+        eventType: newStatus,
+      ));
+    }
+
     notifyListeners();
   }
 
   Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
     await _submitCourierOrderAction(orderId, accepted ? 'accept' : 'reject');
+  }
+
+  Future<void> courierStartDelivery(dynamic orderId) async {
+    await _submitCourierOrderAction(orderId, 'on_the_way');
   }
 
   Future<void> courierUpdateArrival(dynamic orderId) async {
