@@ -135,9 +135,12 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _messagesChannel;
   Timer? _ordersResyncTimer;
 
-  // مفاتيح OneSignal (اضبط OneSignal App ID و REST API Key عند الرغبة في إرسال Push خارج التطبيق مباشرة)
+  // ضع هنا OneSignal App ID و REST API Key لإرسال إشعارات الخلفية عند غلق التطبيق
   static const String _oneSignalAppId = '';
   static const String _oneSignalRestApiKey = '';
+
+  // مهلة موحدة قصيرة (4.5 ثوانٍ) لمنع تعليق العمليات حتى 20 ثانية
+  static const Duration _fastNetworkTimeout = Duration(milliseconds: 4500);
 
   // تخزين مؤقت لرموز OTP في الذاكرة عند العمل بدون Node.js Backend
   final Map<String, String> _localFallbackOtps = {};
@@ -206,7 +209,7 @@ class AppState extends ChangeNotifier {
   Future<JsonMap> _postBackend(
     String path,
     JsonMap body, {
-    Duration timeout = const Duration(seconds: 6),
+    Duration timeout = _fastNetworkTimeout,
   }) async {
     if (!_hasConfiguredBackend) {
       throw Exception('Backend غير مفعّل بعد');
@@ -257,7 +260,8 @@ class AppState extends ChangeNotifier {
           .from('couriers')
           .select('id, status')
           .eq('auth_user_id', user.id)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
       if (byAuth != null && byAuth['status']?.toString() != 'disabled') {
         return true;
       }
@@ -281,7 +285,8 @@ class AppState extends ChangeNotifier {
             .from('couriers')
             .select('id, status')
             .ilike('username', candidate)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (byUsername != null &&
             byUsername['status']?.toString() != 'disabled') {
           return true;
@@ -308,7 +313,11 @@ class AppState extends ChangeNotifier {
       final token = _accessToken;
       if (token != null && token.isNotEmpty) {
         try {
-          final res = await _postBackend('/api/auth/admin/verify', {});
+          final res = await _postBackend(
+            '/api/auth/admin/verify',
+            {},
+            timeout: _fastNetworkTimeout,
+          );
           if (res['is_admin'] == true || res['valid'] == true) {
             return res['admin'] is Map
                 ? Map<String, dynamic>.from(res['admin'] as Map)
@@ -326,7 +335,8 @@ class AppState extends ChangeNotifier {
             .from('admins')
             .select('id, username, phone')
             .or('phone.eq.$phone,phone.eq.$formattedPhone')
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (rowByPhone != null) {
           return Map<String, dynamic>.from(rowByPhone);
         }
@@ -352,7 +362,8 @@ class AppState extends ChangeNotifier {
             .from('admins')
             .select('id, username, phone')
             .ilike('username', candidate)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (row != null) {
           return Map<String, dynamic>.from(row);
         }
@@ -387,9 +398,9 @@ class AppState extends ChangeNotifier {
           'address': mergedAddress,
           'city': currentCity,
         };
-        await _persistUserSessionToPrefs(userProfile!);
-        await syncOneSignalPlayerIdForCurrentUsers();
-        await fetchUserAddressesFromSupabase();
+        unawaited(_persistUserSessionToPrefs(userProfile!));
+        unawaited(syncOneSignalPlayerIdForCurrentUsers());
+        unawaited(fetchUserAddressesFromSupabase());
         notifyListeners();
         return;
       }
@@ -410,20 +421,25 @@ class AppState extends ChangeNotifier {
       'address': fallbackAddress,
       'city': currentCity,
     };
-    await _persistUserSessionToPrefs(userProfile!);
+    unawaited(_persistUserSessionToPrefs(userProfile!));
 
-    try {
-      await supabase.from('customers').upsert({
-        'phone': cleanPhone,
-        'name': fallbackName,
-        'address': fallbackAddress,
-      }, onConflict: 'phone');
-    } catch (e) {
-      debugPrint('تعذر حفظ سجل العميل للموظف: $e');
-    }
+    unawaited(() async {
+      try {
+        await supabase
+            .from('customers')
+            .upsert({
+              'phone': cleanPhone,
+              'name': fallbackName,
+              'address': fallbackAddress,
+            }, onConflict: 'phone')
+            .timeout(_fastNetworkTimeout);
+      } catch (e) {
+        debugPrint('تعذر حفظ سجل العميل للموظف: $e');
+      }
+    }());
 
-    await syncOneSignalPlayerIdForCurrentUsers();
-    await fetchUserAddressesFromSupabase();
+    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
   }
 
@@ -455,7 +471,7 @@ class AppState extends ChangeNotifier {
         name: adminName,
       );
     }
-    await syncOneSignalPlayerIdForCurrentUsers();
+    unawaited(syncOneSignalPlayerIdForCurrentUsers());
   }
 
   Future<void> _applyAuthenticatedUserRole(User? user) async {
@@ -497,7 +513,7 @@ class AppState extends ChangeNotifier {
           await _loadUserSession();
         }
       }
-      await syncOneSignalPlayerIdForCurrentUsers();
+      unawaited(syncOneSignalPlayerIdForCurrentUsers());
       notifyListeners();
     });
   }
@@ -506,7 +522,12 @@ class AppState extends ChangeNotifier {
     await checkPrivacyPolicyStatus();
     await _loadUserSession();
     await _checkInitialSessions();
-    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(() async {
+      try {
+        await OneSignal.Notifications.requestPermission(true);
+      } catch (_) {}
+      await syncOneSignalPlayerIdForCurrentUsers();
+    }());
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
     await fetchProductsFromSupabase();
@@ -523,7 +544,6 @@ class AppState extends ChangeNotifier {
     initializeInternetListener();
   }
 
-  // تم تعديل المؤقت الدوري لمزامنة الطلبات من 20 ثانية إلى 5 ثواني
   void _startPeriodicOrdersResync() {
     _ordersResyncTimer?.cancel();
     _ordersResyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -534,7 +554,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> _silentRefreshOrders() async {
     try {
-      final data = await supabase.from('orders').select();
+      final data = await supabase
+          .from('orders')
+          .select()
+          .timeout(_fastNetworkTimeout);
       final list = List<Map<String, dynamic>>.from(data);
       final oldSerialized = jsonEncode(orders);
       orders = list;
@@ -564,7 +587,8 @@ class AppState extends ChangeNotifier {
           await supabase
               .from('customers')
               .update({'onesignal_player_id': cleanPlayerId})
-              .eq('phone', phone);
+              .eq('phone', phone)
+              .timeout(_fastNetworkTimeout);
         } catch (_) {}
 
         if (isAdminLoggedIn) {
@@ -572,7 +596,8 @@ class AppState extends ChangeNotifier {
             await supabase
                 .from('admins')
                 .update({'onesignal_player_id': cleanPlayerId})
-                .eq('phone', phone);
+                .eq('phone', phone)
+                .timeout(_fastNetworkTimeout);
           } catch (_) {}
         }
       }
@@ -582,7 +607,8 @@ class AppState extends ChangeNotifier {
           await supabase
               .from('couriers')
               .update({'onesignal_player_id': cleanPlayerId})
-              .eq('id', currentCourier!['id']);
+              .eq('id', currentCourier!['id'])
+              .timeout(_fastNetworkTimeout);
         } catch (_) {}
       }
     } catch (e) {
@@ -615,7 +641,8 @@ class AppState extends ChangeNotifier {
     try {
       final orderItemsRows = await supabase
           .from('order_items')
-          .select('order_id, product_name, quantity');
+          .select('order_id, product_name, quantity')
+          .timeout(_fastNetworkTimeout);
 
       final Set<String> ordersWithItems = {};
       for (final row in orderItemsRows) {
@@ -645,7 +672,6 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // احتساب الطلبات التي ليس لها صفوف في order_items عبر نص الوصف واسم المطعم
       for (final order in orders) {
         final status = (order['status'] ?? '').toString().trim();
         if (status == 'cancelled' || status == 'cancelledByCustomer') continue;
@@ -781,7 +807,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchRestaurantsAndCategories() async {
     try {
-      final restRes = await supabase.from('restaurants').select();
+      final restRes = await supabase
+          .from('restaurants')
+          .select()
+          .timeout(_fastNetworkTimeout);
       restaurantsList = List<Map<String, dynamic>>.from(restRes).map((row) {
         final rawCat = (row['category'] ?? row['type'] ?? '').toString().trim();
         final normalizedCat =
@@ -800,7 +829,10 @@ class AppState extends ChangeNotifier {
         };
       }).toList();
 
-      final catRes = await supabase.from('categories').select();
+      final catRes = await supabase
+          .from('categories')
+          .select()
+          .timeout(_fastNetworkTimeout);
       final fetchedCategories = List<Map<String, dynamic>>.from(catRes);
       final hasHomeProjects = fetchedCategories.any((c) {
         final n = (c['name'] ?? '').toString().trim();
@@ -814,7 +846,10 @@ class AppState extends ChangeNotifier {
       categoriesList = fetchedCategories;
 
       try {
-        final hpRes = await supabase.from('home_projects').select();
+        final hpRes = await supabase
+            .from('home_projects')
+            .select()
+            .timeout(_fastNetworkTimeout);
         homeProjectsList = List<Map<String, dynamic>>.from(hpRes).map((row) {
           final rawCat =
               (row['category'] ?? 'مشاريع منزلية').toString().trim();
@@ -947,14 +982,20 @@ class AppState extends ChangeNotifier {
           token.isNotEmpty) {
         try {
           final backendOrders = await ApiService.fetchAdminOrders(token)
-              .timeout(const Duration(seconds: 8));
+              .timeout(_fastNetworkTimeout);
           orders = List<Map<String, dynamic>>.from(backendOrders);
         } catch (_) {
-          final initialData = await supabase.from('orders').select();
+          final initialData = await supabase
+              .from('orders')
+              .select()
+              .timeout(_fastNetworkTimeout);
           orders = List<Map<String, dynamic>>.from(initialData);
         }
       } else {
-        final initialData = await supabase.from('orders').select();
+        final initialData = await supabase
+            .from('orders')
+            .select()
+            .timeout(_fastNetworkTimeout);
         orders = List<Map<String, dynamic>>.from(initialData);
       }
       _sortOrders();
@@ -1038,10 +1079,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> recordVisitorVisit() async {
     try {
-      await supabase.from('visitor_logs').insert({
-        'visitor_identifier': userProfile?['phone'] ??
-            'guest_${DateTime.now().millisecondsSinceEpoch}',
-      });
+      await supabase
+          .from('visitor_logs')
+          .insert({
+            'visitor_identifier': userProfile?['phone'] ??
+                'guest_${DateTime.now().millisecondsSinceEpoch}',
+          })
+          .timeout(_fastNetworkTimeout);
     } catch (e) {
       debugPrint('خطأ في تسجيل الزيارة: $e');
     }
@@ -1049,7 +1093,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchTotalVisitorsCount() async {
     try {
-      final response = await supabase.from('visitor_logs').select('id');
+      final response = await supabase
+          .from('visitor_logs')
+          .select('id')
+          .timeout(_fastNetworkTimeout);
       totalVisitorsCount = (response as List).length;
       notifyListeners();
     } catch (e) {
@@ -1080,7 +1127,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchAdminFinancialReports() async {
     try {
-      final response = await supabase.from('orders').select();
+      final response = await supabase
+          .from('orders')
+          .select()
+          .timeout(_fastNetworkTimeout);
 
       var revenue = 0.0;
       var completed = 0;
@@ -1127,7 +1177,7 @@ class AppState extends ChangeNotifier {
           cleanCode,
           cartSubtotal,
           explicitToken: _accessToken,
-        );
+        ).timeout(_fastNetworkTimeout);
 
         couponDiscountAmount =
             double.tryParse(response['discount_amount'].toString()) ?? 0.0;
@@ -1144,7 +1194,8 @@ class AppState extends ChangeNotifier {
           .select()
           .ilike('code', cleanCode)
           .eq('is_active', true)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (coupon == null) {
         return 'رمز الكوبون غير صالح أو منتهي الصلاحية';
@@ -1199,13 +1250,13 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> productModifiers = [];
   Map<String, Map<String, dynamic>> restaurantRatingsCache = {};
 
-  /// جلب متوسط وعدد تقييمات المطاعم (يدعم الربط عبر restaurant.id أو restaurant.name)
   Future<void> fetchRestaurantAverages() async {
     try {
       final response = await supabase
           .from('ratings_and_reviews')
           .select('target_id, rating')
-          .eq('target_type', 'restaurant');
+          .eq('target_type', 'restaurant')
+          .timeout(_fastNetworkTimeout);
 
       restaurantRatingsCache.clear();
       final Map<String, List<double>> tempRatings = {};
@@ -1235,7 +1286,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// إرجاع بيانات التقييم {avg, total} لمطعم سواء بالـ id أو بالاسم
   Map<String, dynamic>? getRestaurantRatingInfo({
     String? restaurantId,
     String? restaurantName,
@@ -1264,7 +1314,8 @@ class AppState extends ChangeNotifier {
       final response = await supabase
           .from('product_modifiers')
           .select()
-          .eq('product_id', productId);
+          .eq('product_id', productId)
+          .timeout(_fastNetworkTimeout);
 
       productModifiers = List<Map<String, dynamic>>.from(response);
       notifyListeners();
@@ -1285,7 +1336,8 @@ class AppState extends ChangeNotifier {
           .eq('target_type', 'restaurant')
           .order('created_at', ascending: false)
           .limit(1)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (response != null && response['rating'] != null) {
         return {
@@ -1352,7 +1404,8 @@ class AppState extends ChangeNotifier {
       final response = await supabase
           .from('customer_addresses')
           .select()
-          .eq('customer_phone', cleanPhone);
+          .eq('customer_phone', cleanPhone)
+          .timeout(_fastNetworkTimeout);
 
       _userAddresses.clear();
       for (final row in response) {
@@ -1376,21 +1429,24 @@ class AppState extends ChangeNotifier {
     if (_userAddresses.length == 1) {
       selectDefaultAddress(address);
     }
-    await _saveUserAddressesFromPrefs();
+    unawaited(_saveUserAddressesFromPrefs());
     notifyListeners();
 
     final phoneStr = userProfile?['phone']?.toString() ?? '';
     if (phoneStr.isNotEmpty) {
       try {
         final cleanPhone = _normalizePhone(phoneStr);
-        await supabase.from('customer_addresses').insert({
-          'customer_phone': cleanPhone,
-          'title': address.title.trim(),
-          'area': address.area.trim(),
-          'details': address.details.trim(),
-          'instructions': address.instructions.trim(),
-        });
-        await fetchUserAddressesFromSupabase();
+        await supabase
+            .from('customer_addresses')
+            .insert({
+              'customer_phone': cleanPhone,
+              'title': address.title.trim(),
+              'area': address.area.trim(),
+              'details': address.details.trim(),
+              'instructions': address.instructions.trim(),
+            })
+            .timeout(_fastNetworkTimeout);
+        unawaited(fetchUserAddressesFromSupabase());
       } catch (e) {
         debugPrint('خطأ في حفظ العنوان: $e');
       }
@@ -1399,15 +1455,23 @@ class AppState extends ChangeNotifier {
 
   Future<void> removeUserAddress(String id) async {
     _userAddresses.removeWhere((a) => a.id == id);
-    await _saveUserAddressesFromPrefs();
+    unawaited(_saveUserAddressesFromPrefs());
     notifyListeners();
 
     try {
       final intId = int.tryParse(id);
       if (intId != null) {
-        await supabase.from('customer_addresses').delete().eq('id', intId);
+        await supabase
+            .from('customer_addresses')
+            .delete()
+            .eq('id', intId)
+            .timeout(_fastNetworkTimeout);
       } else {
-        await supabase.from('customer_addresses').delete().eq('id', id);
+        await supabase
+            .from('customer_addresses')
+            .delete()
+            .eq('id', id)
+            .timeout(_fastNetworkTimeout);
       }
     } catch (e) {
       debugPrint('خطأ في حذف العنوان: $e');
@@ -1518,7 +1582,8 @@ class AppState extends ChangeNotifier {
           .eq('order_id', intOrderId)
           .eq('target_type', 'courier')
           .eq('customer_phone', customerPhone)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       final payload = <String, dynamic>{
         'order_id': intOrderId,
@@ -1533,9 +1598,13 @@ class AppState extends ChangeNotifier {
         await supabase
             .from('ratings_and_reviews')
             .update(payload)
-            .eq('id', existing['id']);
+            .eq('id', existing['id'])
+            .timeout(_fastNetworkTimeout);
       } else {
-        await supabase.from('ratings_and_reviews').insert(payload);
+        await supabase
+            .from('ratings_and_reviews')
+            .insert(payload)
+            .timeout(_fastNetworkTimeout);
       }
 
       notifyListeners();
@@ -1582,7 +1651,8 @@ class AppState extends ChangeNotifier {
           .eq('order_id', intOrderId)
           .eq('target_type', 'restaurant')
           .eq('customer_phone', customerPhone)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       final payload = <String, dynamic>{
         'order_id': intOrderId,
@@ -1597,12 +1667,16 @@ class AppState extends ChangeNotifier {
         await supabase
             .from('ratings_and_reviews')
             .update(payload)
-            .eq('id', existing['id']);
+            .eq('id', existing['id'])
+            .timeout(_fastNetworkTimeout);
       } else {
-        await supabase.from('ratings_and_reviews').insert(payload);
+        await supabase
+            .from('ratings_and_reviews')
+            .insert(payload)
+            .timeout(_fastNetworkTimeout);
       }
 
-      await fetchRestaurantAverages();
+      unawaited(fetchRestaurantAverages());
       notifyListeners();
     } catch (e) {
       debugPrint('خطأ في تقييم المطعم: $e');
@@ -1650,7 +1724,8 @@ class AppState extends ChangeNotifier {
       final response = await supabase
           .from('admins')
           .select('onesignal_player_id')
-          .not('onesignal_player_id', 'is', null);
+          .not('onesignal_player_id', 'is', null)
+          .timeout(_fastNetworkTimeout);
 
       return response
           .map((e) => e['onesignal_player_id'].toString())
@@ -1667,7 +1742,8 @@ class AppState extends ChangeNotifier {
           .from('couriers')
           .select('onesignal_player_id')
           .eq('name', courierName.trim())
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (response != null && response['onesignal_player_id'] != null) {
         return response['onesignal_player_id'].toString();
@@ -1688,7 +1764,8 @@ class AppState extends ChangeNotifier {
           .from('customers')
           .select('onesignal_player_id')
           .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
       final pid = cust?['onesignal_player_id']?.toString().trim() ?? '';
       return pid.isNotEmpty ? pid : null;
     } catch (_) {
@@ -1709,7 +1786,8 @@ class AppState extends ChangeNotifier {
           .from('orders')
           .select('phone, assigned_courier')
           .eq('id', int.tryParse(oid) ?? oid)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
 
       if (senderRole == 'customer') {
         final adminIds = await getAllAdminPlayerIds();
@@ -1750,15 +1828,19 @@ class AppState extends ChangeNotifier {
 
     if (_hasConfiguredBackend) {
       try {
-        await _postBackend('/api/notifications/send', {
-          'title': title,
-          'body': body,
-          'player_ids': cleanIds,
-          'target_player_id': cleanIds.first,
-          if (orderId != null) 'order_id': orderId,
-          if (eventType != null && eventType.trim().isNotEmpty)
-            'event_type': eventType.trim(),
-        });
+        await _postBackend(
+          '/api/notifications/send',
+          {
+            'title': title,
+            'body': body,
+            'player_ids': cleanIds,
+            'target_player_id': cleanIds.first,
+            if (orderId != null) 'order_id': orderId,
+            if (eventType != null && eventType.trim().isNotEmpty)
+              'event_type': eventType.trim(),
+          },
+          timeout: _fastNetworkTimeout,
+        );
         return;
       } catch (_) {}
     }
@@ -1784,7 +1866,7 @@ class AppState extends ChangeNotifier {
                 },
               }),
             )
-            .timeout(const Duration(seconds: 6));
+            .timeout(_fastNetworkTimeout);
       } catch (e) {
         debugPrint('تعذر إرسال OneSignal Push: $e');
       }
@@ -1810,29 +1892,35 @@ class AppState extends ChangeNotifier {
     ];
 
     if (targets.isNotEmpty) {
-      await _sendExternalPushNotification(
+      unawaited(_sendExternalPushNotification(
         playerIds: targets,
         title: title.trim(),
         body: content,
         orderId: orderId,
         eventType: eventType,
-      );
+      ));
       return;
     }
 
     if (!_hasConfiguredBackend) return;
 
-    try {
-      await _postBackend('/api/notifications/send', {
-        'title': title.trim(),
-        'body': content,
-        if (orderId != null) 'order_id': orderId,
-        if (eventType != null && eventType.trim().isNotEmpty)
-          'event_type': eventType.trim(),
-      });
-    } catch (e) {
-      debugPrint('تعذر إرسال الإشعار عبر Backend: $e');
-    }
+    unawaited(() async {
+      try {
+        await _postBackend(
+          '/api/notifications/send',
+          {
+            'title': title.trim(),
+            'body': content,
+            if (orderId != null) 'order_id': orderId,
+            if (eventType != null && eventType.trim().isNotEmpty)
+              'event_type': eventType.trim(),
+          },
+          timeout: _fastNetworkTimeout,
+        );
+      } catch (e) {
+        debugPrint('تعذر إرسال الإشعار عبر Backend: $e');
+      }
+    }());
   }
 
   int startHour = 8;
@@ -1961,21 +2049,26 @@ class AppState extends ChangeNotifier {
     };
 
     try {
-      await supabase.from('messages').insert(newMessage);
-      final receiverPid = await getReceiverPlayerIdForChat(
-        orderId: parsedId,
-        targetChat: targetChat,
-        senderRole: senderRole,
-      );
-      if (receiverPid != null && receiverPid.isNotEmpty) {
-        unawaited(_sendExternalPushNotification(
-          playerIds: [receiverPid],
-          title: 'رسالة جديدة على الطلب #$parsedId',
-          body: cleanText,
+      await supabase
+          .from('messages')
+          .insert(newMessage)
+          .timeout(_fastNetworkTimeout);
+      unawaited(() async {
+        final receiverPid = await getReceiverPlayerIdForChat(
           orderId: parsedId,
-          eventType: 'chat_message',
-        ));
-      }
+          targetChat: targetChat,
+          senderRole: senderRole,
+        );
+        if (receiverPid != null && receiverPid.isNotEmpty) {
+          await _sendExternalPushNotification(
+            playerIds: [receiverPid],
+            title: 'رسالة جديدة على الطلب #$parsedId',
+            body: cleanText,
+            orderId: parsedId,
+            eventType: 'chat_message',
+          );
+        }
+      }());
     } catch (e) {
       debugPrint('خطأ في إرسال الرسالة: $e');
     }
@@ -2024,7 +2117,8 @@ class AppState extends ChangeNotifier {
       } else {
         var locationPermission = await Geolocator.checkPermission();
         if (locationPermission == LocationPermission.denied) {
-          locationPermission = await Geolocator.requestPermission();
+          locationPermission = await Geolocator.requestPermission()
+              .timeout(_fastNetworkTimeout);
         }
         if (locationPermission == LocationPermission.deniedForever &&
             openSettingsIfDisabled) {
@@ -2036,13 +2130,16 @@ class AppState extends ChangeNotifier {
 
       var notificationStatus = await Permission.notification.status;
       if (!notificationStatus.isGranted) {
-        notificationStatus = await Permission.notification.request();
+        notificationStatus = await Permission.notification
+            .request()
+            .timeout(_fastNetworkTimeout);
       }
 
       if (notificationStatus.isGranted) {
         try {
-          await OneSignal.Notifications.requestPermission(true);
-          await syncOneSignalPlayerIdForCurrentUsers();
+          await OneSignal.Notifications.requestPermission(true)
+              .timeout(_fastNetworkTimeout);
+          unawaited(syncOneSignalPlayerIdForCurrentUsers());
         } catch (e) {
           debugPrint('OneSignal Error: $e');
         }
@@ -2088,7 +2185,11 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchStoreSettings() async {
     try {
-      final feeResponse = await supabase.from('settings').select().maybeSingle();
+      final feeResponse = await supabase
+          .from('settings')
+          .select()
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
       if (feeResponse != null && feeResponse['delivery_fee'] != null) {
         deliveryFee =
             int.tryParse(feeResponse['delivery_fee'].toString()) ?? deliveryFee;
@@ -2099,7 +2200,8 @@ class AppState extends ChangeNotifier {
             .from('store_settings')
             .select()
             .limit(1)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
         if (storeResponse != null) {
           _applyStoreSettingsRow(Map<String, dynamic>.from(storeResponse));
         } else if (feeResponse != null) {
@@ -2175,36 +2277,46 @@ class AppState extends ChangeNotifier {
 
     if (_hasConfiguredBackend) {
       try {
-        await _postBackend('/api/admin/settings/store', {
-          'store_name': targetName,
-          'open_time': _formatHourForStoreSettings(start),
-          'close_time': _formatHourForStoreSettings(end),
-          'is_open': targetOpen,
-          'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
-          'delivery_fee': targetFee,
-        });
+        await _postBackend(
+          '/api/admin/settings/store',
+          {
+            'store_name': targetName,
+            'open_time': _formatHourForStoreSettings(start),
+            'close_time': _formatHourForStoreSettings(end),
+            'is_open': targetOpen,
+            'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
+            'delivery_fee': targetFee,
+          },
+          timeout: _fastNetworkTimeout,
+        );
         return;
       } catch (_) {}
     }
 
     try {
-      await supabase.from('store_settings').upsert({
-        'id': 1,
-        'store_name': targetName,
-        'open_time': _formatHourForStoreSettings(start),
-        'close_time': _formatHourForStoreSettings(end),
-        'is_open': targetOpen,
-        'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      await supabase
+          .from('store_settings')
+          .upsert({
+            'id': 1,
+            'store_name': targetName,
+            'open_time': _formatHourForStoreSettings(start),
+            'close_time': _formatHourForStoreSettings(end),
+            'is_open': targetOpen,
+            'timezone': storeTimezone.isNotEmpty ? storeTimezone : 'Asia/Aden',
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .timeout(_fastNetworkTimeout);
     } catch (_) {}
 
-    await supabase.from('settings').upsert({
-      'id': 1,
-      'start_hour': start,
-      'end_hour': end,
-      'delivery_fee': targetFee,
-    });
+    await supabase
+        .from('settings')
+        .upsert({
+          'id': 1,
+          'start_hour': start,
+          'end_hour': end,
+          'delivery_fee': targetFee,
+        })
+        .timeout(_fastNetworkTimeout);
   }
 
   Future<void> updateStoreHours(int start, int end) async {
@@ -2257,13 +2369,15 @@ class AppState extends ChangeNotifier {
     try {
       final raw = username.trim().toLowerCase();
       final email = raw.contains('@') ? raw : '$raw@fast.com';
-      final response = await supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      final response = await supabase.auth
+          .signInWithPassword(
+            email: email,
+            password: password,
+          )
+          .timeout(_fastNetworkTimeout);
       if (response.user == null ||
           await _isCourierAccount(response.user, usernameInput: raw)) {
-        await supabase.auth.signOut();
+        unawaited(supabase.auth.signOut());
         isAdminLoggedIn = false;
         currentCourier = null;
         return false;
@@ -2274,7 +2388,7 @@ class AppState extends ChangeNotifier {
         loginInput: raw,
       );
       if (verifiedAdmin == null) {
-        await supabase.auth.signOut();
+        unawaited(supabase.auth.signOut());
         isAdminLoggedIn = false;
         currentCourier = null;
         return false;
@@ -2286,7 +2400,7 @@ class AppState extends ChangeNotifier {
         response.user,
         verifiedAdminRow: verifiedAdmin,
       );
-      await fetchCouriersFromSupabase();
+      unawaited(fetchCouriersFromSupabase());
       listenToOrdersRealtime();
       notifyListeners();
       return true;
@@ -2299,7 +2413,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> logoutAdmin() async {
     isAdminLoggedIn = false;
-    await supabase.auth.signOut();
+    unawaited(supabase.auth.signOut());
     notifyListeners();
   }
 
@@ -2380,7 +2494,8 @@ class AppState extends ChangeNotifier {
         .from('customers')
         .select()
         .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
-        .maybeSingle();
+        .maybeSingle()
+        .timeout(_fastNetworkTimeout);
 
     if (record == null) return null;
 
@@ -2393,9 +2508,9 @@ class AppState extends ChangeNotifier {
     };
 
     userProfile = normalizedData;
-    await _persistUserSessionToPrefs(normalizedData);
-    await syncOneSignalPlayerIdForCurrentUsers();
-    await fetchUserAddressesFromSupabase();
+    unawaited(_persistUserSessionToPrefs(normalizedData));
+    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
     return normalizedData;
   }
@@ -2442,7 +2557,8 @@ class AppState extends ChangeNotifier {
           .from('orders')
           .select()
           .eq('id', int.tryParse(orderId) ?? orderId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
       if (response != null) {
         _upsertOrderInList(response);
         notifyListeners();
@@ -2469,10 +2585,15 @@ class AppState extends ChangeNotifier {
 
     final internationalPhone = '967$cleanPhone';
 
-    final existingRecord = await fetchCustomerRecordByPhone(cleanPhone);
+    JsonMapNullable existingRecord;
+    try {
+      existingRecord = await fetchCustomerRecordByPhone(cleanPhone);
+    } catch (_) {
+      existingRecord = null;
+    }
     final existsInDb = existingRecord != null;
     if (existsInDb) {
-      await restoreLastCustomerOrder();
+      unawaited(restoreLastCustomerOrder());
     }
 
     if (_useSandboxOtpProvider) {
@@ -2489,8 +2610,9 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final res =
-          await ApiService.sendWhatsappOtp(phoneNumber: internationalPhone);
+      final res = await ApiService.sendWhatsappOtp(
+        phoneNumber: internationalPhone,
+      ).timeout(_fastNetworkTimeout);
       notifyListeners();
       return {
         'exists': existsInDb,
@@ -2528,7 +2650,7 @@ class AppState extends ChangeNotifier {
         final verifyRes = await ApiService.verifyWhatsappOtp(
           phoneNumber: internationalPhone,
           otpCode: code,
-        );
+        ).timeout(_fastNetworkTimeout);
         isValid = verifyRes['verified'] == true ||
             verifyRes['ok'] == true ||
             verifyRes['success'] == true;
@@ -2548,9 +2670,15 @@ class AppState extends ChangeNotifier {
 
     _localFallbackOtps.remove(cleanPhone);
 
-    final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+    JsonMapNullable dbRecord;
+    try {
+      dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
+    } catch (_) {
+      dbRecord = null;
+    }
+
     if (dbRecord != null) {
-      await restoreLastCustomerOrder();
+      unawaited(restoreLastCustomerOrder());
       return true;
     }
 
@@ -2560,20 +2688,25 @@ class AppState extends ChangeNotifier {
       'address': '',
       'city': currentCity,
     };
-    await _persistUserSessionToPrefs(userProfile!);
+    unawaited(_persistUserSessionToPrefs(userProfile!));
 
-    try {
-      await supabase.from('customers').upsert({
-        'phone': cleanPhone,
-        'name': '',
-        'address': '',
-      }, onConflict: 'phone');
-    } catch (e) {
-      debugPrint('خطأ في إنشاء سجل العميل في customers: $e');
-    }
+    unawaited(() async {
+      try {
+        await supabase
+            .from('customers')
+            .upsert({
+              'phone': cleanPhone,
+              'name': '',
+              'address': '',
+            }, onConflict: 'phone')
+            .timeout(_fastNetworkTimeout);
+      } catch (e) {
+        debugPrint('خطأ في إنشاء سجل العميل في customers: $e');
+      }
+    }());
 
-    await syncOneSignalPlayerIdForCurrentUsers();
-    await fetchUserAddressesFromSupabase();
+    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
     return true;
   }
@@ -2607,29 +2740,26 @@ class AppState extends ChangeNotifier {
         'phone': cleanPhone,
       };
 
-      await _persistUserSessionToPrefs(userProfile!);
+      unawaited(_persistUserSessionToPrefs(userProfile!));
+      notifyListeners();
 
-      try {
-        await supabase.from('customers').upsert({
-          'phone': cleanPhone,
-          'name': name,
-          'address': address,
-        }, onConflict: 'phone');
-
-        await requestLocationAndNotificationPermissions();
-
-        final playerId = OneSignal.User.pushSubscription.id;
-        if (playerId != null && playerId.isNotEmpty) {
+      unawaited(() async {
+        try {
           await supabase
               .from('customers')
-              .update({'onesignal_player_id': playerId})
-              .eq('phone', cleanPhone);
-        }
-      } catch (e) {
-        debugPrint('خطأ في حفظ بيانات العميل: $e');
-      }
+              .upsert({
+                'phone': cleanPhone,
+                'name': name,
+                'address': address,
+              }, onConflict: 'phone')
+              .timeout(_fastNetworkTimeout);
 
-      notifyListeners();
+          await requestLocationAndNotificationPermissions();
+          await syncOneSignalPlayerIdForCurrentUsers();
+        } catch (e) {
+          debugPrint('خطأ في حفظ بيانات العميل: $e');
+        }
+      }());
     }
   }
 
@@ -2667,7 +2797,8 @@ class AppState extends ChangeNotifier {
         .from('couriers')
         .select()
         .eq('auth_user_id', user.id)
-        .maybeSingle();
+        .maybeSingle()
+        .timeout(_fastNetworkTimeout);
     if (byAuthId != null) {
       return Map<String, dynamic>.from(byAuthId);
     }
@@ -2691,14 +2822,18 @@ class AppState extends ChangeNotifier {
           .from('couriers')
           .select()
           .ilike('username', candidate)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
       if (byUsername != null) {
-        try {
-          await supabase
-              .from('couriers')
-              .update({'auth_user_id': user.id})
-              .eq('id', byUsername['id']);
-        } catch (_) {}
+        unawaited(() async {
+          try {
+            await supabase
+                .from('couriers')
+                .update({'auth_user_id': user.id})
+                .eq('id', byUsername['id'])
+                .timeout(_fastNetworkTimeout);
+          } catch (_) {}
+        }());
         return Map<String, dynamic>.from(byUsername);
       }
     }
@@ -2722,7 +2857,7 @@ class AppState extends ChangeNotifier {
             name: courierName,
           );
         }
-        await syncOneSignalPlayerIdForCurrentUsers();
+        unawaited(syncOneSignalPlayerIdForCurrentUsers());
         notifyListeners();
       }
     } catch (e) {
@@ -2816,7 +2951,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchCouriersFromSupabase() async {
     try {
-      final response = await supabase.from('couriers').select();
+      final response = await supabase
+          .from('couriers')
+          .select()
+          .timeout(_fastNetworkTimeout);
       couriers = List<Map<String, dynamic>>.from(response);
       await _loadCourierSession();
       notifyListeners();
@@ -2837,12 +2975,16 @@ class AppState extends ChangeNotifier {
 
     if (_hasConfiguredBackend) {
       try {
-        final res = await _postBackend('/api/admin/couriers', {
-          'name': name.trim(),
-          'phone': phone.trim(),
-          'username': username.trim(),
-          'password': password,
-        });
+        final res = await _postBackend(
+          '/api/admin/couriers',
+          {
+            'name': name.trim(),
+            'phone': phone.trim(),
+            'username': username.trim(),
+            'password': password,
+          },
+          timeout: _fastNetworkTimeout,
+        );
 
         if (res['success'] == false) {
           throw Exception(res['error']?.toString() ?? 'تعذر إضافة المندوب.');
@@ -2855,15 +2997,18 @@ class AppState extends ChangeNotifier {
 
     final cleanUsername = username.trim().toLowerCase();
     final newId = 'courier_${DateTime.now().millisecondsSinceEpoch}';
-    await supabase.from('couriers').insert({
-      'id': newId,
-      'name': name.trim(),
-      'phone': _normalizePhone(phone),
-      'username': cleanUsername,
-      'password': password,
-      'status': 'available',
-      'is_logged_in': false,
-    });
+    await supabase
+        .from('couriers')
+        .insert({
+          'id': newId,
+          'name': name.trim(),
+          'phone': _normalizePhone(phone),
+          'username': cleanUsername,
+          'password': password,
+          'status': 'available',
+          'is_logged_in': false,
+        })
+        .timeout(_fastNetworkTimeout);
 
     await fetchCouriersFromSupabase();
   }
@@ -2876,21 +3021,28 @@ class AppState extends ChangeNotifier {
     if (_hasConfiguredBackend) {
       try {
         await _postBackend(
-            '/api/admin/couriers/${Uri.encodeComponent(courier.id)}/update', {
-          'name': courier.name.trim(),
-          'phone': courier.phone.trim(),
-          'status': status,
-        });
+          '/api/admin/couriers/${Uri.encodeComponent(courier.id)}/update',
+          {
+            'name': courier.name.trim(),
+            'phone': courier.phone.trim(),
+            'status': status,
+          },
+          timeout: _fastNetworkTimeout,
+        );
         await fetchCouriersFromSupabase();
         return;
       } catch (_) {}
     }
 
-    await supabase.from('couriers').update({
-      'name': courier.name.trim(),
-      'phone': _normalizePhone(courier.phone),
-      'status': status,
-    }).eq('id', courier.id);
+    await supabase
+        .from('couriers')
+        .update({
+          'name': courier.name.trim(),
+          'phone': _normalizePhone(courier.phone),
+          'status': status,
+        })
+        .eq('id', courier.id)
+        .timeout(_fastNetworkTimeout);
 
     await fetchCouriersFromSupabase();
   }
@@ -2900,9 +3052,12 @@ class AppState extends ChangeNotifier {
     if (_hasConfiguredBackend) {
       try {
         await _postBackend(
-            '/api/admin/couriers/${Uri.encodeComponent(courierId)}/status', {
-          'status': status,
-        });
+          '/api/admin/couriers/${Uri.encodeComponent(courierId)}/status',
+          {
+            'status': status,
+          },
+          timeout: _fastNetworkTimeout,
+        );
         await fetchCouriersFromSupabase();
         return;
       } catch (_) {}
@@ -2911,7 +3066,8 @@ class AppState extends ChangeNotifier {
     await supabase
         .from('couriers')
         .update({'status': status})
-        .eq('id', courierId);
+        .eq('id', courierId)
+        .timeout(_fastNetworkTimeout);
     await fetchCouriersFromSupabase();
   }
 
@@ -2919,14 +3075,20 @@ class AppState extends ChangeNotifier {
     if (_hasConfiguredBackend) {
       try {
         await _postBackend(
-            '/api/admin/couriers/${Uri.encodeComponent(courierId)}/delete',
-            {});
+          '/api/admin/couriers/${Uri.encodeComponent(courierId)}/delete',
+          {},
+          timeout: _fastNetworkTimeout,
+        );
         await fetchCouriersFromSupabase();
         return;
       } catch (_) {}
     }
 
-    await supabase.from('couriers').delete().eq('id', courierId);
+    await supabase
+        .from('couriers')
+        .delete()
+        .eq('id', courierId)
+        .timeout(_fastNetworkTimeout);
     await fetchCouriersFromSupabase();
   }
 
@@ -2939,9 +3101,13 @@ class AppState extends ChangeNotifier {
 
       if (_hasConfiguredBackend) {
         try {
-          await _postBackend('/api/admin/couriers/settle', {
-            'courier_name': cleanCourierName,
-          });
+          await _postBackend(
+            '/api/admin/couriers/settle',
+            {
+              'courier_name': cleanCourierName,
+            },
+            timeout: _fastNetworkTimeout,
+          );
           await fetchOrders();
           unawaited(fetchAdminFinancialReports());
           notifyListeners();
@@ -2954,7 +3120,8 @@ class AppState extends ChangeNotifier {
           .select('id, delivery_fee')
           .eq('assigned_courier', cleanCourierName)
           .eq('status', 'delivered')
-          .eq('is_settled', false);
+          .eq('is_settled', false)
+          .timeout(_fastNetworkTimeout);
 
       final list = List<Map<String, dynamic>>.from(unsettled);
       var total = 0.0;
@@ -2968,14 +3135,18 @@ class AppState extends ChangeNotifier {
             .update({'is_settled': true})
             .eq('assigned_courier', cleanCourierName)
             .eq('status', 'delivered')
-            .eq('is_settled', false);
+            .eq('is_settled', false)
+            .timeout(_fastNetworkTimeout);
 
         try {
-          await supabase.from('courier_settlements').insert({
-            'courier_name': cleanCourierName,
-            'orders_count': list.length,
-            'total_amount': total,
-          });
+          await supabase
+              .from('courier_settlements')
+              .insert({
+                'courier_name': cleanCourierName,
+                'orders_count': list.length,
+                'total_amount': total,
+              })
+              .timeout(_fastNetworkTimeout);
         } catch (_) {}
       }
 
@@ -2992,13 +3163,15 @@ class AppState extends ChangeNotifier {
     try {
       final raw = username.trim().toLowerCase();
       final email = raw.contains('@') ? raw : '$raw@fast.com';
-      final auth = await supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      final auth = await supabase.auth
+          .signInWithPassword(
+            email: email,
+            password: password,
+          )
+          .timeout(_fastNetworkTimeout);
 
       if (auth.user == null) {
-        await supabase.auth.signOut();
+        unawaited(supabase.auth.signOut());
         return false;
       }
 
@@ -3008,20 +3181,25 @@ class AppState extends ChangeNotifier {
       );
 
       if (row == null || row['status']?.toString() == 'disabled') {
-        await supabase.auth.signOut();
+        unawaited(supabase.auth.signOut());
         isAdminLoggedIn = false;
         currentCourier = null;
         return false;
       }
 
-      await supabase
-          .from('couriers')
-          .update({'is_logged_in': true})
-          .eq('id', row['id']);
-
       isAdminLoggedIn = false;
       currentCourier = Map<String, dynamic>.from(row);
       _currentCourierData!['is_logged_in'] = true;
+
+      unawaited(() async {
+        try {
+          await supabase
+              .from('couriers')
+              .update({'is_logged_in': true})
+              .eq('id', row['id'])
+              .timeout(_fastNetworkTimeout);
+        } catch (_) {}
+      }());
 
       final courierPhone = row['phone']?.toString() ?? '';
       final courierName = row['name']?.toString() ?? '';
@@ -3032,10 +3210,12 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      await syncOneSignalPlayerIdForCurrentUsers();
+      unawaited(syncOneSignalPlayerIdForCurrentUsers());
       listenToOrdersRealtime();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('loggedCourierId', row['id'].toString());
+      unawaited(() async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('loggedCourierId', row['id'].toString());
+      }());
       notifyListeners();
       return true;
     } catch (e) {
@@ -3046,18 +3226,22 @@ class AppState extends ChangeNotifier {
 
   Future<void> logoutCourier() async {
     if (currentCourier != null && currentCourier!['id'] != null) {
-      try {
-        await supabase
-            .from('couriers')
-            .update({'is_logged_in': false})
-            .eq('id', currentCourier!['id']);
-      } catch (e) {
-        debugPrint('خطأ في تحرير جلسة المندوب: $e');
-      }
+      final courierId = currentCourier!['id'];
+      unawaited(() async {
+        try {
+          await supabase
+              .from('couriers')
+              .update({'is_logged_in': false})
+              .eq('id', courierId)
+              .timeout(_fastNetworkTimeout);
+        } catch (e) {
+          debugPrint('خطأ في تحرير جلسة المندوب: $e');
+        }
+      }());
     }
 
     currentCourier = null;
-    await supabase.auth.signOut();
+    unawaited(supabase.auth.signOut());
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('loggedCourierId');
     notifyListeners();
@@ -3138,11 +3322,11 @@ class AppState extends ChangeNotifier {
           _accessToken ?? '',
           intId,
           cleanStatus,
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(_fastNetworkTimeout);
         if (res['order'] is Map) {
           _upsertOrderInList(res['order']);
         } else {
-          await fetchOrders();
+          unawaited(fetchOrders());
         }
         unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
@@ -3159,7 +3343,8 @@ class AppState extends ChangeNotifier {
         })
         .eq('id', intId)
         .select()
-        .single();
+        .single()
+        .timeout(_fastNetworkTimeout);
 
     _upsertOrderInList(updated);
     unawaited(fetchPopularStats());
@@ -3176,7 +3361,8 @@ class AppState extends ChangeNotifier {
         .from('couriers')
         .select('id, name, onesignal_player_id')
         .eq('id', courierId)
-        .single();
+        .single()
+        .timeout(_fastNetworkTimeout);
 
     final currentOrder = orders.firstWhere(
       (o) => o['id'].toString() == orderId,
@@ -3212,15 +3398,22 @@ class AppState extends ChangeNotifier {
     if (_hasConfiguredBackend) {
       try {
         await _postBackend(
-            '/api/admin/products/${Uri.encodeComponent(id)}/delete', {});
-        await fetchProductsFromSupabase();
+          '/api/admin/products/${Uri.encodeComponent(id)}/delete',
+          {},
+          timeout: _fastNetworkTimeout,
+        );
+        unawaited(fetchProductsFromSupabase());
         notifyListeners();
         return;
       } catch (_) {}
     }
 
-    await supabase.from('products').delete().eq('id', id);
-    await fetchProductsFromSupabase();
+    await supabase
+        .from('products')
+        .delete()
+        .eq('id', id)
+        .timeout(_fastNetworkTimeout);
+    unawaited(fetchProductsFromSupabase());
     notifyListeners();
   }
 
@@ -3243,15 +3436,22 @@ class AppState extends ChangeNotifier {
 
     if (_hasConfiguredBackend) {
       try {
-        await _postBackend('/api/admin/products/upsert', payload);
-        await fetchProductsFromSupabase();
+        await _postBackend(
+          '/api/admin/products/upsert',
+          payload,
+          timeout: _fastNetworkTimeout,
+        );
+        unawaited(fetchProductsFromSupabase());
         notifyListeners();
         return;
       } catch (_) {}
     }
 
-    await supabase.from('products').upsert(payload);
-    await fetchProductsFromSupabase();
+    await supabase
+        .from('products')
+        .upsert(payload)
+        .timeout(_fastNetworkTimeout);
+    unawaited(fetchProductsFromSupabase());
     notifyListeners();
   }
 
@@ -3263,7 +3463,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> fetchProductsFromSupabase() async {
     try {
-      final response = await supabase.from('products').select();
+      final response = await supabase
+          .from('products')
+          .select()
+          .timeout(_fastNetworkTimeout);
       final mapped = response.map((p) {
         return ProductModel(
           id: p['id'].toString(),
@@ -3281,7 +3484,7 @@ class AppState extends ChangeNotifier {
       }).toList();
       _products = mapped;
 
-      await _localStorage.cacheProducts(response);
+      unawaited(_localStorage.cacheProducts(response));
       unawaited(fetchPopularStats());
       notifyListeners();
     } catch (e) {
@@ -3382,7 +3585,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> _initOrdersRealtime() async {
     try {
-      final initialData = await supabase.from('orders').select();
+      final initialData = await supabase
+          .from('orders')
+          .select()
+          .timeout(_fastNetworkTimeout);
       orders = List<Map<String, dynamic>>.from(initialData);
       _sortOrders();
       unawaited(fetchPopularStats());
@@ -3537,7 +3743,7 @@ class AppState extends ChangeNotifier {
             paymentAccount: paymentAccount,
             clientRequestKey: clientRequestKey,
             token: _accessToken,
-          );
+          ).timeout(_fastNetworkTimeout);
 
           if (responseData['order'] is Map) {
             order = Map<String, dynamic>.from(responseData['order']);
@@ -3572,23 +3778,29 @@ class AppState extends ChangeNotifier {
               'notes': itemsDesc.trim(),
             })
             .select()
-            .single();
+            .single()
+            .timeout(_fastNetworkTimeout);
 
         order = Map<String, dynamic>.from(inserted);
 
         if (order['id'] != null && _cartItems.isNotEmpty) {
-          try {
-            final orderItemsRows = _cartItems.map((c) {
-              return {
-                'order_id': order['id'],
-                'product_name': c.name,
-                'price': c.price,
-                'quantity': c.quantity,
-                'total_price': c.price * c.quantity,
-              };
-            }).toList();
-            await supabase.from('order_items').insert(orderItemsRows);
-          } catch (_) {}
+          final orderItemsRows = _cartItems.map((c) {
+            return {
+              'order_id': order['id'],
+              'product_name': c.name,
+              'price': c.price,
+              'quantity': c.quantity,
+              'total_price': c.price * c.quantity,
+            };
+          }).toList();
+          unawaited(() async {
+            try {
+              await supabase
+                  .from('order_items')
+                  .insert(orderItemsRows)
+                  .timeout(_fastNetworkTimeout);
+            } catch (_) {}
+          }());
         }
       }
 
@@ -3601,39 +3813,44 @@ class AppState extends ChangeNotifier {
         'address': address,
       };
 
-      await _persistUserSessionToPrefs(userProfile!);
-      await syncOneSignalPlayerIdForCurrentUsers();
-      if (orderId != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('fast_last_order_id', orderId.toString());
-      }
       if (order.isNotEmpty) {
         _upsertOrderInList(order);
-      } else {
-        await fetchOrders();
       }
 
       _cartItems.clear();
       removeCoupon();
-      unawaited(fetchPopularStats());
-      unawaited(fetchAdminFinancialReports());
-
-      final adminPids = await getAllAdminPlayerIds();
-      if (adminPids.isNotEmpty) {
-        unawaited(_sendExternalPushNotification(
-          playerIds: adminPids,
-          title: 'طلب جديد #${orderId ?? ''}',
-          body: 'طلب من $customerName (${normalizedPhone}) بانتظار التسعير.',
-          orderId: orderId,
-          eventType: 'new_order',
-        ));
-      }
 
       addNotification(
         'تم استلام الطلب',
         'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل',
       );
       notifyListeners();
+
+      unawaited(() async {
+        await _persistUserSessionToPrefs(userProfile!);
+        await syncOneSignalPlayerIdForCurrentUsers();
+        if (orderId != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('fast_last_order_id', orderId.toString());
+        }
+        if (order.isEmpty) {
+          await fetchOrders();
+        }
+        await fetchPopularStats();
+        await fetchAdminFinancialReports();
+
+        final adminPids = await getAllAdminPlayerIds();
+        if (adminPids.isNotEmpty) {
+          await _sendExternalPushNotification(
+            playerIds: adminPids,
+            title: 'طلب جديد #${orderId ?? ''}',
+            body:
+                'طلب من $customerName (${normalizedPhone}) بانتظار التسعير.',
+            orderId: orderId,
+            eventType: 'new_order',
+          );
+        }
+      }());
     } catch (e) {
       debugPrint('خطأ أثناء إرسال الطلب: $e');
       rethrow;
@@ -3666,7 +3883,7 @@ class AppState extends ChangeNotifier {
             intOrderId,
             cleanFee,
             cleanCourierName,
-          ).timeout(const Duration(seconds: 8));
+          ).timeout(_fastNetworkTimeout);
 
           if (responseData['order'] is Map) {
             updatedOrder = Map<String, dynamic>.from(responseData['order']);
@@ -3698,7 +3915,8 @@ class AppState extends ChangeNotifier {
             })
             .eq('id', intOrderId)
             .select()
-            .single();
+            .single()
+            .timeout(_fastNetworkTimeout);
 
         updatedOrder = Map<String, dynamic>.from(row);
       }
@@ -3706,24 +3924,26 @@ class AppState extends ChangeNotifier {
       if (updatedOrder.isNotEmpty) {
         _upsertOrderInList(updatedOrder);
       } else {
-        await fetchOrders();
+        unawaited(fetchOrders());
       }
 
       unawaited(fetchAdminFinancialReports());
-
-      final custPhone = updatedOrder['phone']?.toString() ?? '';
-      final custPid = await getCustomerPlayerIdByPhone(custPhone);
-      if (custPid != null) {
-        unawaited(_sendExternalPushNotification(
-          playerIds: [custPid],
-          title: 'تم تحديد سعر التوصيل للطلب #$intOrderId',
-          body: 'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
-          orderId: intOrderId,
-          eventType: 'pricing_sent',
-        ));
-      }
-
       notifyListeners();
+
+      unawaited(() async {
+        final custPhone = updatedOrder['phone']?.toString() ?? '';
+        final custPid = await getCustomerPlayerIdByPhone(custPhone);
+        if (custPid != null) {
+          await _sendExternalPushNotification(
+            playerIds: [custPid],
+            title: 'تم تحديد سعر التوصيل للطلب #$intOrderId',
+            body:
+                'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
+            orderId: intOrderId,
+            eventType: 'pricing_sent',
+          );
+        }
+      }());
     } catch (e) {
       debugPrint('خطأ في تحديد رسوم التوصيل: $e');
       throw Exception('تعذر تحديد رسوم التوصيل: $e');
@@ -3742,16 +3962,17 @@ class AppState extends ChangeNotifier {
 
     if (_hasConfiguredBackend) {
       try {
-        final responseData =
-            await _postBackend('/api/orders/$intOrderId/customer-action', {
-          'action': action,
-        });
+        final responseData = await _postBackend(
+          '/api/orders/$intOrderId/customer-action',
+          {'action': action},
+          timeout: _fastNetworkTimeout,
+        );
 
         if (responseData['order'] is Map) {
           updatedMap = Map<String, dynamic>.from(responseData['order']);
           _upsertOrderInList(updatedMap);
         } else {
-          await fetchOrders();
+          unawaited(fetchOrders());
         }
       } catch (_) {}
     }
@@ -3765,29 +3986,31 @@ class AppState extends ChangeNotifier {
           })
           .eq('id', intOrderId)
           .select()
-          .single();
+          .single()
+          .timeout(_fastNetworkTimeout);
 
       updatedMap = Map<String, dynamic>.from(updated);
       _upsertOrderInList(updatedMap);
     }
 
     unawaited(fetchAdminFinancialReports());
-
-    final courierName = updatedMap['assigned_courier']?.toString() ?? '';
-    if (action == 'approve' && courierName.isNotEmpty) {
-      final cPid = await getCourierPlayerIdByName(courierName);
-      if (cPid != null && cPid.isNotEmpty) {
-        unawaited(_sendExternalPushNotification(
-          playerIds: [cPid],
-          title: 'وافق العميل على الطلب #$intOrderId',
-          body: 'الطلب #$intOrderId جاهز لقبولك وتوصيله.',
-          orderId: intOrderId,
-          eventType: 'approved_by_customer',
-        ));
-      }
-    }
-
     notifyListeners();
+
+    unawaited(() async {
+      final courierName = updatedMap['assigned_courier']?.toString() ?? '';
+      if (action == 'approve' && courierName.isNotEmpty) {
+        final cPid = await getCourierPlayerIdByName(courierName);
+        if (cPid != null && cPid.isNotEmpty) {
+          await _sendExternalPushNotification(
+            playerIds: [cPid],
+            title: 'وافق العميل على الطلب #$intOrderId',
+            body: 'الطلب #$intOrderId جاهز لقبولك وتوصيله.',
+            orderId: intOrderId,
+            eventType: 'approved_by_customer',
+          );
+        }
+      }
+    }());
   }
 
   Future<void> customerApprovePricing(dynamic orderId) async {
@@ -3836,13 +4059,13 @@ class AppState extends ChangeNotifier {
           _accessToken ?? '',
           intOrderId,
           newStatus,
-        ).timeout(const Duration(seconds: 8));
+        ).timeout(_fastNetworkTimeout);
 
         if (responseData['order'] is Map) {
           updatedMap = Map<String, dynamic>.from(responseData['order']);
           _upsertOrderInList(updatedMap);
         } else {
-          await fetchOrders();
+          unawaited(fetchOrders());
         }
       } catch (_) {}
     }
@@ -3859,7 +4082,8 @@ class AppState extends ChangeNotifier {
           .update(updatePayload)
           .eq('id', intOrderId)
           .select()
-          .single();
+          .single()
+          .timeout(_fastNetworkTimeout);
 
       updatedMap = Map<String, dynamic>.from(updated);
       _upsertOrderInList(updatedMap);
@@ -3867,20 +4091,21 @@ class AppState extends ChangeNotifier {
 
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
-
-    final custPhone = updatedMap['phone']?.toString() ?? '';
-    final custPid = await getCustomerPlayerIdByPhone(custPhone);
-    if (custPid != null) {
-      unawaited(_sendExternalPushNotification(
-        playerIds: [custPid],
-        title: 'تحديث طلبك #$intOrderId',
-        body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
-        orderId: intOrderId,
-        eventType: newStatus,
-      ));
-    }
-
     notifyListeners();
+
+    unawaited(() async {
+      final custPhone = updatedMap['phone']?.toString() ?? '';
+      final custPid = await getCustomerPlayerIdByPhone(custPhone);
+      if (custPid != null) {
+        await _sendExternalPushNotification(
+          playerIds: [custPid],
+          title: 'تحديث طلبك #$intOrderId',
+          body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
+          orderId: intOrderId,
+          eventType: newStatus,
+        );
+      }
+    }());
   }
 
   Future<void> courierRespondToOrder(dynamic orderId, bool accepted) async {
