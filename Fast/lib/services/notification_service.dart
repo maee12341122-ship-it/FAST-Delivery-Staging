@@ -43,7 +43,9 @@ class NotificationService {
   }
 
   /// 1. تهيئة الاستماع للإشعارات والنقر عليها والتنبيهات المحلية
-  static Future<void> initialize() async {
+  static Future<void> initialize({
+    void Function(String playerId)? onPlayerIdChanged,
+  }) async {
     try {
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -102,11 +104,18 @@ class NotificationService {
 
       // الاستماع لتغيير أو توفر اشتراك الجهاز وجلب الـ Player ID
       OneSignal.User.pushSubscription.addObserver((state) {
-        debugPrint('📱 [OneSignal Player ID الجديد]: ${state.current.id}');
+        final newId = state.current.id;
+        debugPrint('📱 [OneSignal Player ID الجديد]: $newId');
+        if (newId != null && newId.trim().isNotEmpty && onPlayerIdChanged != null) {
+          onPlayerIdChanged(newId.trim());
+        }
       });
 
       final String? playerId = OneSignal.User.pushSubscription.id;
       debugPrint('📱 [OneSignal Player ID الحالي]: $playerId');
+      if (playerId != null && playerId.trim().isNotEmpty && onPlayerIdChanged != null) {
+        onPlayerIdChanged(playerId.trim());
+      }
 
       debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal & Local) بنجاح');
     } catch (e) {
@@ -238,7 +247,7 @@ class NotificationService {
             headers: _authHeaders(),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         debugPrint(
