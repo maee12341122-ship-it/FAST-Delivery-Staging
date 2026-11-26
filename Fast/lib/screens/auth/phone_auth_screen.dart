@@ -19,7 +19,7 @@ class PhoneAuthScreen extends StatefulWidget {
 }
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
-  static const Duration _fastNetworkTimeout = Duration(seconds: 12);
+  static const Duration _authNetworkTimeout = Duration(seconds: 18);
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
@@ -38,6 +38,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   // المراحل: 0 = إدخال الرقم، 1 = إدخال OTP، 2 = إكمال بروفايل العميل، 3 = شاشة تسجيل الدخول الخاصة (أدمن أو مندوب)
   int _currentStep = 0;
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
@@ -46,7 +47,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       'customer_new'; // 'admin', 'courier', 'customer_existing', 'customer_new'
   Map<String, dynamic>? _pendingUserRecord;
 
-  // عداد النقرات المخفية للوصول لإدارة النظام سراّ
+  // عداد النقرات المخفية للوصول لإدارة النظام سراً
   int _secretTapCount = 0;
 
   @override
@@ -78,7 +79,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
   String _formatFriendlyError(Object error, String fallbackMessage) {
     if (error is TimeoutException) {
-      return 'استغرق الاتصال وقتاً أطول من المعتاد، تحقق من الإنترنت وأعد المحاولة';
+      return 'الشبكة بطيئة حالياً، حاول مرة أخرى أو تحقق من اتصالك بالإنترنت';
     }
     final rawErr =
         error.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '').trim();
@@ -96,12 +97,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
 
     try {
       if (record == null && username != null && username.trim().isNotEmpty) {
+        final cleanUser = username.trim().toLowerCase();
+        final userPrefix =
+            cleanUser.contains('@') ? cleanUser.split('@').first : cleanUser;
         final res = await _supabase
             .from('admins')
             .select('id, username, phone')
-            .eq('username', username.trim())
+            .or('username.ilike.$cleanUser,username.ilike.$userPrefix')
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(const Duration(seconds: 8));
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -111,7 +115,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .select('id, username, phone')
             .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(const Duration(seconds: 8));
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -160,60 +164,62 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   Future<void> _checkExistingAdminOrCourierSession() async {
     try {
       final session = _supabase.auth.currentSession;
-      if (session != null) {
-        final user = session.user;
-        final appRole = user.appMetadata['role']?.toString();
+      if (session == null) return;
 
-        if (appRole == 'admin') {
-          final email = (user.email ?? '').trim().toLowerCase();
-          final candidateUsername =
-              email.contains('@') ? email.split('@').first : email;
-          if (candidateUsername.isNotEmpty) {
-            final adminRes = await _supabase
-                .from('admins')
-                .select('id, username, phone')
-                .eq('username', candidateUsername)
-                .maybeSingle()
-                .timeout(_fastNetworkTimeout);
+      final user = session.user;
+      final email = (user.email ?? '').trim().toLowerCase();
+      final candidateUsername =
+          email.contains('@') ? email.split('@').first : email;
 
-            if (adminRes != null && mounted) {
-              final appState = Provider.of<AppState>(context, listen: false);
-              appState.isAdminLoggedIn = true;
-              await _syncAdminUserSession(
-                appState,
-                username: candidateUsername,
-                adminRecord: Map<String, dynamic>.from(adminRes),
-              );
-              unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
-              if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const AdminScreen()),
-              );
-              return;
-            }
-          }
-        }
-
-        // فحص هل هو مندوب عبر auth_user_id (uuid)
-        final courierRes = await _supabase
+      // فحص متوازي وسريع للمشرف والمندوب
+      final results = await Future.wait<dynamic>([
+        if (candidateUsername.isNotEmpty)
+          _supabase
+              .from('admins')
+              .select('id, username, phone')
+              .or('username.ilike.$email,username.ilike.$candidateUsername')
+              .maybeSingle()
+              .timeout(const Duration(seconds: 8))
+        else
+          Future.value(null),
+        _supabase
             .from('couriers')
             .select()
             .eq('auth_user_id', user.id)
             .maybeSingle()
-            .timeout(_fastNetworkTimeout);
+            .timeout(const Duration(seconds: 8)),
+      ]);
 
-        if (courierRes != null && courierRes['status']?.toString() != 'disabled') {
-          if (!mounted) return;
-          final appState = Provider.of<AppState>(context, listen: false);
-          appState.currentCourier = Map<String, dynamic>.from(courierRes);
-          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const CourierScreen()),
-          );
-          return;
-        }
+      final adminRes = results[0];
+      final courierRes = results[1];
+
+      if (adminRes != null && mounted) {
+        final appState = Provider.of<AppState>(context, listen: false);
+        appState.isAdminLoggedIn = true;
+        unawaited(_syncAdminUserSession(
+          appState,
+          username: candidateUsername,
+          adminRecord: Map<String, dynamic>.from(adminRes),
+        ));
+        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminScreen()),
+        );
+        return;
+      }
+
+      if (courierRes != null &&
+          courierRes['status']?.toString() != 'disabled' &&
+          mounted) {
+        final appState = Provider.of<AppState>(context, listen: false);
+        appState.currentCourier = Map<String, dynamic>.from(courierRes);
+        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CourierScreen()),
+        );
       }
     } catch (e) {
       debugPrint('⚠️ خطأ في فحص الجلسة التلقائية: $e');
@@ -275,25 +281,25 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       try {
         await appState
             .requestLocationAndNotificationPermissions()
-            .timeout(_fastNetworkTimeout);
+            .timeout(const Duration(seconds: 8));
       } catch (_) {}
       try {
         await NotificationService.saveUserPlayerId(
           customerIdOrPhone,
           'customers',
-        ).timeout(_fastNetworkTimeout);
+        ).timeout(const Duration(seconds: 8));
       } catch (e) {
         debugPrint('خطأ في حفظ Player ID: $e');
       }
       try {
         await appState
             .syncOneSignalPlayerIdForCurrentUsers()
-            .timeout(_fastNetworkTimeout);
+            .timeout(const Duration(seconds: 8));
       } catch (_) {}
     }());
   }
 
-  // 1️⃣ طلب إرسال كود OTP عبر واتساب وفحص دور المستخدم وجلب بيانات العميل المسجل من قاعدة البيانات
+  // 1️⃣ طلب إرسال كود OTP عبر واتساب وفحص دور المستخدم بالتوازي لتسريع الاستجابة
   Future<void> _sendSupabaseOTP(AppState appState) async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 9) {
@@ -312,13 +318,26 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       _pendingUserRecord = null;
       _otpController.clear();
 
-      // 1. فحص هل الرقم يتبع للمشرفين (admins)
-      final adminRes = await _supabase
-          .from('admins')
-          .select('id, username, phone')
-          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle()
-          .timeout(_fastNetworkTimeout);
+      final filterOr = 'phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone';
+
+      // تنفيذ استعلامات الفحص الثلاثة بالتوازي في طلب واحد سريع بدلاً من الانتظار المتسلسل
+      final lookupResults = await Future.wait<dynamic>([
+        _supabase
+            .from('admins')
+            .select('id, username, phone')
+            .or(filterOr)
+            .maybeSingle(),
+        _supabase
+            .from('couriers')
+            .select('id, username, name, phone, status')
+            .or(filterOr)
+            .maybeSingle(),
+        _supabase.from('customers').select().or(filterOr).maybeSingle(),
+      ]).timeout(_authNetworkTimeout);
+
+      final adminRes = lookupResults[0];
+      final courierRes = lookupResults[1];
+      final existingCustomer = lookupResults[2];
 
       if (adminRes != null) {
         _detectedRole = 'admin';
@@ -331,14 +350,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         return;
       }
 
-      // 2. فحص هل الرقم يتبع للمناديب (couriers) وربطه ببريده الإلكتروني تلقائياً
-      final courierRes = await _supabase
-          .from('couriers')
-          .select('id, username, name, phone, status')
-          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle()
-          .timeout(_fastNetworkTimeout);
-
       if (courierRes != null) {
         _detectedRole = 'courier';
         _pendingUserRecord = Map<String, dynamic>.from(courierRes);
@@ -349,14 +360,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         }
         return;
       }
-
-      // 3. فحص هل العميل موجود مسبقاً في جدول customers وجلب بياناته المسجلة
-      final existingCustomer = await _supabase
-          .from('customers')
-          .select()
-          .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
-          .maybeSingle()
-          .timeout(_fastNetworkTimeout);
 
       if (existingCustomer != null) {
         _pendingUserRecord = Map<String, dynamic>.from(existingCustomer);
@@ -382,7 +385,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final internationalPhone = '967$_cleanPhoneInput';
       final otpRes = await ApiService.sendWhatsappOtp(
         phoneNumber: internationalPhone,
-      ).timeout(_fastNetworkTimeout);
+      ).timeout(_authNetworkTimeout);
 
       final msg = otpRes['message']?.toString().isNotEmpty == true
           ? otpRes['message'].toString()
@@ -438,7 +441,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       final verifyRes = await ApiService.verifyWhatsappOtp(
         phoneNumber: internationalPhone,
         otpCode: otpCode,
-      ).timeout(_fastNetworkTimeout);
+      ).timeout(_authNetworkTimeout);
 
       final bool isValid = verifyRes['verified'] == true ||
           verifyRes['ok'] == true ||
@@ -452,7 +455,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               .select()
               .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
               .maybeSingle()
-              .timeout(_fastNetworkTimeout);
+              .timeout(_authNetworkTimeout);
           if (fetched != null) {
             customerRow = Map<String, dynamic>.from(fetched);
             _pendingUserRecord = customerRow;
@@ -535,7 +538,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  // 3️⃣ التحقق من البريد أو اسم المستخدم وكلمة المرور الخاصة بالأدمن أو المندوب
+  // 3️⃣ التحقق السريع من بيانات المشرف أو المندوب والانتقال الفوري للوحة
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
     final rawLogin = _loginUsernameController.text.trim();
     final password = _loginPasswordController.text.trim();
@@ -555,12 +558,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_detectedRole == 'admin' || _detectedRole.isEmpty) {
-        bool adminSuccess = await appState
+      if (_detectedRole == 'admin') {
+        final bool adminSuccess = await appState
             .loginAdminFromSupabase(resolvedEmail, password)
-            .timeout(_fastNetworkTimeout);
+            .timeout(_authNetworkTimeout);
         if (adminSuccess) {
-          await _syncAdminUserSession(appState, username: rawLogin);
+          unawaited(_syncAdminUserSession(appState, username: rawLogin));
           unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
           if (!mounted) return;
           Navigator.pushReplacement(
@@ -572,22 +575,50 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           );
           return;
         }
-      }
+      } else if (_detectedRole == 'courier') {
+        final bool courierSuccess = await appState
+            .loginCourier(resolvedEmail, password)
+            .timeout(_authNetworkTimeout);
+        if (courierSuccess) {
+          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const CourierScreen()),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
+          );
+          return;
+        }
+      } else {
+        // إذا دخل المستخدم من الوضع السري دون تحديد الدور مسبقاً: نجرب المشرف ثم المندوب
+        final bool adminSuccess = await appState
+            .loginAdminFromSupabase(resolvedEmail, password)
+            .timeout(_authNetworkTimeout);
+        if (adminSuccess) {
+          unawaited(_syncAdminUserSession(appState, username: rawLogin));
+          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminScreen()),
+          );
+          return;
+        }
 
-      bool courierSuccess = await appState
-          .loginCourier(resolvedEmail, password)
-          .timeout(_fastNetworkTimeout);
-      if (courierSuccess) {
-        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const CourierScreen()),
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('مرحباً بك يا مندوب التوصيل 🛵')),
-        );
-        return;
+        final bool courierSuccess = await appState
+            .loginCourier(resolvedEmail, password)
+            .timeout(_authNetworkTimeout);
+        if (courierSuccess) {
+          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const CourierScreen()),
+          );
+          return;
+        }
       }
 
       if (mounted) {
@@ -646,7 +677,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           }, onConflict: 'phone')
           .select()
           .maybeSingle()
-          .timeout(_fastNetworkTimeout);
+          .timeout(_authNetworkTimeout);
 
       final finalName = (savedRecord?['name'] ?? name).toString().trim();
       final finalPhone = _normalizePhone(
@@ -967,13 +998,26 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       const SizedBox(height: 14),
                       TextField(
                         controller: _loginPasswordController,
-                        obscureText: true,
+                        obscureText: _obscurePassword,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           labelText: 'كلمة السر',
                           labelStyle: const TextStyle(color: Colors.grey),
                           prefixIcon:
                               const Icon(Icons.lock_outline, color: primaryGold),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.grey,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                           filled: true,
                           fillColor: backgroundColor,
                           enabledBorder: OutlineInputBorder(
