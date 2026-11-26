@@ -19,7 +19,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
-    final orders = List>.from(appState.orders);
+    final orders = List<Map<String, dynamic>>.from(appState.orders);
 
     orders.sort((a, b) {
       final idA = int.tryParse(a['id']?.toString() ?? '0') ?? 0;
@@ -55,7 +55,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     final productsTotal = double.tryParse(order['products_total']?.toString() ?? '0') ?? 0.0;
                     final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0.0;
                     final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
-                    
+
                     final notificationKey = '$orderId-$status';
                     if (!_notifiedOrders.contains(notificationKey)) {
                       if (status == 'pricingSentToCustomer') {
@@ -63,18 +63,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         NotificationService.showLocalNotification(
                           'تحديد سعر جديد للطلب #$orderId 🔔',
                           'تم تحديد رسوم التوصيل وإجمالي السعر، انقر للموافقة.',
+                          payload: orderId,
                         );
                       } else if (status == 'onTheWay') {
                         _notifiedOrders.add(notificationKey);
                         NotificationService.showLocalNotification(
                           'المندوب في الطريق 🛵',
                           'خرج المندوب لتوصيل طلبك رقم #$orderId الآن!',
+                          payload: orderId,
                         );
                       } else if (status == 'delivered') {
                         _notifiedOrders.add(notificationKey);
                         NotificationService.showLocalNotification(
                           'تم توصيل الطلب بنجاح ✅',
                           'شكراً لاستخدامك فاست ديليفري، نتمنى لك وقتاً سعيداً!',
+                          payload: orderId,
                         );
                       }
                     }
@@ -92,7 +95,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // رأس الكارت (رقم الطلب وحالته)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -115,8 +117,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               ],
                             ),
                             const Divider(height: 20, color: Colors.white12),
-                            
-                            // 🚀 زر تتبع الطلب البارز والواضح جداً بالنص العربي
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppConstants.gold,
@@ -140,8 +140,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-
-                            // تفاصيل العنوان والمنتجات
                             Row(
                               children: [
                                 const Icon(Icons.location_on, size: 16, color: Colors.redAccent),
@@ -160,8 +158,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               child: Text('🛒 المنتجات: $itemsDesc', style: const TextStyle(color: Colors.white, fontSize: 13)),
                             ),
                             const SizedBox(height: 10),
-                            
-                            // الأسعار
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -178,8 +174,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               ],
                             ),
                             const SizedBox(height: 14),
-
-                            // 💰 أزرار موافقة العميل على السعر (تظهر مباشرة هنا عند الحاجة)
                             if (status == 'pricingSentToCustomer') ...[
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -242,8 +236,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               ),
                               const SizedBox(height: 12),
                             ],
-
-                            // 🔍 زر تفاصيل الفاتورة
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
