@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "418789392494",
+    "project_id": "fast-delivery-318d3",
+    "storage_bucket": "fast-delivery-318d3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:418789392494:android:a330e4b1d84ff1d15c267f",
+        "android_client_info": {
+          "package_name": "com.maeen.fast_delivery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBcn7vspCIQ4BJkW7EUmEI8jM_qxOZwvKE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
