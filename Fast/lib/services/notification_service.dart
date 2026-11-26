@@ -14,6 +14,8 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  static void Function(Map<String, dynamic> notificationItem)? onNotificationReceived;
+
   static int _nextNotificationId() {
     return DateTime.now().microsecondsSinceEpoch % 2147483647;
   }
@@ -32,6 +34,50 @@ class NotificationService {
     return clean;
   }
 
+  static String? _extractOrderIdFromMap(Map<dynamic, dynamic>? data, String fullText) {
+    if (data != null) {
+      final rawId = (data['order_id'] ?? data['related_id'] ?? data['orderId'])
+          ?.toString()
+          .trim();
+      if (rawId != null && rawId.isNotEmpty) {
+        return rawId;
+      }
+    }
+    return _extractOrderIdFromText(fullText);
+  }
+
+  static void _recordExternalNotification({
+    required String? title,
+    required String? body,
+    Map<String, dynamic>? additionalData,
+  }) {
+    final cleanTitle = (title ?? '').trim();
+    final cleanBody = (body ?? '').trim();
+    if (cleanTitle.isEmpty && cleanBody.isEmpty) return;
+
+    final orderId = _extractOrderIdFromMap(
+      additionalData,
+      '$cleanTitle $cleanBody',
+    );
+
+    final item = <String, dynamic>{
+      'title': cleanTitle.isNotEmpty ? cleanTitle : 'إشعار جديد 🔔',
+      'body': cleanBody,
+      'time': DateTime.now(),
+      if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+      if (additionalData != null && additionalData.isNotEmpty)
+        'additionalData': additionalData,
+    };
+
+    if (onNotificationReceived != null) {
+      try {
+        onNotificationReceived!(item);
+      } catch (e) {
+        debugPrint('⚠️ خطأ في تمرير الإشعار الخارجي لقائمة الإشعارات: $e');
+      }
+    }
+  }
+
   /// ربط المستخدم الحالي بـ OneSignal عبر External ID لتسهيل الاستهداف
   static Future<void> loginUser(String? userId) async {
     try {
@@ -48,7 +94,12 @@ class NotificationService {
 
   static Future<void> initialize({
     void Function(String playerId)? onPlayerIdChanged,
+    void Function(Map<String, dynamic> notificationItem)? onExternalNotification,
   }) async {
+    if (onExternalNotification != null) {
+      onNotificationReceived = onExternalNotification;
+    }
+
     try {
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -79,23 +130,50 @@ class NotificationService {
       OneSignal.initialize(_appId);
       await OneSignal.Notifications.requestPermission(true);
 
+      // استقبال الإشعارات الخارجية أثناء فتح التطبيق أو في الخلفية
+      OneSignal.Notifications.addForegroundWillDisplayListener((event) {
+        final notif = event.notification;
+        final additionalMap = notif.additionalData != null
+            ? Map<String, dynamic>.from(notif.additionalData!)
+            : <String, dynamic>{};
+
+        _recordExternalNotification(
+          title: notif.title,
+          body: notif.body,
+          additionalData: additionalMap,
+        );
+
+        final orderId = _extractOrderIdFromMap(
+          additionalMap,
+          '${notif.title ?? ''} ${notif.body ?? ''}',
+        );
+
+        unawaited(
+          showLocalNotification(
+            notif.title ?? 'إشعار جديد 🔔',
+            notif.body ?? '',
+            payload: orderId,
+          ),
+        );
+      });
+
       OneSignal.Notifications.addClickListener((event) {
         debugPrint(
             '🚀 [النقر على إشعار OneSignal]: ${event.notification.title}');
 
         final data = event.notification.additionalData;
-        String? orderId;
+        final additionalMap =
+            data != null ? Map<String, dynamic>.from(data) : <String, dynamic>{};
 
-        if (data != null) {
-          orderId =
-              data['order_id']?.toString() ?? data['related_id']?.toString();
-        }
+        _recordExternalNotification(
+          title: event.notification.title,
+          body: event.notification.body,
+          additionalData: additionalMap,
+        );
 
-        if (orderId == null || orderId.isEmpty) {
-          final fullText =
-              '${event.notification.title ?? ''} ${event.notification.body ?? ''}';
-          orderId = _extractOrderIdFromText(fullText);
-        }
+        final fullText =
+            '${event.notification.title ?? ''} ${event.notification.body ?? ''}';
+        final orderId = _extractOrderIdFromMap(data, fullText);
 
         if (orderId != null && orderId.isNotEmpty) {
           navigateToOrderTracking(orderId);
