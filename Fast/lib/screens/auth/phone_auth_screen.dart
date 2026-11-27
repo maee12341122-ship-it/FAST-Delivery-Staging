@@ -19,7 +19,7 @@ class PhoneAuthScreen extends StatefulWidget {
 }
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
-  static const Duration _authNetworkTimeout = Duration(seconds: 18);
+  static const Duration _authNetworkTimeout = Duration(seconds: 25);
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
@@ -37,6 +37,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   int _currentStep = 0;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _isSubmittingCredentials = false;
 
   final SupabaseClient _supabase = Supabase.instance.client;
   String _formattedPhone = '';
@@ -60,17 +61,28 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     return clean;
   }
 
-  String _resolveLoginEmailFromRecord(
+  List<String> _buildLoginEmailCandidates(
     Map<String, dynamic>? record,
     String rawInput,
   ) {
-    final directEmail = (record?['email'] ?? '').toString().trim();
-    if (directEmail.contains('@')) return directEmail;
+    final List<String> candidates = [];
 
-    final candidate =
-        (record?['username'] ?? rawInput).toString().trim().toLowerCase();
-    if (candidate.isEmpty) return '';
-    return candidate.contains('@') ? candidate : '$candidate@fast.com';
+    void addEmail(String value) {
+      final clean = value.trim().toLowerCase();
+      if (clean.isEmpty) return;
+      if (clean.contains('@')) {
+        if (!candidates.contains(clean)) candidates.add(clean);
+      } else {
+        final withFast = '$clean@fast.com';
+        if (!candidates.contains(withFast)) candidates.add(withFast);
+      }
+    }
+
+    addEmail((record?['email'] ?? '').toString());
+    addEmail((record?['username'] ?? '').toString());
+    addEmail(rawInput);
+
+    return candidates;
   }
 
   String _formatFriendlyError(Object error, String fallbackMessage) {
@@ -81,6 +93,54 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         error.toString().replaceFirst(RegExp(r'^ApiException:\s*'), '').trim();
     if (rawErr.isEmpty) return fallbackMessage;
     return rawErr;
+  }
+
+  Future<bool> _tryLoginAdminWithCandidates(
+    AppState appState,
+    List<String> emailCandidates,
+    String password,
+  ) async {
+    for (final email in emailCandidates) {
+      try {
+        final ok = await appState
+            .loginAdminFromSupabase(email, password)
+            .timeout(_authNetworkTimeout);
+        if (ok || appState.isAdminLoggedIn) {
+          appState.isAdminLoggedIn = true;
+          return true;
+        }
+      } catch (e) {
+        debugPrint('⚠️ محاولة دخول مشرف لـ $email: $e');
+      }
+
+      try {
+        final sessionUser = _supabase.auth.currentUser;
+        if (sessionUser != null && appState.isAdminLoggedIn) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return appState.isAdminLoggedIn;
+  }
+
+  Future<bool> _tryLoginCourierWithCandidates(
+    AppState appState,
+    List<String> emailCandidates,
+    String password,
+  ) async {
+    for (final email in emailCandidates) {
+      try {
+        final ok = await appState
+            .loginCourier(email, password)
+            .timeout(_authNetworkTimeout);
+        if (ok || appState.currentCourier != null) {
+          return true;
+        }
+      } catch (e) {
+        debugPrint('⚠️ محاولة دخول مندوب لـ $email: $e');
+      }
+    }
+    return appState.currentCourier != null;
   }
 
   Future<void> _syncAdminUserSession(
@@ -100,7 +160,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .select('id, username, phone')
             .or('username.ilike.$cleanUser,username.ilike.$userPrefix')
             .maybeSingle()
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 10));
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -110,7 +170,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .select('id, username, phone')
             .or('phone.eq.$_cleanPhoneInput,phone.eq.$_formattedPhone')
             .maybeSingle()
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 10));
         if (res != null) {
           record = Map<String, dynamic>.from(res);
         }
@@ -181,7 +241,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               .select('id, username, phone')
               .or('username.ilike.$email,username.ilike.$candidateUsername')
               .maybeSingle()
-              .timeout(const Duration(seconds: 8))
+              .timeout(const Duration(seconds: 10))
         else
           Future.value(null),
         _supabase
@@ -189,7 +249,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .select()
             .eq('auth_user_id', user.id)
             .maybeSingle()
-            .timeout(const Duration(seconds: 8)),
+            .timeout(const Duration(seconds: 10)),
       ]);
 
       final adminRes = results[0];
@@ -343,7 +403,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'admin';
         _pendingUserRecord = Map<String, dynamic>.from(adminRes);
         _loginUsernameController.text =
-            _resolveLoginEmailFromRecord(_pendingUserRecord, '');
+            (_pendingUserRecord?['username'] ?? '').toString().trim();
         if (mounted) {
           setState(() => _currentStep = 3);
         }
@@ -354,7 +414,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _detectedRole = 'courier';
         _pendingUserRecord = Map<String, dynamic>.from(courierRes);
         _loginUsernameController.text =
-            _resolveLoginEmailFromRecord(_pendingUserRecord, '');
+            (_pendingUserRecord?['username'] ?? '').toString().trim();
         if (mounted) {
           setState(() => _currentStep = 3);
         }
@@ -537,6 +597,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   }
 
   Future<void> _verifyAdminOrCourierCredentials(AppState appState) async {
+    if (_isSubmittingCredentials || _isLoading) return;
+
     final rawLogin = _loginUsernameController.text.trim();
     final password = _loginPasswordController.text.trim();
 
@@ -549,16 +611,21 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       return;
     }
 
-    final resolvedEmail =
-        _resolveLoginEmailFromRecord(_pendingUserRecord, rawLogin);
+    final emailCandidates =
+        _buildLoginEmailCandidates(_pendingUserRecord, rawLogin);
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isSubmittingCredentials = true;
+    });
 
     try {
       if (_detectedRole == 'admin') {
-        final bool adminSuccess = await appState
-            .loginAdminFromSupabase(resolvedEmail, password)
-            .timeout(_authNetworkTimeout);
+        final bool adminSuccess = await _tryLoginAdminWithCandidates(
+          appState,
+          emailCandidates,
+          password,
+        );
         if (adminSuccess) {
           unawaited(_syncAdminUserSession(appState, username: rawLogin));
           if (!mounted) return;
@@ -572,11 +639,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           return;
         }
       } else if (_detectedRole == 'courier') {
-        final bool courierSuccess = await appState
-            .loginCourier(resolvedEmail, password)
-            .timeout(_authNetworkTimeout);
+        final bool courierSuccess = await _tryLoginCourierWithCandidates(
+          appState,
+          emailCandidates,
+          password,
+        );
         if (courierSuccess) {
-          final courierId = appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
+          final courierId =
+              appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
           if (courierId != null) {
             unawaited(FcmPushService.syncTokenForCurrentUser(
               role: 'courier',
@@ -594,9 +664,11 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           return;
         }
       } else {
-        final bool adminSuccess = await appState
-            .loginAdminFromSupabase(resolvedEmail, password)
-            .timeout(_authNetworkTimeout);
+        final bool adminSuccess = await _tryLoginAdminWithCandidates(
+          appState,
+          emailCandidates,
+          password,
+        );
         if (adminSuccess) {
           unawaited(_syncAdminUserSession(appState, username: rawLogin));
           if (!mounted) return;
@@ -607,11 +679,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           return;
         }
 
-        final bool courierSuccess = await appState
-            .loginCourier(resolvedEmail, password)
-            .timeout(_authNetworkTimeout);
+        final bool courierSuccess = await _tryLoginCourierWithCandidates(
+          appState,
+          emailCandidates,
+          password,
+        );
         if (courierSuccess) {
-          final courierId = appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
+          final courierId =
+              appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
           if (courierId != null) {
             unawaited(FcmPushService.syncTokenForCurrentUser(
               role: 'courier',
@@ -650,7 +725,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isSubmittingCredentials = false;
+        });
       }
     }
   }
