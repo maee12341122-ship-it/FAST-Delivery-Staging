@@ -2088,7 +2088,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     unawaited(Share.share(
-      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل
+https://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     ));
   }
