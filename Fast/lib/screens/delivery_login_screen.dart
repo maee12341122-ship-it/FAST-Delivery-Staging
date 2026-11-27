@@ -65,8 +65,11 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       final appState = context.read<AppState>();
       final bool success = await appState.loginCourier(username, password);
 
+      if (!mounted) return;
+
       if (!success || appState.currentCourier == null) {
-        _showMessage('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب أو الحساب معطّل ❌');
+        _showMessage(
+            'اسم المستخدم أو كلمة المرور غير صحيحة للمندوب أو الحساب معطّل ❌');
         return;
       }
 
@@ -85,21 +88,25 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
         return;
       }
 
+      // أولوية الربط للإشعارات تعتمد على rawId عند توفره لتطابق سجلات couriers في قاعدة البيانات
       final targetIdForPush = rawId.isNotEmpty ? rawId : courierId;
       try {
         await FcmPushService.requestPermissionAndSyncToken(
           role: 'courier',
           rowId: targetIdForPush,
         );
-        await NotificationService.saveUserPlayerId(targetIdForPush, 'couriers');
+        await NotificationService.saveUserPlayerId(
+          targetIdForPush,
+          'couriers',
+        );
         await appState.fetchNotificationsFromSupabase();
       } catch (e) {
-        debugPrint('تعذر مزامنة FCM token للمندوب: $e');
+        debugPrint('⚠️ تعذر مزامنة FCM token للمندوب: $e');
       }
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
+      await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => DeliveryDashboard(
             courierId: courierId,
@@ -108,7 +115,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
         ),
       );
     } catch (e, stackTrace) {
-      debugPrint('خطأ أثناء تسجيل دخول المندوب: $e\n$stackTrace');
+      debugPrint('❌ خطأ أثناء تسجيل دخول المندوب: $e\n$stackTrace');
       _showMessage('حدث خطأ أثناء الاتصال بالخادم، حاول مرة أخرى ❌');
     } finally {
       if (mounted) {
