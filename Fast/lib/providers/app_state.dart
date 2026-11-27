@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:sqflite/sqflite.dart';
@@ -18,6 +17,7 @@ import '../models/product_model.dart';
 import '../models/address_model.dart';
 import '../models/delivery_model.dart';
 import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 import '../services/api_service.dart';
 
 typedef JsonMap = Map<String, dynamic>;
@@ -134,7 +134,6 @@ class AppState extends ChangeNotifier {
   RealtimeChannel? _ordersChannel;
   RealtimeChannel? _messagesChannel;
   Timer? _ordersResyncTimer;
-  bool _oneSignalObserverRegistered = false;
 
   // مهلة موحدة (12 ثانية) لعمليات الدخول والطلبات والشبكة
   static const Duration _fastNetworkTimeout = Duration(seconds: 12);
@@ -151,24 +150,8 @@ class AppState extends ChangeNotifier {
   Map<String, int> categoryOrderCounts = {};
 
   AppState() {
-    _registerOneSignalSubscriptionObserver();
     unawaited(_initializeApplicationState());
     _initAuthListener();
-  }
-
-  void _registerOneSignalSubscriptionObserver() {
-    if (_oneSignalObserverRegistered) return;
-    _oneSignalObserverRegistered = true;
-    try {
-      OneSignal.User.pushSubscription.addObserver((state) {
-        final newId = state.current.id?.trim() ?? '';
-        if (newId.isNotEmpty) {
-          unawaited(syncOneSignalPlayerIdForCurrentUsers());
-        }
-      });
-    } catch (e) {
-      debugPrint('تعذر تسجيل مراقب اشتراك OneSignal: $e');
-    }
   }
 
   @override
@@ -411,7 +394,7 @@ class AppState extends ChangeNotifier {
           'city': currentCity,
         };
         unawaited(_persistUserSessionToPrefs(userProfile!));
-        unawaited(syncOneSignalPlayerIdForCurrentUsers());
+        unawaited(syncFcmTokenForCurrentUsers());
         unawaited(fetchUserAddressesFromSupabase());
         notifyListeners();
         return;
@@ -450,7 +433,7 @@ class AppState extends ChangeNotifier {
       }
     }());
 
-    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
   }
@@ -483,7 +466,7 @@ class AppState extends ChangeNotifier {
         name: adminName,
       );
     }
-    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(syncFcmTokenForCurrentUsers());
   }
 
   Future<void> _applyAuthenticatedUserRole(User? user) async {
@@ -525,7 +508,7 @@ class AppState extends ChangeNotifier {
           await _loadUserSession();
         }
       }
-      unawaited(syncOneSignalPlayerIdForCurrentUsers());
+      unawaited(syncFcmTokenForCurrentUsers());
       notifyListeners();
     });
   }
@@ -534,12 +517,7 @@ class AppState extends ChangeNotifier {
     await checkPrivacyPolicyStatus();
     await _loadUserSession();
     await _checkInitialSessions();
-    unawaited(() async {
-      try {
-        await OneSignal.Notifications.requestPermission(true);
-      } catch (_) {}
-      await syncOneSignalPlayerIdForCurrentUsers();
-    }());
+    unawaited(syncFcmTokenForCurrentUsers());
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
     await fetchProductsFromSupabase();
@@ -583,15 +561,12 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// مزامنة OneSignal Player ID / Subscription ID مع العميل والمندوب والمشرف
-  Future<void> syncOneSignalPlayerIdForCurrentUsers() async {
+  /// مزامنة FCM Token مع العميل والمندوب والمشرف بدون الحاجة لـ VPN
+  Future<void> syncFcmTokenForCurrentUsers() async {
     try {
-      String? playerId = OneSignal.User.pushSubscription.id;
-      if (playerId == null || playerId.trim().isEmpty) {
-        playerId = OneSignal.User.pushSubscription.token;
-      }
-      if (playerId == null || playerId.trim().isEmpty) return;
-      final cleanPlayerId = playerId.trim();
+      final token = await FcmPushService.getTokenSafe();
+      if (token == null || token.trim().isEmpty) return;
+      final cleanToken = token.trim();
 
       final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
       if (phone.isNotEmpty) {
@@ -600,7 +575,7 @@ class AppState extends ChangeNotifier {
         try {
           await supabase
               .from('customers')
-              .update({'onesignal_player_id': cleanPlayerId})
+              .update({'fcm_token': cleanToken})
               .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
               .timeout(_fastNetworkTimeout);
         } catch (_) {}
@@ -609,7 +584,7 @@ class AppState extends ChangeNotifier {
           try {
             await supabase
                 .from('admins')
-                .update({'onesignal_player_id': cleanPlayerId})
+                .update({'fcm_token': cleanToken})
                 .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
                 .timeout(_fastNetworkTimeout);
           } catch (_) {}
@@ -620,13 +595,13 @@ class AppState extends ChangeNotifier {
         try {
           await supabase
               .from('couriers')
-              .update({'onesignal_player_id': cleanPlayerId})
+              .update({'fcm_token': cleanToken})
               .eq('id', currentCourier!['id'])
               .timeout(_fastNetworkTimeout);
         } catch (_) {}
       }
     } catch (e) {
-      debugPrint('تعذر مزامنة OneSignal Player ID: $e');
+      debugPrint('تعذر مزامنة FCM Token: $e');
     }
   }
 
@@ -1079,7 +1054,7 @@ class AppState extends ChangeNotifier {
         'تم استعادة الاتصال بالشبكة بنجاح.',
         type: 'network_success',
       );
-      unawaited(syncOneSignalPlayerIdForCurrentUsers());
+      unawaited(syncFcmTokenForCurrentUsers());
       unawaited(_silentRefreshOrders());
       unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
@@ -1734,16 +1709,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<List<String>> getAllAdminPlayerIds() async {
+  Future<List<String>> getAllAdminFcmTokens() async {
     try {
       final response = await supabase
           .from('admins')
-          .select('onesignal_player_id')
-          .not('onesignal_player_id', 'is', null)
+          .select('fcm_token')
+          .not('fcm_token', 'is', null)
           .timeout(_fastNetworkTimeout);
 
       return response
-          .map((e) => e['onesignal_player_id']?.toString().trim() ?? '')
+          .map((e) => e['fcm_token']?.toString().trim() ?? '')
           .where((id) => id.isNotEmpty)
           .toSet()
           .toList();
@@ -1752,18 +1727,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<String?> getCourierPlayerIdByName(String courierName) async {
+  Future<String?> getCourierFcmTokenByName(String courierName) async {
     try {
       final cleanName = courierName.trim();
       if (cleanName.isEmpty) return null;
       final response = await supabase
           .from('couriers')
-          .select('onesignal_player_id')
+          .select('fcm_token')
           .ilike('name', cleanName)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
 
-      final pid = response?['onesignal_player_id']?.toString().trim() ?? '';
+      final pid = response?['fcm_token']?.toString().trim() ?? '';
       return pid.isNotEmpty ? pid : null;
     } catch (e) {
       debugPrint('خطأ: $e');
@@ -1771,7 +1746,7 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<String?> getCustomerPlayerIdByPhone(String phone) async {
+  Future<String?> getCustomerFcmTokenByPhone(String phone) async {
     try {
       final cleanPhone = _normalizePhone(phone);
       if (cleanPhone.isEmpty) return null;
@@ -1779,18 +1754,18 @@ class AppState extends ChangeNotifier {
       final zeroPhone = '0$cleanPhone';
       final cust = await supabase
           .from('customers')
-          .select('onesignal_player_id')
+          .select('fcm_token')
           .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
-      final pid = cust?['onesignal_player_id']?.toString().trim() ?? '';
+      final pid = cust?['fcm_token']?.toString().trim() ?? '';
       return pid.isNotEmpty ? pid : null;
     } catch (_) {
       return null;
     }
   }
 
-  Future<String?> getReceiverPlayerIdForChat({
+  Future<String?> getReceiverFcmTokenForChat({
     dynamic orderId,
     String? targetChat,
     String? senderRole,
@@ -1807,19 +1782,19 @@ class AppState extends ChangeNotifier {
           .timeout(_fastNetworkTimeout);
 
       if (senderRole == 'customer') {
-        final adminIds = await getAllAdminPlayerIds();
-        return adminIds.isNotEmpty ? adminIds.first : null;
+        final adminTokens = await getAllAdminFcmTokens();
+        return adminTokens.isNotEmpty ? adminTokens.first : null;
       }
 
       if (targetChat == 'admin_courier') {
         final courierName = orderRow?['assigned_courier']?.toString() ?? '';
         if (courierName.isNotEmpty) {
-          return await getCourierPlayerIdByName(courierName);
+          return await getCourierFcmTokenByName(courierName);
         }
       } else {
         final custPhone = _normalizePhone(orderRow?['phone']?.toString() ?? '');
         if (custPhone.isNotEmpty) {
-          return await getCustomerPlayerIdByPhone(custPhone);
+          return await getCustomerFcmTokenByPhone(custPhone);
         }
       }
     } catch (e) {
@@ -1828,7 +1803,7 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// إرسال إشعار Push خارج التطبيق عبر Supabase Edge Function (send-onesignal-push)
+  /// إرسال إشعار Push خارج التطبيق عبر Supabase Edge Function (send-fcm-push)
   Future<void> _sendExternalPushNotification({
     required List<String> playerIds,
     required String title,
@@ -1846,24 +1821,27 @@ class AppState extends ChangeNotifier {
     try {
       final res = await supabase.functions
           .invoke(
-            'send-onesignal-push',
+            'send-fcm-push',
             body: {
-              'player_ids': cleanIds,
-              'target_player_id': cleanIds.first,
+              'tokens': cleanIds,
               'title': title.trim(),
               'body': body.trim(),
-              if (orderId != null) 'order_id': orderId,
               if (eventType != null && eventType.trim().isNotEmpty)
                 'event_type': eventType.trim(),
+              'data': {
+                if (orderId != null) 'order_id': orderId.toString(),
+                if (eventType != null && eventType.trim().isNotEmpty)
+                  'event_type': eventType.trim(),
+              },
             },
           )
           .timeout(_fastNetworkTimeout);
 
       debugPrint(
-        'OneSignal Function status: ${res.status}, data: ${res.data}',
+        'FCM Function status: ${res.status}, data: ${res.data}',
       );
     } catch (e) {
-      debugPrint('تعذر إرسال إشعار OneSignal عبر Edge Function: $e');
+      debugPrint('تعذر إرسال إشعار FCM عبر Edge Function: $e');
     }
   }
 
@@ -2048,7 +2026,7 @@ class AppState extends ChangeNotifier {
           .insert(newMessage)
           .timeout(_fastNetworkTimeout);
       unawaited(() async {
-        final receiverPid = await getReceiverPlayerIdForChat(
+        final receiverPid = await getReceiverFcmTokenForChat(
           orderId: parsedId,
           targetChat: targetChat,
           senderRole: senderRole,
@@ -2131,11 +2109,9 @@ class AppState extends ChangeNotifier {
 
       if (notificationStatus.isGranted) {
         try {
-          await OneSignal.Notifications.requestPermission(true)
-              .timeout(_fastNetworkTimeout);
-          unawaited(syncOneSignalPlayerIdForCurrentUsers());
+          unawaited(syncFcmTokenForCurrentUsers());
         } catch (e) {
-          debugPrint('OneSignal Error: $e');
+          debugPrint('FCM Permission Sync Error: $e');
         }
       }
     } catch (e) {
@@ -2463,7 +2439,7 @@ class AppState extends ChangeNotifier {
           'city': (userProfile!['city'] ?? currentCity).toString(),
         };
         unawaited(_persistUserSessionToPrefs(userProfile!));
-        unawaited(syncOneSignalPlayerIdForCurrentUsers());
+        unawaited(syncFcmTokenForCurrentUsers());
       }
     }
 
@@ -2503,7 +2479,7 @@ class AppState extends ChangeNotifier {
 
     userProfile = normalizedData;
     unawaited(_persistUserSessionToPrefs(normalizedData));
-    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
     return normalizedData;
@@ -2671,7 +2647,7 @@ class AppState extends ChangeNotifier {
       }
     }());
 
-    unawaited(syncOneSignalPlayerIdForCurrentUsers());
+    unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
     return true;
@@ -2721,7 +2697,7 @@ class AppState extends ChangeNotifier {
               .timeout(_authTimeout);
 
           await requestLocationAndNotificationPermissions();
-          await syncOneSignalPlayerIdForCurrentUsers();
+          await syncFcmTokenForCurrentUsers();
         } catch (e) {
           debugPrint('خطأ في حفظ بيانات العميل: $e');
         }
@@ -2823,7 +2799,7 @@ class AppState extends ChangeNotifier {
             name: courierName,
           );
         }
-        unawaited(syncOneSignalPlayerIdForCurrentUsers());
+        unawaited(syncFcmTokenForCurrentUsers());
         notifyListeners();
       }
     } catch (e) {
@@ -3176,7 +3152,7 @@ class AppState extends ChangeNotifier {
         );
       }
 
-      unawaited(syncOneSignalPlayerIdForCurrentUsers());
+      unawaited(syncFcmTokenForCurrentUsers());
       listenToOrdersRealtime();
       unawaited(() async {
         final prefs = await SharedPreferences.getInstance();
@@ -3319,7 +3295,7 @@ class AppState extends ChangeNotifier {
 
     unawaited(() async {
       final custPhone = updated['phone']?.toString() ?? '';
-      final custPid = await getCustomerPlayerIdByPhone(custPhone);
+      final custPid = await getCustomerFcmTokenByPhone(custPhone);
       if (custPid != null && custPid.isNotEmpty) {
         await _sendExternalPushNotification(
           playerIds: [custPid],
@@ -3339,7 +3315,7 @@ class AppState extends ChangeNotifier {
     }
     final courier = await supabase
         .from('couriers')
-        .select('id, name, onesignal_player_id')
+        .select('id, name, fcm_token')
         .eq('id', courierId)
         .single()
         .timeout(_fastNetworkTimeout);
@@ -3358,7 +3334,7 @@ class AppState extends ChangeNotifier {
       courierName,
     );
 
-    final courierPid = courier['onesignal_player_id']?.toString().trim() ?? '';
+    final courierPid = courier['fcm_token']?.toString().trim() ?? '';
     if (courierPid.isNotEmpty) {
       unawaited(_sendExternalPushNotification(
         playerIds: [courierPid],
@@ -3808,7 +3784,7 @@ class AppState extends ChangeNotifier {
 
       unawaited(() async {
         await _persistUserSessionToPrefs(userProfile!);
-        await syncOneSignalPlayerIdForCurrentUsers();
+        await syncFcmTokenForCurrentUsers();
         if (orderId != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('fast_last_order_id', orderId.toString());
@@ -3819,7 +3795,7 @@ class AppState extends ChangeNotifier {
         await fetchPopularStats();
         await fetchAdminFinancialReports();
 
-        final adminPids = await getAllAdminPlayerIds();
+        final adminPids = await getAllAdminFcmTokens();
         if (adminPids.isNotEmpty) {
           await _sendExternalPushNotification(
             playerIds: adminPids,
@@ -3912,7 +3888,7 @@ class AppState extends ChangeNotifier {
 
       unawaited(() async {
         final custPhone = updatedOrder['phone']?.toString() ?? '';
-        final custPid = await getCustomerPlayerIdByPhone(custPhone);
+        final custPid = await getCustomerFcmTokenByPhone(custPhone);
         if (custPid != null) {
           await _sendExternalPushNotification(
             playerIds: [custPid],
@@ -3979,7 +3955,7 @@ class AppState extends ChangeNotifier {
     unawaited(() async {
       final courierName = updatedMap['assigned_courier']?.toString() ?? '';
       if (action == 'approve' && courierName.isNotEmpty) {
-        final cPid = await getCourierPlayerIdByName(courierName);
+        final cPid = await getCourierFcmTokenByName(courierName);
         if (cPid != null && cPid.isNotEmpty) {
           await _sendExternalPushNotification(
             playerIds: [cPid],
@@ -3990,7 +3966,7 @@ class AppState extends ChangeNotifier {
           );
         }
       } else if (action != 'approve') {
-        final adminPids = await getAllAdminPlayerIds();
+        final adminPids = await getAllAdminFcmTokens();
         if (adminPids.isNotEmpty) {
           await _sendExternalPushNotification(
             playerIds: adminPids,
@@ -4086,7 +4062,7 @@ class AppState extends ChangeNotifier {
 
     unawaited(() async {
       final custPhone = updatedMap['phone']?.toString() ?? '';
-      final custPid = await getCustomerPlayerIdByPhone(custPhone);
+      final custPid = await getCustomerFcmTokenByPhone(custPhone);
       if (custPid != null) {
         await _sendExternalPushNotification(
           playerIds: [custPid],
@@ -4098,7 +4074,7 @@ class AppState extends ChangeNotifier {
       }
 
       if (newStatus == 'rejectedByCourier' || newStatus == 'delivered') {
-        final adminPids = await getAllAdminPlayerIds();
+        final adminPids = await getAllAdminFcmTokens();
         if (adminPids.isNotEmpty) {
           await _sendExternalPushNotification(
             playerIds: adminPids,
