@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/app_state.dart';
 import '../../services/api_service.dart';
-import '../../services/notification_service.dart';
+import '../../services/fcm_push_service.dart';
 import '../customer/map_location_screen.dart';
 import '../admin_screen.dart';
 import '../courier_screen.dart';
@@ -153,6 +153,15 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
       }
       appState.notifyListeners();
     }
+
+    if (record?['id'] != null) {
+      unawaited(
+        FcmPushService.syncTokenForCurrentUser(
+          role: 'admin',
+          rowId: record!['id'],
+        ),
+      );
+    }
   }
 
   Future<void> _checkExistingAdminOrCourierSession() async {
@@ -194,7 +203,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           username: candidateUsername,
           adminRecord: Map<String, dynamic>.from(adminRes),
         ));
-        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
@@ -208,7 +216,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           mounted) {
         final appState = Provider.of<AppState>(context, listen: false);
         appState.currentCourier = Map<String, dynamic>.from(courierRes);
-        unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+        if (courierRes['id'] != null) {
+          unawaited(FcmPushService.syncTokenForCurrentUser(
+            role: 'courier',
+            rowId: courierRes['id'],
+          ));
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const CourierScreen()),
@@ -266,33 +279,25 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     }
   }
 
-  void _syncOneSignalPlayerIdBackground(
-    AppState appState,
-    String customerIdOrPhone,
-  ) {
+  void _syncFcmTokenBackground(
+    AppState appState, {
+    required String role,
+    dynamic rowId,
+  }) {
     unawaited(() async {
-      try {
-        await NotificationService.loginUser(customerIdOrPhone)
-            .timeout(const Duration(seconds: 8));
-      } catch (_) {}
       try {
         await appState
             .requestLocationAndNotificationPermissions()
             .timeout(const Duration(seconds: 8));
       } catch (_) {}
       try {
-        await NotificationService.saveUserPlayerId(
-          customerIdOrPhone,
-          'customers',
+        await FcmPushService.requestPermissionAndSyncToken(
+          role: role,
+          rowId: rowId,
         ).timeout(const Duration(seconds: 8));
       } catch (e) {
-        debugPrint('خطأ في حفظ Player ID: $e');
+        debugPrint('خطأ في مزامنة FCM token: $e');
       }
-      try {
-        await appState
-            .syncOneSignalPlayerIdForCurrentUsers()
-            .timeout(const Duration(seconds: 8));
-      } catch (_) {}
     }());
   }
 
@@ -479,8 +484,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             address: customerAddress,
           );
 
-          final syncKey = customerRow['id']?.toString() ?? customerPhone;
-          _syncOneSignalPlayerIdBackground(appState, syncKey);
+          final syncId = customerRow['id'] ?? customerPhone;
+          _syncFcmTokenBackground(appState, role: 'customer', rowId: syncId);
 
           if (!mounted) return;
           if (widget.onLoginSuccess != null) {
@@ -556,7 +561,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .timeout(_authNetworkTimeout);
         if (adminSuccess) {
           unawaited(_syncAdminUserSession(appState, username: rawLogin));
-          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -572,7 +576,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .loginCourier(resolvedEmail, password)
             .timeout(_authNetworkTimeout);
         if (courierSuccess) {
-          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+          final courierId = appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
+          if (courierId != null) {
+            unawaited(FcmPushService.syncTokenForCurrentUser(
+              role: 'courier',
+              rowId: courierId,
+            ));
+          }
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -589,7 +599,6 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .timeout(_authNetworkTimeout);
         if (adminSuccess) {
           unawaited(_syncAdminUserSession(appState, username: rawLogin));
-          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -602,7 +611,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             .loginCourier(resolvedEmail, password)
             .timeout(_authNetworkTimeout);
         if (courierSuccess) {
-          unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+          final courierId = appState.currentCourier?['id'] ?? _pendingUserRecord?['id'];
+          if (courierId != null) {
+            unawaited(FcmPushService.syncTokenForCurrentUser(
+              role: 'courier',
+              rowId: courierId,
+            ));
+          }
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
@@ -681,8 +696,8 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         address: finalAddress,
       );
 
-      final syncKey = savedRecord?['id']?.toString() ?? finalPhone;
-      _syncOneSignalPlayerIdBackground(appState, syncKey);
+      final syncId = savedRecord?['id'] ?? finalPhone;
+      _syncFcmTokenBackground(appState, role: 'customer', rowId: syncId);
 
       if (!mounted) return;
       if (widget.onLoginSuccess != null) {
