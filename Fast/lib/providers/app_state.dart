@@ -540,6 +540,7 @@ class AppState extends ChangeNotifier {
     await checkPrivacyPolicyStatus();
     await _loadUserSession();
     await _checkInitialSessions();
+    await _loadSavedNotificationsForCurrentRole();
     unawaited(syncFcmTokenForCurrentUsers());
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
@@ -565,6 +566,14 @@ class AppState extends ChangeNotifier {
     });
   }
 
+  String _ordersSignature(List<Map<String, dynamic>> list) {
+    final sortedIds = list.map((o) {
+      return '${o['id']}:${o['status']}:${o['delivery_fee']}:${o['assigned_courier']}:${o['total_price'] ?? o['total'] ?? ''}';
+    }).toList()
+      ..sort();
+    return sortedIds.join('|');
+  }
+
   Future<void> _silentRefreshOrders() async {
     try {
       final data = await supabase
@@ -572,11 +581,11 @@ class AppState extends ChangeNotifier {
           .select()
           .timeout(_fastNetworkTimeout);
       final list = List<Map<String, dynamic>>.from(data);
-      final oldSerialized = jsonEncode(orders);
+      final oldSig = _ordersSignature(orders);
+      final newSig = _ordersSignature(list);
       orders = list;
       _sortOrders();
-      final newSerialized = jsonEncode(orders);
-      if (oldSerialized != newSerialized) {
+      if (oldSig != newSig) {
         unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
         notifyListeners();
@@ -3172,7 +3181,8 @@ class AppState extends ChangeNotifier {
     _isManualAuthInProgress = true;
     try {
       final raw = username.trim().toLowerCase();
-      if (raw.isEmpty || password.isEmpty) {
+      final cleanPass = password.trim();
+      if (raw.isEmpty || cleanPass.isEmpty) {
         return false;
       }
 
@@ -3180,28 +3190,66 @@ class AppState extends ChangeNotifier {
       currentCourier = null;
       _activeCourierUsernameHint = raw;
 
-      final email = raw.contains('@') ? raw : '$raw@fast.com';
-      final auth = await supabase.auth
-          .signInWithPassword(
-            email: email,
-            password: password,
-          )
-          .timeout(_authTimeout);
+      final prefix = raw.contains('@') ? raw.split('@').first.trim() : raw;
+      final emailCandidates = <String>{
+        if (raw.contains('@')) raw,
+        if (prefix.isNotEmpty) '$prefix@courier.fast.local',
+        if (prefix.isNotEmpty) '$prefix@fast.com',
+      }.where((e) => e.isNotEmpty).toList();
 
-      if (auth.user == null) {
-        await supabase.auth.signOut();
-        isAdminLoggedIn = false;
-        currentCourier = null;
-        return false;
+      User? authenticatedUser;
+      for (final candidateEmail in emailCandidates) {
+        try {
+          final auth = await supabase.auth
+              .signInWithPassword(
+                email: candidateEmail,
+                password: cleanPass,
+              )
+              .timeout(_authTimeout);
+          if (auth.user != null) {
+            authenticatedUser = auth.user;
+            break;
+          }
+        } catch (e) {
+          debugPrint('محاولة دخول مندوب بالبريد $candidateEmail: $e');
+        }
       }
 
-      final row = await _findCourierRecordForUser(
-        auth.user!,
-        usernameInput: raw,
-      );
+      Map<String, dynamic>? row;
+      if (authenticatedUser != null) {
+        row = await _findCourierRecordForUser(
+          authenticatedUser,
+          usernameInput: prefix.isNotEmpty ? prefix : raw,
+        );
+      }
+
+      // احتياط في حال وجود حساب مندوب بكلمة مرور مخزنة في جدول couriers
+      if (row == null && prefix.isNotEmpty) {
+        try {
+          final dbCandidate = await supabase
+              .from('couriers')
+              .select()
+              .or('username.ilike.$prefix,phone.eq.$prefix')
+              .maybeSingle()
+              .timeout(_authTimeout);
+          if (dbCandidate != null) {
+            final storedPass =
+                (dbCandidate['password'] ?? dbCandidate['password_hash'] ?? '')
+                    .toString()
+                    .trim();
+            if (storedPass.isNotEmpty && storedPass == cleanPass) {
+              row = Map<String, dynamic>.from(dbCandidate);
+            }
+          }
+        } catch (e) {
+          debugPrint('تعذر التحقق الاحتياطي من سجل المندوب: $e');
+        }
+      }
 
       if (row == null || row['status']?.toString() == 'disabled') {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (_) {}
         isAdminLoggedIn = false;
         currentCourier = null;
         _activeCourierUsernameHint = null;
@@ -3214,13 +3262,18 @@ class AppState extends ChangeNotifier {
         'is_logged_in': true,
       };
       unawaited(_persistCourierSessionToPrefs(currentCourier!));
+      await _loadSavedNotificationsForCurrentRole();
 
       unawaited(() async {
         try {
+          final updatePayload = <String, dynamic>{'is_logged_in': true};
+          if (authenticatedUser != null) {
+            updatePayload['auth_user_id'] = authenticatedUser.id;
+          }
           await supabase
               .from('couriers')
-              .update({'is_logged_in': true, 'auth_user_id': auth.user!.id})
-              .eq('id', row['id'])
+              .update(updatePayload)
+              .eq('id', row!['id'])
               .timeout(_authTimeout);
         } catch (_) {}
       }());
@@ -3546,6 +3599,98 @@ class AppState extends ChangeNotifier {
 
   int get unreadNotificationsCount => notifications.length;
 
+  String _notificationsStorageKey() {
+    if (isAdminLoggedIn && currentCourier == null) {
+      final adminId = (_activeAdminRowId ?? userProfile?['id'] ?? 'default')
+          .toString()
+          .trim();
+      return 'fast_notifications_admin_$adminId';
+    }
+    if (currentCourier != null) {
+      final courierId = (currentCourier!['id'] ??
+              currentCourier!['username'] ??
+              'default')
+          .toString()
+          .trim();
+      return 'fast_notifications_courier_$courierId';
+    }
+    final custPhone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+    if (custPhone.isNotEmpty) {
+      return 'fast_notifications_customer_$custPhone';
+    }
+    return 'fast_notifications_guest';
+  }
+
+  Future<void> _persistNotificationsForCurrentRole() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _notificationsStorageKey();
+      final trimmed = notifications.take(100).map((item) {
+        final copy = Map<String, dynamic>.from(item);
+        if (copy['time'] is DateTime) {
+          copy['time'] = (copy['time'] as DateTime).toIso8601String();
+        }
+        return copy;
+      }).toList();
+      await prefs.setString(key, jsonEncode(trimmed));
+    } catch (e) {
+      debugPrint('تعذر حفظ الإشعارات محلياً: $e');
+    }
+  }
+
+  Future<void> _loadSavedNotificationsForCurrentRole() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _notificationsStorageKey();
+      final raw = prefs.getString(key);
+      if (raw == null || raw.trim().isEmpty) {
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final loaded = <Map<String, dynamic>>[];
+        for (final entry in decoded) {
+          if (entry is Map) {
+            final map = Map<String, dynamic>.from(entry);
+            if (map['time'] is String) {
+              final parsed = DateTime.tryParse(map['time']);
+              if (parsed != null) {
+                map['time'] = parsed;
+              }
+            }
+            loaded.add(map);
+          }
+        }
+        if (loaded.isNotEmpty) {
+          notifications = loaded;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('تعذر استرجاع الإشعارات المحفوظة: $e');
+    }
+  }
+
+  void recordExternalPushNotification({
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) {
+    final cleanTitle = title.trim().isNotEmpty ? title.trim() : 'إشعار جديد 🔔';
+    final cleanBody = body.trim();
+    final orderId = (data?['order_id'] ?? data?['related_id'])?.toString().trim();
+    notifications.insert(0, {
+      'title': cleanTitle,
+      'body': cleanBody,
+      'time': DateTime.now(),
+      'type': (data?['type'] ?? data?['event_type'] ?? 'push').toString(),
+      if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+      if (data != null && data.isNotEmpty) 'additionalData': data,
+    });
+    unawaited(_persistNotificationsForCurrentRole());
+    notifyListeners();
+  }
+
   String _normalizePhone(String phone) {
     var clean = phone.trim().replaceAll(' ', '');
     if (clean.startsWith('+967')) {
@@ -3576,6 +3721,7 @@ class AppState extends ChangeNotifier {
   void addNotification(String title, String body) {
     notifications.insert(
         0, {'title': title, 'body': body, 'time': DateTime.now()});
+    unawaited(_persistNotificationsForCurrentRole());
     unawaited(NotificationService.showLocalNotification(title, body));
     notifyListeners();
   }
@@ -3587,6 +3733,7 @@ class AppState extends ChangeNotifier {
       'time': DateTime.now(),
       'type': type ?? 'general',
     });
+    unawaited(_persistNotificationsForCurrentRole());
     unawaited(NotificationService.showLocalNotification(title, body));
     notifyListeners();
   }
