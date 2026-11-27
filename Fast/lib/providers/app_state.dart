@@ -133,6 +133,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<dynamic>? _connectivitySub;
   RealtimeChannel? _ordersChannel;
   RealtimeChannel? _messagesChannel;
+  RealtimeChannel? _notificationsChannel;
   Timer? _ordersResyncTimer;
 
   static const Duration _fastNetworkTimeout = Duration(seconds: 12);
@@ -146,6 +147,7 @@ class AppState extends ChangeNotifier {
   bool _isManualAuthInProgress = false;
   String? _activeCourierUsernameHint;
   dynamic _activeAdminRowId;
+  final Set<String> _seenNotificationKeys = <String>{};
 
   Map<String, int> productOrderCounts = {};
   Map<String, int> storeOrderCounts = {};
@@ -168,6 +170,9 @@ class AppState extends ChangeNotifier {
     }
     if (_messagesChannel != null) {
       unawaited(supabase.removeChannel(_messagesChannel!));
+    }
+    if (_notificationsChannel != null) {
+      unawaited(supabase.removeChannel(_notificationsChannel!));
     }
     _httpClient.close();
     super.dispose();
@@ -531,6 +536,9 @@ class AppState extends ChangeNotifier {
           await _loadUserSession();
         }
       }
+      await _loadSavedNotificationsForCurrentRole();
+      unawaited(fetchNotificationsFromSupabase());
+      listenToNotificationsRealtime();
       unawaited(syncFcmTokenForCurrentUsers());
       notifyListeners();
     });
@@ -541,6 +549,7 @@ class AppState extends ChangeNotifier {
     await _loadUserSession();
     await _checkInitialSessions();
     await _loadSavedNotificationsForCurrentRole();
+    unawaited(fetchNotificationsFromSupabase());
     unawaited(syncFcmTokenForCurrentUsers());
     await fetchStoreSettings();
     await fetchRestaurantsAndCategories();
@@ -553,6 +562,7 @@ class AppState extends ChangeNotifier {
     unawaited(fetchAdminFinancialReports());
     listenToOrdersRealtime();
     listenToMessagesRealtime();
+    listenToNotificationsRealtime();
     listenToStoreSettingsRealtime();
     _startPeriodicOrdersResync();
     initializeInternetListener();
@@ -560,7 +570,7 @@ class AppState extends ChangeNotifier {
 
   void _startPeriodicOrdersResync() {
     _ordersResyncTimer?.cancel();
-    _ordersResyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _ordersResyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       if (!isConnectedToInternet) return;
       unawaited(_silentRefreshOrders());
     });
@@ -583,9 +593,9 @@ class AppState extends ChangeNotifier {
       final list = List<Map<String, dynamic>>.from(data);
       final oldSig = _ordersSignature(orders);
       final newSig = _ordersSignature(list);
-      orders = list;
-      _sortOrders();
       if (oldSig != newSig) {
+        orders = list;
+        _sortOrders();
         unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
         notifyListeners();
@@ -1093,6 +1103,7 @@ class AppState extends ChangeNotifier {
         type: 'network_success',
       );
       unawaited(syncFcmTokenForCurrentUsers());
+      unawaited(fetchNotificationsFromSupabase());
       unawaited(_silentRefreshOrders());
       unawaited(fetchRestaurantsAndCategories());
       unawaited(fetchProductsFromSupabase());
@@ -1381,10 +1392,11 @@ class AppState extends ChangeNotifier {
   }
 
   String? get latestNotificationMessage {
-    if (notifications.isNotEmpty) {
-      final body = notifications.first['body']?.toString().trim() ?? '';
+    final unread = notifications.where((n) => n['is_read'] != true).toList();
+    if (unread.isNotEmpty) {
+      final body = unread.first['body']?.toString().trim() ?? '';
       if (body.isNotEmpty) return body;
-      return notifications.first['title']?.toString().trim();
+      return unread.first['title']?.toString().trim();
     }
     return null;
   }
@@ -2417,6 +2429,9 @@ class AppState extends ChangeNotifier {
         response.user,
         verifiedAdminRow: verifiedAdmin,
       );
+      await _loadSavedNotificationsForCurrentRole();
+      unawaited(fetchNotificationsFromSupabase());
+      listenToNotificationsRealtime();
       unawaited(fetchCouriersFromSupabase());
       listenToOrdersRealtime();
       notifyListeners();
@@ -2437,6 +2452,7 @@ class AppState extends ChangeNotifier {
       _activeCourierUsernameHint = null;
       _activeAdminRowId = null;
       await supabase.auth.signOut();
+      await _loadSavedNotificationsForCurrentRole();
       notifyListeners();
     } finally {
       _isManualAuthInProgress = false;
@@ -2495,6 +2511,8 @@ class AppState extends ChangeNotifier {
           'city': (userProfile!['city'] ?? currentCity).toString(),
         };
         unawaited(_persistUserSessionToPrefs(userProfile!));
+        unawaited(_loadSavedNotificationsForCurrentRole());
+        unawaited(fetchNotificationsFromSupabase());
         unawaited(syncFcmTokenForCurrentUsers());
       }
     }
@@ -2678,6 +2696,7 @@ class AppState extends ChangeNotifier {
 
     if (dbRecord != null) {
       unawaited(restoreLastCustomerOrder());
+      unawaited(fetchNotificationsFromSupabase());
       return true;
     }
 
@@ -2704,6 +2723,7 @@ class AppState extends ChangeNotifier {
       }
     }());
 
+    unawaited(fetchNotificationsFromSupabase());
     unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
     notifyListeners();
@@ -2769,6 +2789,7 @@ class AppState extends ChangeNotifier {
     await prefs.remove('userName');
     await prefs.remove('userAddress');
     _cartItems.clear();
+    notifications = [];
     notifyListeners();
   }
 
@@ -3022,7 +3043,6 @@ class AppState extends ChangeNotifier {
           'name': name.trim(),
           'phone': _normalizePhone(phone),
           'username': cleanUsername,
-          'password': password,
           'status': 'available',
           'is_logged_in': false,
         })
@@ -3215,36 +3235,17 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      Map<String, dynamic>? row;
-      if (authenticatedUser != null) {
-        row = await _findCourierRecordForUser(
-          authenticatedUser,
-          usernameInput: prefix.isNotEmpty ? prefix : raw,
-        );
+      if (authenticatedUser == null) {
+        isAdminLoggedIn = false;
+        currentCourier = null;
+        _activeCourierUsernameHint = null;
+        return false;
       }
 
-      // احتياط في حال وجود حساب مندوب بكلمة مرور مخزنة في جدول couriers
-      if (row == null && prefix.isNotEmpty) {
-        try {
-          final dbCandidate = await supabase
-              .from('couriers')
-              .select()
-              .or('username.ilike.$prefix,phone.eq.$prefix')
-              .maybeSingle()
-              .timeout(_authTimeout);
-          if (dbCandidate != null) {
-            final storedPass =
-                (dbCandidate['password'] ?? dbCandidate['password_hash'] ?? '')
-                    .toString()
-                    .trim();
-            if (storedPass.isNotEmpty && storedPass == cleanPass) {
-              row = Map<String, dynamic>.from(dbCandidate);
-            }
-          }
-        } catch (e) {
-          debugPrint('تعذر التحقق الاحتياطي من سجل المندوب: $e');
-        }
-      }
+      final row = await _findCourierRecordForUser(
+        authenticatedUser,
+        usernameInput: prefix.isNotEmpty ? prefix : raw,
+      );
 
       if (row == null || row['status']?.toString() == 'disabled') {
         try {
@@ -3263,17 +3264,18 @@ class AppState extends ChangeNotifier {
       };
       unawaited(_persistCourierSessionToPrefs(currentCourier!));
       await _loadSavedNotificationsForCurrentRole();
+      unawaited(fetchNotificationsFromSupabase());
+      listenToNotificationsRealtime();
 
       unawaited(() async {
         try {
-          final updatePayload = <String, dynamic>{'is_logged_in': true};
-          if (authenticatedUser != null) {
-            updatePayload['auth_user_id'] = authenticatedUser.id;
-          }
           await supabase
               .from('couriers')
-              .update(updatePayload)
-              .eq('id', row!['id'])
+              .update({
+                'is_logged_in': true,
+                'auth_user_id': authenticatedUser!.id,
+              })
+              .eq('id', row['id'])
               .timeout(_authTimeout);
         } catch (_) {}
       }());
@@ -3324,6 +3326,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('loggedCourierId');
       await prefs.remove('courierSessionJson');
+      await _loadSavedNotificationsForCurrentRole();
       notifyListeners();
     } finally {
       _isManualAuthInProgress = false;
@@ -3594,31 +3597,312 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  List<Map<String, dynamic>> orders = [];
+  // ==========================================================================
+  // إدارة الإشعارات الدائمة في Supabase + النسخة الاحتياطية المحلية + Realtime
+  // ==========================================================================
   List<Map<String, dynamic>> notifications = [];
 
-  int get unreadNotificationsCount => notifications.length;
+  int get unreadNotificationsCount =>
+      notifications.where((n) => n['is_read'] != true).length;
 
-  String _notificationsStorageKey() {
+  String _currentRecipientRole() {
+    if (isAdminLoggedIn && currentCourier == null) return 'admin';
+    if (currentCourier != null) return 'courier';
+    return 'customer';
+  }
+
+  String _currentRecipientId() {
     if (isAdminLoggedIn && currentCourier == null) {
-      final adminId = (_activeAdminRowId ?? userProfile?['id'] ?? 'default')
+      return (_activeAdminRowId ??
+              userProfile?['id'] ??
+              userProfile?['username'] ??
+              'admin')
           .toString()
           .trim();
-      return 'fast_notifications_admin_$adminId';
     }
     if (currentCourier != null) {
-      final courierId = (currentCourier!['id'] ??
-              currentCourier!['username'] ??
-              'default')
+      return (currentCourier?['id'] ??
+              currentCourier?['auth_user_id'] ??
+              currentCourier?['name'] ??
+              '')
           .toString()
           .trim();
-      return 'fast_notifications_courier_$courierId';
     }
-    final custPhone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
-    if (custPhone.isNotEmpty) {
-      return 'fast_notifications_customer_$custPhone';
+    return _normalizePhone(userProfile?['phone']?.toString() ?? '');
+  }
+
+  String _notificationsStorageKey() {
+    final role = _currentRecipientRole();
+    final recipientId = _currentRecipientId();
+    if (role == 'admin') {
+      return 'fast_notifications_admin_${recipientId.isNotEmpty ? recipientId : "default"}';
+    }
+    if (role == 'courier') {
+      return 'fast_notifications_courier_${recipientId.isNotEmpty ? recipientId : "default"}';
+    }
+    if (recipientId.isNotEmpty) {
+      return 'fast_notifications_customer_$recipientId';
     }
     return 'fast_notifications_guest';
+  }
+
+  String _buildNotificationDedupeKey(Map<String, dynamic> notif) {
+    final existing = notif['dedupe_key']?.toString().trim() ?? '';
+    if (existing.isNotEmpty) return existing;
+    final role = (notif['recipient_role'] ?? _currentRecipientRole()).toString();
+    final recId = (notif['recipient_id'] ?? _currentRecipientId()).toString();
+    final title = (notif['title'] ?? '').toString().trim();
+    final body = (notif['body'] ?? '').toString().trim();
+    final orderId = (notif['order_id'] ?? '').toString().trim();
+    return '$role|$recId|$title|$body|$orderId';
+  }
+
+  bool _isDuplicateNotification(Map<String, dynamic> notif) {
+    final key = _buildNotificationDedupeKey(notif);
+    if (_seenNotificationKeys.contains(key)) return true;
+    final idStr = notif['id']?.toString().trim() ?? '';
+    if (idStr.isNotEmpty &&
+        notifications.any((n) => n['id']?.toString().trim() == idStr)) {
+      return true;
+    }
+    return false;
+  }
+
+  void _registerSeenNotificationKey(Map<String, dynamic> notif) {
+    final key = _buildNotificationDedupeKey(notif);
+    if (key.isNotEmpty) {
+      _seenNotificationKeys.add(key);
+      if (_seenNotificationKeys.length > 300) {
+        _seenNotificationKeys.remove(_seenNotificationKeys.first);
+      }
+    }
+  }
+
+  Map<String, dynamic> _normalizeNotificationItem(Map<String, dynamic> raw) {
+    final map = Map<String, dynamic>.from(raw);
+    map['is_read'] = map['is_read'] == true;
+    final rawTime = map['created_at'] ?? map['time'];
+    if (rawTime is DateTime) {
+      map['time'] = rawTime;
+      map['created_at'] = rawTime.toIso8601String();
+    } else if (rawTime is String && rawTime.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(rawTime);
+      if (parsed != null) {
+        map['time'] = parsed;
+      }
+    }
+    return map;
+  }
+
+  Future<void> fetchNotificationsFromSupabase() async {
+    final role = _currentRecipientRole();
+    final recipientId = _currentRecipientId();
+    if (recipientId.isEmpty && role != 'admin') return;
+
+    try {
+      var query = supabase
+          .from('notifications')
+          .select()
+          .eq('recipient_role', role);
+
+      if (role != 'admin' && recipientId.isNotEmpty) {
+        query = query.eq('recipient_id', recipientId);
+      }
+
+      final rows = await query
+          .order('created_at', ascending: false)
+          .limit(100)
+          .timeout(_fastNetworkTimeout);
+
+      final normalized = <Map<String, dynamic>>[];
+      final seenInBatch = <String>{};
+
+      for (final row in rows) {
+        final item = _normalizeNotificationItem(Map<String, dynamic>.from(row));
+        final key = _buildNotificationDedupeKey(item);
+        if (seenInBatch.contains(key)) continue;
+        seenInBatch.add(key);
+        _registerSeenNotificationKey(item);
+        normalized.add(item);
+      }
+
+      notifications = normalized;
+      await _persistNotificationsForCurrentRole();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('تعذر جلب الإشعارات من Supabase: $e');
+      await _loadSavedNotificationsForCurrentRole();
+    }
+  }
+
+  Future<void> _persistNotificationToSupabase(
+    Map<String, dynamic> item,
+  ) async {
+    try {
+      final payload = <String, dynamic>{
+        'recipient_role':
+            (item['recipient_role'] ?? _currentRecipientRole()).toString(),
+        'recipient_id':
+            (item['recipient_id'] ?? _currentRecipientId()).toString().isNotEmpty
+                ? (item['recipient_id'] ?? _currentRecipientId()).toString()
+                : 'general',
+        'title': (item['title'] ?? 'إشعار جديد').toString(),
+        'body': (item['body'] ?? '').toString(),
+        if (item['order_id'] != null && item['order_id'].toString().isNotEmpty)
+          'order_id': item['order_id'].toString(),
+        if (item['chat_id'] != null && item['chat_id'].toString().isNotEmpty)
+          'chat_id': item['chat_id'].toString(),
+        'event_type': (item['event_type'] ?? item['type'] ?? 'general').toString(),
+        'dedupe_key': _buildNotificationDedupeKey(item),
+        'additional_data': item['additional_data'] is Map
+            ? Map<String, dynamic>.from(item['additional_data'] as Map)
+            : (item['additionalData'] is Map
+                ? Map<String, dynamic>.from(item['additionalData'] as Map)
+                : <String, dynamic>{}),
+        'is_read': item['is_read'] == true,
+      };
+
+      final inserted = await supabase
+          .from('notifications')
+          .upsert(payload, onConflict: 'recipient_role,recipient_id,dedupe_key')
+          .select()
+          .maybeSingle()
+          .timeout(_fastNetworkTimeout);
+
+      if (inserted != null) {
+        final key = _buildNotificationDedupeKey(item);
+        final idx = notifications
+            .indexWhere((n) => _buildNotificationDedupeKey(n) == key);
+        if (idx != -1) {
+          notifications[idx] = _normalizeNotificationItem(
+            Map<String, dynamic>.from(inserted),
+          );
+          await _persistNotificationsForCurrentRole();
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('تعذر حفظ الإشعار في جدول notifications: $e');
+    }
+  }
+
+  Future<void> markNotificationAsRead(Map<String, dynamic> notif) async {
+    final id = notif['id']?.toString().trim() ?? '';
+    final key = _buildNotificationDedupeKey(notif);
+    var changed = false;
+
+    for (final item in notifications) {
+      final sameId = id.isNotEmpty && item['id']?.toString().trim() == id;
+      final sameKey = _buildNotificationDedupeKey(item) == key;
+      if (sameId || sameKey) {
+        if (item['is_read'] != true) {
+          item['is_read'] = true;
+          item['read_at'] = DateTime.now().toIso8601String();
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      await _persistNotificationsForCurrentRole();
+      notifyListeners();
+    }
+
+    if (id.isNotEmpty) {
+      try {
+        await supabase
+            .from('notifications')
+            .update({
+              'is_read': true,
+              'read_at': DateTime.now().toUtc().toIso8601String(),
+            })
+            .eq('id', id)
+            .timeout(_fastNetworkTimeout);
+      } catch (e) {
+        debugPrint('تعذر تحديث حالة القراءة في Supabase: $e');
+      }
+    }
+  }
+
+  Future<void> markAllNotificationsAsRead() async {
+    final role = _currentRecipientRole();
+    final recipientId = _currentRecipientId();
+    var changed = false;
+
+    for (final item in notifications) {
+      if (item['is_read'] != true) {
+        item['is_read'] = true;
+        item['read_at'] = DateTime.now().toIso8601String();
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await _persistNotificationsForCurrentRole();
+      notifyListeners();
+    }
+
+    try {
+      var query = supabase
+          .from('notifications')
+          .update({
+            'is_read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('recipient_role', role)
+          .eq('is_read', false);
+
+      if (role != 'admin' && recipientId.isNotEmpty) {
+        query = query.eq('recipient_id', recipientId);
+      }
+
+      await query.timeout(_fastNetworkTimeout);
+    } catch (e) {
+      debugPrint('تعذر تحديث الكل كمقروء في Supabase: $e');
+    }
+  }
+
+  void listenToNotificationsRealtime() {
+    try {
+      if (_notificationsChannel != null) {
+        unawaited(supabase.removeChannel(_notificationsChannel!));
+      }
+
+      final role = _currentRecipientRole();
+      final recipientId = _currentRecipientId();
+
+      _notificationsChannel = supabase
+          .channel('public_notifications_realtime_${role}_$recipientId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'notifications',
+            callback: (payload) {
+              final row = Map<String, dynamic>.from(payload.newRecord);
+              final rowRole = (row['recipient_role'] ?? '').toString().trim();
+              final rowRecipientId =
+                  (row['recipient_id'] ?? '').toString().trim();
+
+              final matchesRole = rowRole == role || rowRole == 'all';
+              final matchesRecipient = role == 'admin' ||
+                  rowRole == 'all' ||
+                  (recipientId.isNotEmpty && rowRecipientId == recipientId);
+
+              if (!matchesRole || !matchesRecipient) return;
+
+              final normalized = _normalizeNotificationItem(row);
+              if (_isDuplicateNotification(normalized)) return;
+
+              _registerSeenNotificationKey(normalized);
+              notifications.insert(0, normalized);
+              unawaited(_persistNotificationsForCurrentRole());
+              notifyListeners();
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      debugPrint('خطأ في Realtime الإشعارات: $e');
+    }
   }
 
   Future<void> _persistNotificationsForCurrentRole() async {
@@ -3644,6 +3928,8 @@ class AppState extends ChangeNotifier {
       final key = _notificationsStorageKey();
       final raw = prefs.getString(key);
       if (raw == null || raw.trim().isEmpty) {
+        notifications = [];
+        notifyListeners();
         return;
       }
       final decoded = jsonDecode(raw);
@@ -3651,20 +3937,15 @@ class AppState extends ChangeNotifier {
         final loaded = <Map<String, dynamic>>[];
         for (final entry in decoded) {
           if (entry is Map) {
-            final map = Map<String, dynamic>.from(entry);
-            if (map['time'] is String) {
-              final parsed = DateTime.tryParse(map['time']);
-              if (parsed != null) {
-                map['time'] = parsed;
-              }
-            }
+            final map = _normalizeNotificationItem(
+              Map<String, dynamic>.from(entry),
+            );
+            _registerSeenNotificationKey(map);
             loaded.add(map);
           }
         }
-        if (loaded.isNotEmpty) {
-          notifications = loaded;
-          notifyListeners();
-        }
+        notifications = loaded;
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('تعذر استرجاع الإشعارات المحفوظة: $e');
@@ -3678,16 +3959,34 @@ class AppState extends ChangeNotifier {
   }) {
     final cleanTitle = title.trim().isNotEmpty ? title.trim() : 'إشعار جديد 🔔';
     final cleanBody = body.trim();
-    final orderId = (data?['order_id'] ?? data?['related_id'])?.toString().trim();
-    notifications.insert(0, {
+    if (cleanTitle.isEmpty && cleanBody.isEmpty) return;
+
+    final orderId =
+        (data?['order_id'] ?? data?['related_id'] ?? data?['orderId'])
+            ?.toString()
+            .trim();
+    final eventType =
+        (data?['type'] ?? data?['event_type'] ?? 'push').toString();
+
+    final item = _normalizeNotificationItem({
+      'recipient_role': _currentRecipientRole(),
+      'recipient_id': _currentRecipientId(),
       'title': cleanTitle,
       'body': cleanBody,
       'time': DateTime.now(),
-      'type': (data?['type'] ?? data?['event_type'] ?? 'push').toString(),
+      'created_at': DateTime.now().toIso8601String(),
+      'type': eventType,
+      'event_type': eventType,
+      'is_read': false,
       if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
       if (data != null && data.isNotEmpty) 'additionalData': data,
     });
+
+    if (_isDuplicateNotification(item)) return;
+    _registerSeenNotificationKey(item);
+    notifications.insert(0, item);
     unawaited(_persistNotificationsForCurrentRole());
+    unawaited(_persistNotificationToSupabase(item));
     notifyListeners();
   }
 
@@ -3719,22 +4018,44 @@ class AppState extends ChangeNotifier {
   }
 
   void addNotification(String title, String body) {
-    notifications.insert(
-        0, {'title': title, 'body': body, 'time': DateTime.now()});
-    unawaited(_persistNotificationsForCurrentRole());
-    unawaited(NotificationService.showLocalNotification(title, body));
-    notifyListeners();
+    addLocalNotification(title, body);
   }
 
-  void addLocalNotification(String title, String body, {String? type}) {
-    notifications.insert(0, {
-      'title': title,
-      'body': body,
-      'time': DateTime.now(),
+  void addLocalNotification(
+    String title,
+    String body, {
+    String? type,
+    String? orderId,
+    bool showSystemLocal = true,
+  }) {
+    final now = DateTime.now();
+    final item = _normalizeNotificationItem({
+      'recipient_role': _currentRecipientRole(),
+      'recipient_id': _currentRecipientId(),
+      'title': title.trim(),
+      'body': body.trim(),
+      'time': now,
+      'created_at': now.toIso8601String(),
       'type': type ?? 'general',
+      'event_type': type ?? 'general',
+      'is_read': false,
+      if (orderId != null && orderId.trim().isNotEmpty)
+        'order_id': orderId.trim(),
     });
+
+    if (_isDuplicateNotification(item)) return;
+    _registerSeenNotificationKey(item);
+    notifications.insert(0, item);
     unawaited(_persistNotificationsForCurrentRole());
-    unawaited(NotificationService.showLocalNotification(title, body));
+    unawaited(_persistNotificationToSupabase(item));
+    if (showSystemLocal) {
+      unawaited(NotificationService.showLocalNotification(
+        title.trim(),
+        body.trim(),
+        payload: orderId,
+        dedupeKey: _buildNotificationDedupeKey(item),
+      ));
+    }
     notifyListeners();
   }
 
@@ -3807,6 +4128,7 @@ class AppState extends ChangeNotifier {
                     'طلب جديد #${newRow['id']}',
                     'تم إضافة طلب جديد من العميل ${newRow['customer_name'] ?? ''}',
                     type: 'admin_new_order',
+                    orderId: newRow['id']?.toString(),
                   );
                 }
               } else if (payload.eventType == PostgresChangeEvent.update) {
@@ -3842,6 +4164,7 @@ class AppState extends ChangeNotifier {
                     'تحديث طلبك #${newRow['id']}',
                     bodyText,
                     type: 'customer_order_update',
+                    orderId: newRow['id']?.toString(),
                   );
                 } else if (statusChanged &&
                     currentCourier != null &&
@@ -3851,12 +4174,14 @@ class AppState extends ChangeNotifier {
                     'تحديث الطلب #${newRow['id']}',
                     'الحالة الجديدة: $newStatusAr',
                     type: 'courier_order_update',
+                    orderId: newRow['id']?.toString(),
                   );
                 } else if (statusChanged && isAdminLoggedIn) {
                   addLocalNotification(
                     'تحديث الطلب #${newRow['id']}',
                     'الحالة الجديدة: $newStatusAr',
                     type: 'admin_order_update',
+                    orderId: newRow['id']?.toString(),
                   );
                 }
               } else if (payload.eventType == PostgresChangeEvent.delete) {
@@ -4011,9 +4336,11 @@ class AppState extends ChangeNotifier {
       _cartItems.clear();
       removeCoupon();
 
-      addNotification(
+      addLocalNotification(
         'تم استلام الطلب',
         'طلبك بانتظار مراجعة المشرف وتأكيد رسوم التوصيل',
+        orderId: orderId?.toString(),
+        showSystemLocal: false,
       );
       notifyListeners();
 
@@ -4217,8 +4544,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> customerApprovePricing(dynamic orderId) async {
     await _submitCustomerOrderAction(orderId, 'approve');
-    addNotification(
-        'تأكيد الطلب', 'تم تأكيد السعر وإرسال الطلب للمندوب');
+    addLocalNotification(
+      'تأكيد الطلب',
+      'تم تأكيد السعر وإرسال الطلب للمندوب',
+      orderId: orderId?.toString(),
+      showSystemLocal: false,
+    );
   }
 
   Future<void> customerConfirmOrder(dynamic orderId) async {
@@ -4227,7 +4558,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> customerCancelOrder(dynamic orderId) async {
     await _submitCustomerOrderAction(orderId, 'cancel');
-    addNotification('إلغاء الطلب', 'تم إلغاء الطلب بناءً على طلبك');
+    addLocalNotification(
+      'إلغاء الطلب',
+      'تم إلغاء الطلب بناءً على طلبك',
+      orderId: orderId?.toString(),
+      showSystemLocal: false,
+    );
   }
 
   Future<void> _submitCourierOrderAction(dynamic orderId, String action) async {
@@ -4337,8 +4673,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> markOrderDelivered(dynamic orderId) async {
     await _submitCourierOrderAction(orderId, 'delivered');
-    addNotification(
-        'تم تسليم الطلب', 'تم تأكيد استلام المبلغ النقدي عند التسليم');
+    addLocalNotification(
+      'تم تسليم الطلب',
+      'تم تأكيد استلام المبلغ النقدي عند التسليم',
+      orderId: orderId?.toString(),
+      showSystemLocal: false,
+    );
   }
 }
 
