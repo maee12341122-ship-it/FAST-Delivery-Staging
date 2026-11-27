@@ -581,7 +581,7 @@ class AppState extends ChangeNotifier {
               .update({'fcm_token': cleanToken})
               .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
               .timeout(_fastNetworkTimeout);
-          debugPrint('FCM synced for customer phone: $cleanPhone');
+          debugPrint('FCM synced for customer phone: $phone');
         } catch (e) {
           debugPrint('FCM customer update error: $e');
         }
@@ -593,7 +593,7 @@ class AppState extends ChangeNotifier {
                 .update({'fcm_token': cleanToken})
                 .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
                 .timeout(_fastNetworkTimeout);
-            debugPrint('FCM synced for admin phone: $cleanPhone');
+            debugPrint('FCM synced for admin phone: $phone');
           } catch (e) {
             debugPrint('FCM admin update error: $e');
           }
