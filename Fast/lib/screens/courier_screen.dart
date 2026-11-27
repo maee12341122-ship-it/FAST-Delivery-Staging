@@ -80,7 +80,7 @@ class _CourierScreenState extends State<CourierScreen> {
         return;
       }
 
-      var cleanPhone = currentPhone.replaceAll(' ', '');
+      var cleanPhone = currentPhone.replaceAll(RegExp(r'\s+'), '');
       if (cleanPhone.startsWith('+967')) cleanPhone = cleanPhone.substring(4);
       if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
       if (cleanPhone.startsWith('967')) cleanPhone = cleanPhone.substring(3);
@@ -192,37 +192,33 @@ class _CourierScreenState extends State<CourierScreen> {
     _lastSyncedCourierKey = courierKey;
     _lastSyncedBusyState = isBusy;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final nextStatusLabel = isBusy ? 'مشغول' : 'متاح';
-      courier['is_available'] = !isBusy;
-      courier['status'] = nextStatusLabel;
+    final nextStatusLabel = isBusy ? 'مشغول' : 'متاح';
+    courier['is_available'] = !isBusy;
+    courier['status'] = nextStatusLabel;
 
-      for (final c in appState.couriers) {
-        if (c is Map) {
-          final cId = c['id']?.toString().trim() ?? '';
-          final cName = c['name']?.toString().trim() ?? '';
-          final targetName = courier['name']?.toString().trim() ?? '';
-          if ((courierKey.isNotEmpty && cId == courierKey) ||
-              (targetName.isNotEmpty &&
-                  cName.toLowerCase() == targetName.toLowerCase())) {
-            c['is_available'] = !isBusy;
-            c['status'] = nextStatusLabel;
-          }
+    for (final c in appState.couriers) {
+      if (c is Map) {
+        final cId = c['id']?.toString().trim() ?? '';
+        final cName = c['name']?.toString().trim() ?? '';
+        final targetName = courier['name']?.toString().trim() ?? '';
+        if ((courierKey.isNotEmpty && cId == courierKey) ||
+            (targetName.isNotEmpty &&
+                cName.toLowerCase() == targetName.toLowerCase())) {
+          c['is_available'] = !isBusy;
+          c['status'] = nextStatusLabel;
         }
       }
+    }
 
-      if (courier['id'] != null) {
-        try {
-          await Supabase.instance.client
-              .from('couriers')
-              .update({'status': nextStatusLabel}).eq('id', courier['id']);
-        } catch (_) {}
-      }
-      if (mounted) {
-        appState.notifyListeners();
-      }
-    });
+    if (courier['id'] != null) {
+      unawaited(
+        Supabase.instance.client
+            .from('couriers')
+            .update({'status': nextStatusLabel})
+            .eq('id', courier['id'])
+            .then((_) {}, onError: (_) {}),
+      );
+    }
   }
 
   void _openChatPickerForOrder(BuildContext context, String orderId) {
