@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_state.dart';
+import '../services/fcm_push_service.dart';
 import 'order_tracking_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -164,6 +165,94 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _collectAndSendFcmChatNotifications(String text) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final String senderName = widget.userRole == 'admin'
+          ? 'الإدارة'
+          : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
+
+      final Set<String> targetTokens = {};
+
+      // جلب بيانات الطلب المرتبط لتحديد العميل والمندوب المعنيين
+      final orderRow = await supabase
+          .from('orders')
+          .select()
+          .eq('id', _parsedOrderId)
+          .maybeSingle();
+
+      if (orderRow != null) {
+        if (widget.userRole != 'customer') {
+          final customerPhone =
+              (orderRow['customer_phone'] ?? orderRow['phone'] ?? '')
+                  .toString()
+                  .trim();
+          final customerId = orderRow['customer_id'];
+
+          if (customerId != null) {
+            final custById = await supabase
+                .from('customers')
+                .select('fcm_token')
+                .eq('id', customerId)
+                .maybeSingle();
+            final tok = custById?['fcm_token']?.toString().trim() ?? '';
+            if (tok.isNotEmpty) targetTokens.add(tok);
+          }
+
+          if (customerPhone.isNotEmpty) {
+            final cleanPhone = customerPhone
+                .replaceAll('+967', '')
+                .replaceAll(' ', '');
+            final custByPhone = await supabase
+                .from('customers')
+                .select('fcm_token')
+                .or('phone.eq.$cleanPhone,phone.eq.+967$cleanPhone,phone.eq.$customerPhone')
+                .maybeSingle();
+            final tok = custByPhone?['fcm_token']?.toString().trim() ?? '';
+            if (tok.isNotEmpty) targetTokens.add(tok);
+          }
+        }
+
+        if (widget.userRole != 'courier') {
+          final courierId = orderRow['courier_id'];
+          if (courierId != null) {
+            final courierRow = await supabase
+                .from('couriers')
+                .select('fcm_token')
+                .eq('id', courierId)
+                .maybeSingle();
+            final tok = courierRow?['fcm_token']?.toString().trim() ?? '';
+            if (tok.isNotEmpty) targetTokens.add(tok);
+          }
+        }
+      }
+
+      if (widget.userRole != 'admin') {
+        final adminRows = await supabase.from('admins').select('fcm_token');
+        for (final row in adminRows) {
+          final tok = row['fcm_token']?.toString().trim() ?? '';
+          if (tok.isNotEmpty) targetTokens.add(tok);
+        }
+      }
+
+      if (targetTokens.isNotEmpty) {
+        await FcmPushService.sendPushToTokens(
+          tokens: targetTokens.toList(),
+          title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
+          body: '$senderName: $text',
+          eventType: 'chat_message',
+          data: {
+            'order_id': widget.orderId,
+            'type': 'chat_message',
+            'sender_role': widget.userRole,
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ خطأ في إرسال إشعار FCM للشات: $e');
+    }
+  }
+
   Future<void> _sendMessage() async {
     if (_isSending) return;
     final text = _msgController.text.trim();
@@ -200,51 +289,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       _msgFocus.requestFocus();
       unawaited(_fetchMessagesHttp(showLoader: false));
-
-      unawaited(() async {
-        try {
-          final String senderName = widget.userRole == 'admin'
-              ? 'الإدارة'
-              : (widget.userRole == 'courier' ? 'المندوب' : 'العميل');
-
-          final Set<String> targetPlayerIds = {};
-
-          final customerOrOtherId = await appState.getReceiverPlayerIdForChat(
-            orderId: widget.orderId,
-            senderRole: widget.userRole,
-            targetChat: 'admin_customer',
-          );
-          if (customerOrOtherId != null && customerOrOtherId.isNotEmpty) {
-            targetPlayerIds.add(customerOrOtherId);
-          }
-
-          final courierId = await appState.getReceiverPlayerIdForChat(
-            orderId: widget.orderId,
-            senderRole: widget.userRole,
-            targetChat: 'admin_courier',
-          );
-          if (courierId != null && courierId.isNotEmpty) {
-            targetPlayerIds.add(courierId);
-          }
-
-          if (widget.userRole != 'admin') {
-            final adminIds = await appState.getAllAdminPlayerIds();
-            targetPlayerIds.addAll(adminIds.where((id) => id.isNotEmpty));
-          }
-
-          for (final playerId in targetPlayerIds) {
-            await appState.sendAutoNotification(
-              targetPlayerId: playerId,
-              title: 'رسالة جديدة في الطلب #${widget.orderId} 💬',
-              body: '$senderName: $text',
-              orderId: widget.orderId,
-              eventType: 'chat_message',
-            );
-          }
-        } catch (e) {
-          debugPrint('⚠️ خطأ في إرسال إشعار الشات: $e');
-        }
-      }());
+      unawaited(_collectAndSendFcmChatNotifications(text));
     } catch (e) {
       if (mounted) {
         setState(() {
