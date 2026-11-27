@@ -1,7 +1,11 @@
+// ============================================================================
+// الملف الأول: lib/screens/delivery_login_screen.dart
+// ============================================================================
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/fcm_push_service.dart';
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'delivery_dashboard.dart';
@@ -62,7 +66,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       final bool success = await appState.loginCourier(username, password);
 
       if (!success || appState.currentCourier == null) {
-        _showMessage('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب ❌');
+        _showMessage('اسم المستخدم أو كلمة المرور غير صحيحة للمندوب أو الحساب معطّل ❌');
         return;
       }
 
@@ -87,6 +91,8 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
           role: 'courier',
           rowId: targetIdForPush,
         );
+        await NotificationService.saveUserPlayerId(targetIdForPush, 'couriers');
+        await appState.fetchNotificationsFromSupabase();
       } catch (e) {
         debugPrint('تعذر مزامنة FCM token للمندوب: $e');
       }
@@ -262,26 +268,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                                 fontSize: 16,
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: Colors.blue.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: const Text(
-                            'تنبيه: يمكنك إضافة حسابات المناديب وتعديل كلمات مرورهم مباشرة من لوحة تحكم المشرف.',
-                            style: TextStyle(
-                              color: Colors.lightBlueAccent,
-                              fontSize: 11,
-                              height: 1.5,
-                            ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
                       ],
