@@ -11,7 +11,13 @@ import '../screens/order_tracking_screen.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+  } catch (e) {
+    debugPrint('📩 [FCM Background Init Error]: $e');
+  }
   debugPrint('📩 [FCM Background Message]: ${message.messageId}');
 }
 
@@ -80,7 +86,7 @@ class NotificationService {
     final item = <String, dynamic>{
       'title': cleanTitle.isNotEmpty ? cleanTitle : 'إشعار جديد 🔔',
       'body': cleanBody,
-      'time': DateTime.now(),
+      'time': DateTime.now().toIso8601String(),
       if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
       if (additionalData != null && additionalData.isNotEmpty)
         'additionalData': additionalData,
@@ -95,7 +101,6 @@ class NotificationService {
     }
   }
 
-  /// متوافق مع الاستدعاءات القديمة دون الاعتماد على OneSignal
   static Future<void> loginUser(String? userId) async {
     try {
       final cleanId = (userId ?? '').trim();
@@ -107,7 +112,6 @@ class NotificationService {
     }
   }
 
-  /// تهيئة Firebase والإشعارات المحلية بدون إظهار نافذة طلب الإذن فوراً قبل شاشة الشعار وسياسة الخصوصية
   static Future<void> initialize({
     void Function(String playerId)? onPlayerIdChanged,
     void Function(Map<String, dynamic> notificationItem)? onExternalNotification,
@@ -117,7 +121,9 @@ class NotificationService {
     }
 
     try {
-      await Firebase.initializeApp();
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -151,7 +157,6 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.createNotificationChannel(_highImportanceChannel);
 
-      // استقبال الإشعارات الخارجية أثناء فتح التطبيق (Foreground)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         final additionalMap = Map<String, dynamic>.from(message.data);
         final title =
@@ -179,7 +184,6 @@ class NotificationService {
         );
       });
 
-      // النقر على الإشعار والتطبيق في الخلفية
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         debugPrint('🚀 [النقر على إشعار FCM]: ${message.notification?.title}');
         final additionalMap = Map<String, dynamic>.from(message.data);
@@ -201,7 +205,6 @@ class NotificationService {
         }
       });
 
-      // مراقبة تحديث التوكن تلقائياً
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         final clean = newToken.trim();
         debugPrint('📱 [FCM Token الجديد]: $clean');
@@ -210,21 +213,19 @@ class NotificationService {
         }
       });
 
-      debugPrint('🟢 تم تهيئة نظام الإشعارات (FCM & Local) بنجاح بدون طلب إذن مبكر');
+      debugPrint('🟢 تم تهيئة نظام الإشعارات (FCM & Local) بنجاح');
     } catch (e) {
       debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
     }
   }
 
-  /// يُستدعى فقط بعد شاشة الشعار والموافقة على سياسة الخصوصية
   static Future<String?> requestPermissionAndFetchToken() async {
     try {
-      final settings = await FirebaseMessaging.instance.requestPermission(
+      await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-      debugPrint('🔔 حالة إذن FCM: ${settings.authorizationStatus}');
       return await getFcmTokenSafe();
     } catch (e) {
       debugPrint('⚠️ خطأ في طلب إذن FCM: $e');
@@ -232,7 +233,6 @@ class NotificationService {
     }
   }
 
-  /// جلب FCM Token بأمان مع إعادة المحاولة عند بطء الشبكة
   static Future<String?> getFcmTokenSafe({int retries = 3}) async {
     for (int attempt = 1; attempt <= retries; attempt++) {
       try {
@@ -355,7 +355,6 @@ class NotificationService {
     }
   }
 
-  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-fcm-push)
   static Future<void> sendNotificationToUser({
     List<String>? playerIds,
     String? targetPlayerId,
