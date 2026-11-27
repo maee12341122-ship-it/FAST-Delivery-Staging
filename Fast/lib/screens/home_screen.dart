@@ -4274,6 +4274,8 @@ class _HomeScreenState extends State<HomeScreen>
       },
       child: ListView(
         controller: _shopScrollController,
+        cacheExtent: 650,
+        addAutomaticKeepAlives: false,
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
@@ -4714,6 +4716,9 @@ class _HomeScreenState extends State<HomeScreen>
             else if (filteredProducts.isNotEmpty)
               GridView.builder(
                 shrinkWrap: true,
+                cacheExtent: 650,
+                addAutomaticKeepAlives: false,
+                addRepaintBoundaries: true,
                 physics: const NeverScrollableScrollPhysics(),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -4736,7 +4741,8 @@ class _HomeScreenState extends State<HomeScreen>
                   final pKey = product.id.trim().toLowerCase();
                   final double? pRating = _productAvgRatings[pKey];
                   final int pCount = _productRatingCounts[pKey] ?? 0;
-                  return Material(
+                  return RepaintBoundary(
+                    child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
