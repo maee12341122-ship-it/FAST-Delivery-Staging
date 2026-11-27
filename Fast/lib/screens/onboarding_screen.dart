@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'splash_screen.dart'; // الشاشة الانتقالية بعد الترحيب
+import '../providers/app_state.dart';
+import '../services/notification_service.dart';
+import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({Key? key}) : super(key: key);
@@ -37,9 +41,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await prefs.setBool('has_seen_onboarding', true);
 
     if (!mounted) return;
+    final appState = Provider.of<AppState>(context, listen: false);
+    unawaited(appState.setPrivacyPolicyAccepted(true));
+
+    // بعد شاشة الشعار والموافقة على الترحيب/الخصوصية، نطلب إذن الإشعارات ونزامن التوكن
+    unawaited(() async {
+      await NotificationService.requestPermissionAndFetchToken();
+      await appState.syncFcmTokenForCurrentUsers();
+    }());
+
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const SplashScreen()),
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
     );
   }
 
