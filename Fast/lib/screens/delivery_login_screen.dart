@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'delivery_dashboard.dart';
@@ -22,6 +22,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   final FocusNode _passwordFocus = FocusNode();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -77,12 +78,15 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       }
 
       final targetIdForPush =
-          rawId != null && rawId.isNotEmpty ? rawId : courierId;
-      await NotificationService.loginUser(targetIdForPush);
-      await NotificationService.saveUserPlayerId(
-        targetIdForPush,
-        'couriers',
-      );
+          (rawId != null && rawId.isNotEmpty) ? rawId : courierId;
+      try {
+        await FcmPushService.requestPermissionAndSyncToken(
+          role: 'courier',
+          rowId: targetIdForPush,
+        );
+      } catch (e) {
+        debugPrint('تعذر مزامنة FCM token للمندوب: $e');
+      }
 
       if (!mounted) return;
 
@@ -184,17 +188,30 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                       TextFormField(
                         controller: _passwordController,
                         focusNode: _passwordFocus,
-                        obscureText: true,
+                        obscureText: _obscurePassword,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _login(),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'كلمة المرور',
-                          labelStyle: TextStyle(color: Colors.grey),
-                          border: OutlineInputBorder(),
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          border: const OutlineInputBorder(),
                           filled: true,
-                          fillColor: Color(0xFF1E1E1E),
-                          prefixIcon: Icon(Icons.lock, color: AppConstants.gold),
+                          fillColor: const Color(0xFF1E1E1E),
+                          prefixIcon:
+                              const Icon(Icons.lock, color: AppConstants.gold),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.grey,
+                            ),
+                            onPressed: () {
+                              setState(
+                                  () => _obscurePassword = !_obscurePassword);
+                            },
+                          ),
                         ),
                         validator: Validators.requiredText,
                       ),
