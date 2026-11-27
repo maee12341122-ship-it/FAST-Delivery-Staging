@@ -9,7 +9,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('FCM Background init error: $e');
+  }
   debugPrint('FCM Background message: ${message.messageId}');
 }
 
@@ -26,22 +28,38 @@ class FcmPushService {
 
   static String? _lastRole;
   static dynamic _lastRowId;
+  static String? _lastPhone;
   static String? _cachedToken;
+  static bool _initialized = false;
 
   static Future<void> initialize() async {
     try {
-      await Firebase.initializeApp();
-    } catch (_) {}
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+      _initialized = true;
+    } catch (e) {
+      debugPrint('FCM Firebase.initializeApp error: $e');
+    }
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    try {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      debugPrint('FCM onBackgroundMessage error: $e');
+    }
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
-    await _localNotifications.initialize(initSettings);
+    try {
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const initSettings = InitializationSettings(android: androidInit);
+      await _localNotifications.initialize(initSettings);
 
-    final androidPlugin = _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.createNotificationChannel(_channel);
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidPlugin?.createNotificationChannel(_channel);
+    } catch (e) {
+      debugPrint('FCM local notifications init error: $e');
+    }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       final title = message.notification?.title ??
@@ -50,20 +68,24 @@ class FcmPushService {
       final body =
           message.notification?.body ?? message.data['body']?.toString() ?? '';
       if (title.isNotEmpty || body.isNotEmpty) {
-        await _localNotifications.show(
-          DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          title,
-          body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channel.id,
-              _channel.name,
-              channelDescription: _channel.description,
-              importance: Importance.max,
-              priority: Priority.high,
+        try {
+          await _localNotifications.show(
+            DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            title,
+            body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                _channel.id,
+                _channel.name,
+                channelDescription: _channel.description,
+                importance: Importance.max,
+                priority: Priority.high,
+              ),
             ),
-          ),
-        );
+          );
+        } catch (e) {
+          debugPrint('FCM foreground show error: $e');
+        }
       }
     });
 
@@ -75,11 +97,13 @@ class FcmPushService {
       final clean = newToken.trim();
       if (clean.isNotEmpty) {
         _cachedToken = clean;
-        if (_lastRole != null && _lastRowId != null) {
+        debugPrint('FCM Token refreshed: $clean');
+        if (_lastRole != null || _lastRowId != null || _lastPhone != null) {
           unawaited(
             syncTokenForCurrentUser(
               role: _lastRole,
               rowId: _lastRowId,
+              phone: _lastPhone,
               explicitToken: clean,
             ),
           );
@@ -88,30 +112,59 @@ class FcmPushService {
     });
   }
 
-  static Future<void> requestPermissionAndSyncToken({
-    String? role,
-    dynamic rowId,
-  }) async {
+  static Future<NotificationSettings?> requestPermissionSafe() async {
     try {
-      await FirebaseMessaging.instance.requestPermission(
+      if (!_initialized && Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+        _initialized = true;
+      }
+      final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
-      await syncTokenForCurrentUser(role: role, rowId: rowId);
+      debugPrint('FCM permission status: ${settings.authorizationStatus}');
+      return settings;
     } catch (e) {
       debugPrint('FCM requestPermission error: $e');
+      return null;
     }
   }
 
+  static Future<void> requestPermissionAndSyncToken({
+    String? role,
+    dynamic rowId,
+    String? phone,
+  }) async {
+    await requestPermissionSafe();
+    await syncTokenForCurrentUser(
+      role: role,
+      rowId: rowId,
+      phone: phone,
+    );
+  }
+
   static Future<String?> getTokenSafe({int retries = 3}) async {
+    try {
+      if (!_initialized && Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+        _initialized = true;
+      }
+    } catch (e) {
+      debugPrint('FCM ensureInitialized error: $e');
+    }
+
+    await requestPermissionSafe();
+
     for (int attempt = 1; attempt <= retries; attempt++) {
       try {
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null && token.trim().isNotEmpty) {
           _cachedToken = token.trim();
+          debugPrint('FCM Token obtained (attempt $attempt): $_cachedToken');
           return _cachedToken;
         }
+        debugPrint('FCM getToken returned null/empty on attempt $attempt');
       } catch (e) {
         debugPrint('FCM getToken attempt $attempt failed: $e');
       }
@@ -119,50 +172,97 @@ class FcmPushService {
         await Future.delayed(Duration(seconds: attempt * 2));
       }
     }
+
+    if (_cachedToken == null || _cachedToken!.isEmpty) {
+      debugPrint('FCM final token is still null/empty after $retries attempts');
+    }
     return _cachedToken;
+  }
+
+  static String _normalizePhoneDigits(String phone) {
+    var clean = phone.trim().replaceAll(' ', '');
+    if (clean.startsWith('+967')) {
+      clean = clean.substring(4);
+    }
+    if (clean.startsWith('0')) {
+      clean = clean.substring(1);
+    }
+    if (clean.startsWith('967')) {
+      clean = clean.substring(3);
+    }
+    return clean;
   }
 
   static Future<bool> syncTokenForCurrentUser({
     String? role,
     dynamic rowId,
+    String? phone,
     String? explicitToken,
   }) async {
-    if (role != null) _lastRole = role;
+    if (role != null && role.trim().isNotEmpty) _lastRole = role.trim();
     if (rowId != null) _lastRowId = rowId;
+    if (phone != null && phone.trim().isNotEmpty) _lastPhone = phone.trim();
 
-    final effectiveRole = role ?? _lastRole;
-    final effectiveId = rowId ?? _lastRowId;
+    final effectiveRole = _lastRole;
+    final effectiveId = _lastRowId;
+    final effectivePhone = _lastPhone;
+
     final token = (explicitToken?.trim().isNotEmpty == true)
         ? explicitToken!.trim()
         : await getTokenSafe();
 
-    if (token == null ||
-        token.isEmpty ||
-        effectiveId == null ||
-        effectiveRole == null) {
+    if (token == null || token.isEmpty) {
+      debugPrint('FCM syncTokenForCurrentUser aborted: token is null/empty');
+      return false;
+    }
+
+    if (effectiveRole == null ||
+        (effectiveId == null &&
+            (effectivePhone == null || effectivePhone.trim().isEmpty))) {
+      debugPrint(
+        'FCM syncTokenForCurrentUser aborted: missing role/id/phone (role=$effectiveRole, id=$effectiveId, phone=$effectivePhone)',
+      );
       return false;
     }
 
     final supabase = Supabase.instance.client;
     try {
+      String table;
       if (effectiveRole == 'courier') {
-        await supabase
-            .from('couriers')
-            .update({'fcm_token': token}).eq('id', effectiveId);
+        table = 'couriers';
       } else if (effectiveRole == 'admin') {
-        await supabase
-            .from('admins')
-            .update({'fcm_token': token}).eq('id', effectiveId);
+        table = 'admins';
       } else if (effectiveRole == 'customer') {
-        await supabase
-            .from('customers')
-            .update({'fcm_token': token}).eq('id', effectiveId);
+        table = 'customers';
       } else {
+        debugPrint('FCM syncTokenForCurrentUser unknown role: $effectiveRole');
         return false;
       }
-      return true;
+
+      if (effectiveId != null) {
+        await supabase
+            .from(table)
+            .update({'fcm_token': token})
+            .eq('id', effectiveId);
+        debugPrint('FCM synced to $table by id=$effectiveId');
+        return true;
+      }
+
+      final norm = _normalizePhoneDigits(effectivePhone!);
+      if (norm.isNotEmpty) {
+        final formattedPhone = '+967$norm';
+        final zeroPhone = '0$norm';
+        await supabase
+            .from(table)
+            .update({'fcm_token': token})
+            .or('phone.eq.$norm,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
+        debugPrint('FCM synced to $table by phone=$norm');
+        return true;
+      }
+
+      return false;
     } catch (e) {
-      debugPrint('Error syncing FCM token to Supabase: $e');
+      debugPrint('Error syncing FCM token to Supabase ($effectiveRole): $e');
       return false;
     }
   }
