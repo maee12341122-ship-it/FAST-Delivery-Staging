@@ -72,20 +72,22 @@ class LocalStorageService {
       final db = await database;
       final batch = db.batch();
       for (final p in productsList) {
+        if (p is! Map) continue;
         batch.insert(
           'local_products',
           {
-            'id': p['id'].toString(),
-            'name': p['name'] ?? '',
-            'description': p['description'] ?? '',
-            'restaurant_name': p['restaurant_name'] ?? 'متجر عام',
-            'price': double.tryParse(p['price'].toString()) ?? 0.0,
-            'category': p['category'] ?? 'المطاعم',
-            'sub_category': p['sub_category'] ?? '',
-            'available': (p['available'] ?? true) ? 1 : 0,
-            'image_url': p['image_url'] ?? '',
-            'unit': p['unit'] ?? 'حبة',
-            'is_variable_price': (p['is_variable_price'] ?? false) ? 1 : 0,
+            'id': (p['id'] ?? '').toString(),
+            'name': (p['name'] ?? '').toString(),
+            'description': (p['description'] ?? '').toString(),
+            'restaurant_name': (p['restaurant_name'] ?? 'متجر عام').toString(),
+            'price': double.tryParse(p['price']?.toString() ?? '') ?? 0.0,
+            'category': (p['category'] ?? 'المطاعم').toString(),
+            'sub_category': (p['sub_category'] ?? '').toString(),
+            'available': _parseBool(p['available'], fallback: true) ? 1 : 0,
+            'image_url': (p['image_url'] ?? '').toString(),
+            'unit': (p['unit'] ?? 'حبة').toString(),
+            'is_variable_price':
+                _parseBool(p['is_variable_price'], fallback: false) ? 1 : 0,
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -102,11 +104,11 @@ class LocalStorageService {
       final result = await db.query('local_products');
       return result.map((p) {
         return ProductModel(
-          id: p['id'].toString(),
+          id: p['id']?.toString() ?? '',
           name: p['name']?.toString() ?? '',
           description: p['description']?.toString() ?? '',
           restaurantName: p['restaurant_name']?.toString() ?? 'متجر عام',
-          price: double.tryParse(p['price'].toString()) ?? 0.0,
+          price: double.tryParse(p['price']?.toString() ?? '') ?? 0.0,
           category: p['category']?.toString() ?? 'المطاعم',
           subCategory: p['sub_category']?.toString() ?? '',
           available: p['available'] == 1,
@@ -119,6 +121,16 @@ class LocalStorageService {
       debugPrint('خطأ في قراءة المنتجات المحلية: $e');
       return [];
     }
+  }
+
+  static bool _parseBool(dynamic value, {required bool fallback}) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final s = value.toString().trim().toLowerCase();
+    if (s == 'true' || s == '1' || s == 'yes') return true;
+    if (s == 'false' || s == '0' || s == 'no') return false;
+    return fallback;
   }
 }
 
@@ -143,11 +155,16 @@ class AppState extends ChangeNotifier {
   static const String _supportLocalPhone = '780000000';
   static const String _supportInternationalPhone = '967780000000';
 
+  bool _isDisposed = false;
   bool _isCreatingOrder = false;
   bool _isManualAuthInProgress = false;
   String? _activeCourierUsernameHint;
   dynamic _activeAdminRowId;
+  final List<String> _seenNotificationOrder = <String>[];
   final Set<String> _seenNotificationKeys = <String>{};
+
+  // قائمة الطلبات الرئيسية (معلنة بوضوح لتجنب أي خطأ ترجمة)
+  List<Map<String, dynamic>> orders = [];
 
   Map<String, int> productOrderCounts = {};
   Map<String, int> storeOrderCounts = {};
@@ -158,8 +175,15 @@ class AppState extends ChangeNotifier {
     _initAuthListener();
   }
 
+  void _safeNotifyListeners() {
+    if (!_isDisposed) {
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
+    _isDisposed = true;
     _ordersResyncTimer?.cancel();
     unawaited(_authSub?.cancel());
     unawaited(_settingsSub?.cancel());
@@ -406,7 +430,7 @@ class AppState extends ChangeNotifier {
         unawaited(_persistUserSessionToPrefs(userProfile!));
         unawaited(syncFcmTokenForCurrentUsers());
         unawaited(fetchUserAddressesFromSupabase());
-        notifyListeners();
+        _safeNotifyListeners();
         return;
       }
     } catch (e) {
@@ -445,7 +469,7 @@ class AppState extends ChangeNotifier {
 
     unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _syncAdminProfileFromAuth(
@@ -521,7 +545,7 @@ class AppState extends ChangeNotifier {
 
   void _initAuthListener() {
     _authSub = supabase.auth.onAuthStateChange.listen((data) async {
-      if (_isManualAuthInProgress) return;
+      if (_isManualAuthInProgress || _isDisposed) return;
       final session = data.session;
       if (session != null) {
         await _applyAuthenticatedUserRole(
@@ -540,7 +564,7 @@ class AppState extends ChangeNotifier {
       unawaited(fetchNotificationsFromSupabase());
       listenToNotificationsRealtime();
       unawaited(syncFcmTokenForCurrentUsers());
-      notifyListeners();
+      _safeNotifyListeners();
     });
   }
 
@@ -571,7 +595,7 @@ class AppState extends ChangeNotifier {
   void _startPeriodicOrdersResync() {
     _ordersResyncTimer?.cancel();
     _ordersResyncTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (!isConnectedToInternet) return;
+      if (_isDisposed || !isConnectedToInternet) return;
       unawaited(_silentRefreshOrders());
     });
   }
@@ -598,7 +622,7 @@ class AppState extends ChangeNotifier {
         _sortOrders();
         unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (_) {}
   }
@@ -749,7 +773,7 @@ class AppState extends ChangeNotifier {
     productOrderCounts = prodCounts;
     storeOrderCounts = stCounts;
     categoryOrderCounts = catCounts;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   int getProductOrderScore(ProductModel product) {
@@ -959,7 +983,7 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب المطاعم والأقسام: $e');
     }
@@ -1007,7 +1031,7 @@ class AppState extends ChangeNotifier {
 
   void setSelectedCategory(String? categoryName) {
     selectedCategory = categoryName;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> fetchOrders() async {
@@ -1038,7 +1062,7 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب الطلبات: $e');
     }
@@ -1050,7 +1074,7 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       hasAcceptedPrivacyPolicy = prefs.getBool('privacy_accepted') ?? false;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في قراءة حالة سياسة الخصوصية: $e');
     }
@@ -1061,7 +1085,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('privacy_accepted', accepted);
       hasAcceptedPrivacyPolicy = accepted;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في حفظ حالة سياسة الخصوصية: $e');
     }
@@ -1073,11 +1097,11 @@ class AppState extends ChangeNotifier {
   void initializeInternetListener() {
     unawaited(_connectivitySub?.cancel());
     _connectivity.checkConnectivity().then((result) {
-      _updateConnectionStatus(result);
+      if (!_isDisposed) _updateConnectionStatus(result);
     });
 
     _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
-      _updateConnectionStatus(results);
+      if (!_isDisposed) _updateConnectionStatus(results);
     });
   }
 
@@ -1111,7 +1135,7 @@ class AppState extends ChangeNotifier {
       unawaited(fetchPopularStats());
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   int totalVisitorsCount = 0;
@@ -1137,7 +1161,7 @@ class AppState extends ChangeNotifier {
           .select('id')
           .timeout(_fastNetworkTimeout);
       totalVisitorsCount = (response as List).length;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب عدد الزوار: $e');
     }
@@ -1195,7 +1219,7 @@ class AppState extends ChangeNotifier {
       pendingOrdersCount = pending;
       cancelledOrdersCount = cancelled;
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب تقارير المبيعات: $e');
     }
@@ -1222,7 +1246,7 @@ class AppState extends ChangeNotifier {
             double.tryParse(response['discount_amount'].toString()) ?? 0.0;
         activeCouponCode = response['code']?.toString() ?? cleanCode;
 
-        notifyListeners();
+        _safeNotifyListeners();
         return response['message']?.toString() ?? 'تم تطبيق الكوبون بنجاح';
       } catch (_) {}
     }
@@ -1273,7 +1297,7 @@ class AppState extends ChangeNotifier {
 
       couponDiscountAmount = discount;
       activeCouponCode = coupon['code']?.toString() ?? cleanCode;
-      notifyListeners();
+      _safeNotifyListeners();
       return 'تم تطبيق الكوبون بنجاح (خصم $discount ر.ي)';
     } catch (e) {
       return 'تعذر التحقق من الكوبون: $e';
@@ -1283,7 +1307,7 @@ class AppState extends ChangeNotifier {
   void removeCoupon() {
     activeCouponCode = null;
     couponDiscountAmount = 0.0;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   List<Map<String, dynamic>> productModifiers = [];
@@ -1319,7 +1343,7 @@ class AppState extends ChangeNotifier {
         };
       });
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب تقييمات المطاعم: $e');
     }
@@ -1357,7 +1381,7 @@ class AppState extends ChangeNotifier {
           .timeout(_fastNetworkTimeout);
 
       productModifiers = List<Map<String, dynamic>>.from(response);
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب إضافات المنتج: $e');
     }
@@ -1414,7 +1438,7 @@ class AppState extends ChangeNotifier {
     } else {
       _favoriteProductIds.add(productId);
     }
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   List<ProductModel> get favoriteProducts {
@@ -1428,7 +1452,7 @@ class AppState extends ChangeNotifier {
     if (userProfile != null && _userProfileData != null) {
       _userProfileData!['address'] = formattedAddress;
       unawaited(_persistUserSessionToPrefs(_userProfileData!));
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
@@ -1458,7 +1482,7 @@ class AppState extends ChangeNotifier {
         ));
       }
       await _saveUserAddressesFromPrefs();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       await _loadUserAddressesFromPrefs();
     }
@@ -1470,7 +1494,7 @@ class AppState extends ChangeNotifier {
       selectDefaultAddress(address);
     }
     unawaited(_saveUserAddressesFromPrefs());
-    notifyListeners();
+    _safeNotifyListeners();
 
     final phoneStr = userProfile?['phone']?.toString() ?? '';
     if (phoneStr.isNotEmpty) {
@@ -1496,7 +1520,7 @@ class AppState extends ChangeNotifier {
   Future<void> removeUserAddress(String id) async {
     _userAddresses.removeWhere((a) => a.id == id);
     unawaited(_saveUserAddressesFromPrefs());
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final intId = int.tryParse(id);
@@ -1525,7 +1549,7 @@ class AppState extends ChangeNotifier {
       formattedAddress += ' (تعليمات: ${address.instructions})';
     }
     addOrUpdateAddress(formattedAddress);
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _loadUserAddressesFromPrefs() async {
@@ -1547,7 +1571,7 @@ class AppState extends ChangeNotifier {
             ));
           }
         }
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (e) {
       debugPrint('خطأ في تحميل العناوين: $e');
@@ -1647,7 +1671,7 @@ class AppState extends ChangeNotifier {
             .timeout(_fastNetworkTimeout);
       }
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في تقييم المندوب: $e');
       throw Exception(e.toString().replaceAll('Exception: ', ''));
@@ -1717,7 +1741,7 @@ class AppState extends ChangeNotifier {
       }
 
       unawaited(fetchRestaurantAverages());
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في تقييم المطعم: $e');
       throw Exception(e.toString().replaceAll('Exception: ', ''));
@@ -1958,14 +1982,14 @@ class AppState extends ChangeNotifier {
   bool isDarkMode = true;
   void toggleTheme() {
     isDarkMode = !isDarkMode;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   ThemeMode get themeMode => isDarkMode ? ThemeMode.dark : ThemeMode.light;
 
   void setThemeMode(ThemeMode mode) {
     isDarkMode = (mode == ThemeMode.dark);
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   String currentCity = 'تعز';
@@ -1975,7 +1999,7 @@ class AppState extends ChangeNotifier {
       _userProfileData!['city'] = city;
       unawaited(_persistUserSessionToPrefs(_userProfileData!));
     }
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Stream<JsonList> getMessagesForOrder(dynamic orderId, [String? targetChat]) {
@@ -2002,6 +2026,7 @@ class AppState extends ChangeNotifier {
             schema: 'public',
             table: 'messages',
             callback: (payload) {
+              if (_isDisposed) return;
               final msg = payload.newRecord;
               final sender = (msg['sender_type'] ?? '').toString().trim();
               final text = (msg['message_text'] ?? '').toString().trim();
@@ -2027,12 +2052,14 @@ class AppState extends ChangeNotifier {
                   'رسالة جديدة بخصوص الطلب #$orderId',
                   text,
                   type: 'chat_message',
+                  orderId: orderId,
                 );
               } else if (sender == 'customer' && isAdminLoggedIn) {
                 addLocalNotification(
                   'رسالة من عميل على الطلب #$orderId',
                   text,
                   type: 'chat_message',
+                  orderId: orderId,
                 );
               } else if (currentCourier != null &&
                   assignedCourier ==
@@ -2042,6 +2069,7 @@ class AppState extends ChangeNotifier {
                   'رسالة جديدة على الطلب #$orderId',
                   text,
                   type: 'chat_message',
+                  orderId: orderId,
                 );
               }
             },
@@ -2235,7 +2263,7 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في الإعدادات: $e');
     }
@@ -2248,6 +2276,7 @@ class AppState extends ChangeNotifier {
 
       _settingsSub =
           supabase.from('settings').stream(primaryKey: ['id']).listen((data) {
+        if (_isDisposed) return;
         if (data.isNotEmpty) {
           if (data.first['delivery_fee'] != null) {
             deliveryFee =
@@ -2261,16 +2290,17 @@ class AppState extends ChangeNotifier {
           if (data.first['end_hour'] != null) {
             endHour = _parseHourFromTimeValue(data.first['end_hour'], endHour);
           }
-          notifyListeners();
+          _safeNotifyListeners();
         }
       });
 
       _storeSettingsSub = supabase
           .from('store_settings')
           .stream(primaryKey: ['id']).listen((data) {
+        if (_isDisposed) return;
         if (data.isNotEmpty) {
           _applyStoreSettingsRow(Map<String, dynamic>.from(data.first));
-          notifyListeners();
+          _safeNotifyListeners();
         }
       });
     } catch (e) {
@@ -2342,7 +2372,7 @@ class AppState extends ChangeNotifier {
   Future<void> updateStoreHours(int start, int end) async {
     startHour = start;
     endHour = end;
-    notifyListeners();
+    _safeNotifyListeners();
     try {
       await _persistStoreSettingsToBackendOrSchema(start: start, end: end);
     } catch (e) {
@@ -2367,7 +2397,7 @@ class AppState extends ChangeNotifier {
       end: endHour,
       fee: deliveryFee,
     );
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   bool get isStoreOpen {
@@ -2434,7 +2464,7 @@ class AppState extends ChangeNotifier {
       listenToNotificationsRealtime();
       unawaited(fetchCouriersFromSupabase());
       listenToOrdersRealtime();
-      notifyListeners();
+      _safeNotifyListeners();
       return true;
     } catch (e) {
       debugPrint('خطأ في دخول المشرف: $e');
@@ -2453,7 +2483,7 @@ class AppState extends ChangeNotifier {
       _activeAdminRowId = null;
       await supabase.auth.signOut();
       await _loadSavedNotificationsForCurrentRole();
-      notifyListeners();
+      _safeNotifyListeners();
     } finally {
       _isManualAuthInProgress = false;
     }
@@ -2517,7 +2547,7 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _persistUserSessionToPrefs(Map<String, dynamic> data) async {
@@ -2555,7 +2585,7 @@ class AppState extends ChangeNotifier {
     unawaited(_persistUserSessionToPrefs(normalizedData));
     unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
-    notifyListeners();
+    _safeNotifyListeners();
     return normalizedData;
   }
 
@@ -2575,7 +2605,7 @@ class AppState extends ChangeNotifier {
         'address': address ?? '',
       };
       await fetchUserAddressesFromSupabase();
-      notifyListeners();
+      _safeNotifyListeners();
 
       try {
         final dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
@@ -2605,7 +2635,7 @@ class AppState extends ChangeNotifier {
           .timeout(_fastNetworkTimeout);
       if (response != null) {
         _upsertOrderInList(response);
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (e) {
       debugPrint('تعذر استعادة الطلب: $e');
@@ -2648,7 +2678,7 @@ class AppState extends ChangeNotifier {
     final res = await ApiService.sendWhatsappOtp(
       phoneNumber: internationalPhone,
     ).timeout(_authTimeout);
-    notifyListeners();
+    _safeNotifyListeners();
     return {
       'exists': existsInDb,
       'provider': 'whatsapp_cloud_api',
@@ -2726,7 +2756,7 @@ class AppState extends ChangeNotifier {
     unawaited(fetchNotificationsFromSupabase());
     unawaited(syncFcmTokenForCurrentUsers());
     unawaited(fetchUserAddressesFromSupabase());
-    notifyListeners();
+    _safeNotifyListeners();
     return true;
   }
 
@@ -2760,7 +2790,7 @@ class AppState extends ChangeNotifier {
       };
 
       unawaited(_persistUserSessionToPrefs(userProfile!));
-      notifyListeners();
+      _safeNotifyListeners();
 
       unawaited(() async {
         try {
@@ -2790,7 +2820,7 @@ class AppState extends ChangeNotifier {
     await prefs.remove('userAddress');
     _cartItems.clear();
     notifications = [];
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Map<String, dynamic>? _currentCourierData;
@@ -2895,7 +2925,7 @@ class AppState extends ChangeNotifier {
           );
         }
         unawaited(syncFcmTokenForCurrentUsers());
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (e) {
       debugPrint('تعذر استعادة جلسة المندوب: $e');
@@ -2996,7 +3026,7 @@ class AppState extends ChangeNotifier {
       if (currentCourier == null && supabase.auth.currentUser != null) {
         await _loadCourierSession(usernameInput: _activeCourierUsernameHint);
       }
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب المناديب: $e');
     }
@@ -3148,7 +3178,7 @@ class AppState extends ChangeNotifier {
           );
           await fetchOrders();
           unawaited(fetchAdminFinancialReports());
-          notifyListeners();
+          _safeNotifyListeners();
           return;
         } catch (_) {}
       }
@@ -3190,7 +3220,7 @@ class AppState extends ChangeNotifier {
 
       await fetchOrders();
       unawaited(fetchAdminFinancialReports());
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في تسوية أرباح المندوب: $e');
       rethrow;
@@ -3291,7 +3321,7 @@ class AppState extends ChangeNotifier {
 
       unawaited(syncFcmTokenForCurrentUsers());
       listenToOrdersRealtime();
-      notifyListeners();
+      _safeNotifyListeners();
       return true;
     } catch (e) {
       debugPrint('خطأ في دخول المندوب: $e');
@@ -3327,7 +3357,7 @@ class AppState extends ChangeNotifier {
       await prefs.remove('loggedCourierId');
       await prefs.remove('courierSessionJson');
       await _loadSavedNotificationsForCurrentRole();
-      notifyListeners();
+      _safeNotifyListeners();
     } finally {
       _isManualAuthInProgress = false;
     }
@@ -3354,7 +3384,7 @@ class AppState extends ChangeNotifier {
     } else {
       _cartItems.add(item);
     }
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void addCustomOrderToCart({
@@ -3369,12 +3399,12 @@ class AppState extends ChangeNotifier {
       restaurantId: 'خدمة الطلبات الخاصة',
       imageUrl: '',
     ));
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void removeFromCart(String id) {
     _cartItems.removeWhere((item) => item.id == id);
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void updateQuantity(String id, int delta) {
@@ -3384,14 +3414,14 @@ class AppState extends ChangeNotifier {
       if (_cartItems[index].quantity <= 0) {
         _cartItems.removeAt(index);
       }
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
   void clearCart() {
     _cartItems.clear();
     removeCoupon();
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> updateOrderStatus(String id, String status) async {
@@ -3416,7 +3446,7 @@ class AppState extends ChangeNotifier {
         }
         unawaited(fetchPopularStats());
         unawaited(fetchAdminFinancialReports());
-        notifyListeners();
+        _safeNotifyListeners();
         return;
       } catch (_) {}
     }
@@ -3435,7 +3465,7 @@ class AppState extends ChangeNotifier {
     _upsertOrderInList(updated);
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
-    notifyListeners();
+    _safeNotifyListeners();
 
     unawaited(() async {
       final custPhone = updated['phone']?.toString() ?? '';
@@ -3503,7 +3533,7 @@ class AppState extends ChangeNotifier {
           timeout: _fastNetworkTimeout,
         );
         unawaited(fetchProductsFromSupabase());
-        notifyListeners();
+        _safeNotifyListeners();
         return;
       } catch (_) {}
     }
@@ -3514,7 +3544,7 @@ class AppState extends ChangeNotifier {
         .eq('id', id)
         .timeout(_fastNetworkTimeout);
     unawaited(fetchProductsFromSupabase());
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> upsertProduct(ProductModel product) async {
@@ -3542,7 +3572,7 @@ class AppState extends ChangeNotifier {
           timeout: _fastNetworkTimeout,
         );
         unawaited(fetchProductsFromSupabase());
-        notifyListeners();
+        _safeNotifyListeners();
         return;
       } catch (_) {}
     }
@@ -3552,7 +3582,7 @@ class AppState extends ChangeNotifier {
         .upsert(payload)
         .timeout(_fastNetworkTimeout);
     unawaited(fetchProductsFromSupabase());
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   List<ProductModel> _products = [];
@@ -3586,13 +3616,13 @@ class AppState extends ChangeNotifier {
 
       unawaited(_localStorage.cacheProducts(response));
       unawaited(fetchPopularStats());
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('خطأ في جلب المنتجات: $e');
       final localProducts = await _localStorage.getCachedProducts();
       if (localProducts.isNotEmpty) {
         _products = localProducts;
-        notifyListeners();
+        _safeNotifyListeners();
       }
     }
   }
@@ -3668,13 +3698,18 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
+  // FIFO حقيقية (أقدم مفتاح يخرج أولاً، وليس أول عنصر في Set عشوائي)
   void _registerSeenNotificationKey(Map<String, dynamic> notif) {
     final key = _buildNotificationDedupeKey(notif);
-    if (key.isNotEmpty) {
-      _seenNotificationKeys.add(key);
-      if (_seenNotificationKeys.length > 300) {
-        _seenNotificationKeys.remove(_seenNotificationKeys.first);
-      }
+    if (key.isEmpty) return;
+    if (_seenNotificationKeys.contains(key)) return;
+
+    _seenNotificationKeys.add(key);
+    _seenNotificationOrder.add(key);
+
+    while (_seenNotificationOrder.length > 300) {
+      final oldest = _seenNotificationOrder.removeAt(0);
+      _seenNotificationKeys.remove(oldest);
     }
   }
 
@@ -3728,7 +3763,7 @@ class AppState extends ChangeNotifier {
 
       notifications = normalized;
       await _persistNotificationsForCurrentRole();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('تعذر جلب الإشعارات من Supabase: $e');
       await _loadSavedNotificationsForCurrentRole();
@@ -3752,7 +3787,8 @@ class AppState extends ChangeNotifier {
           'order_id': item['order_id'].toString(),
         if (item['chat_id'] != null && item['chat_id'].toString().isNotEmpty)
           'chat_id': item['chat_id'].toString(),
-        'event_type': (item['event_type'] ?? item['type'] ?? 'general').toString(),
+        'event_type':
+            (item['event_type'] ?? item['type'] ?? 'general').toString(),
         'dedupe_key': _buildNotificationDedupeKey(item),
         'additional_data': item['additional_data'] is Map
             ? Map<String, dynamic>.from(item['additional_data'] as Map)
@@ -3778,7 +3814,7 @@ class AppState extends ChangeNotifier {
             Map<String, dynamic>.from(inserted),
           );
           await _persistNotificationsForCurrentRole();
-          notifyListeners();
+          _safeNotifyListeners();
         }
       }
     } catch (e) {
@@ -3805,7 +3841,7 @@ class AppState extends ChangeNotifier {
 
     if (changed) {
       await _persistNotificationsForCurrentRole();
-      notifyListeners();
+      _safeNotifyListeners();
     }
 
     if (id.isNotEmpty) {
@@ -3839,7 +3875,7 @@ class AppState extends ChangeNotifier {
 
     if (changed) {
       await _persistNotificationsForCurrentRole();
-      notifyListeners();
+      _safeNotifyListeners();
     }
 
     try {
@@ -3878,6 +3914,7 @@ class AppState extends ChangeNotifier {
             schema: 'public',
             table: 'notifications',
             callback: (payload) {
+              if (_isDisposed) return;
               final row = Map<String, dynamic>.from(payload.newRecord);
               final rowRole = (row['recipient_role'] ?? '').toString().trim();
               final rowRecipientId =
@@ -3896,7 +3933,7 @@ class AppState extends ChangeNotifier {
               _registerSeenNotificationKey(normalized);
               notifications.insert(0, normalized);
               unawaited(_persistNotificationsForCurrentRole());
-              notifyListeners();
+              _safeNotifyListeners();
             },
           )
           .subscribe();
@@ -3929,7 +3966,7 @@ class AppState extends ChangeNotifier {
       final raw = prefs.getString(key);
       if (raw == null || raw.trim().isEmpty) {
         notifications = [];
-        notifyListeners();
+        _safeNotifyListeners();
         return;
       }
       final decoded = jsonDecode(raw);
@@ -3945,7 +3982,7 @@ class AppState extends ChangeNotifier {
           }
         }
         notifications = loaded;
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (e) {
       debugPrint('تعذر استرجاع الإشعارات المحفوظة: $e');
@@ -3987,13 +4024,16 @@ class AppState extends ChangeNotifier {
     notifications.insert(0, item);
     unawaited(_persistNotificationsForCurrentRole());
     unawaited(_persistNotificationToSupabase(item));
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   String _normalizePhone(String phone) {
-    var clean = phone.trim().replaceAll(' ', '');
+    var clean = phone.trim().replaceAll(' ', '').replaceAll('-', '');
     if (clean.startsWith('+967')) {
       clean = clean.substring(4);
+    }
+    if (clean.startsWith('00967')) {
+      clean = clean.substring(5);
     }
     if (clean.startsWith('0')) {
       clean = clean.substring(1);
@@ -4056,7 +4096,7 @@ class AppState extends ChangeNotifier {
         dedupeKey: _buildNotificationDedupeKey(item),
       ));
     }
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void _upsertOrderInList(Map rawOrder) {
@@ -4105,7 +4145,7 @@ class AppState extends ChangeNotifier {
       _sortOrders();
       unawaited(fetchPopularStats());
       unawaited(fetchAdminFinancialReports());
-      notifyListeners();
+      _safeNotifyListeners();
 
       if (_ordersChannel != null) {
         await supabase.removeChannel(_ordersChannel!);
@@ -4118,6 +4158,7 @@ class AppState extends ChangeNotifier {
             schema: 'public',
             table: 'orders',
             callback: (payload) {
+              if (_isDisposed) return;
               if (payload.eventType == PostgresChangeEvent.insert) {
                 final newRow = payload.newRecord;
                 final alreadyExists = orders.any(
@@ -4191,7 +4232,7 @@ class AppState extends ChangeNotifier {
 
               unawaited(fetchPopularStats());
               unawaited(fetchAdminFinancialReports());
-              notifyListeners();
+              _safeNotifyListeners();
             },
           )
           .subscribe();
@@ -4342,7 +4383,7 @@ class AppState extends ChangeNotifier {
         orderId: orderId?.toString(),
         showSystemLocal: false,
       );
-      notifyListeners();
+      _safeNotifyListeners();
 
       unawaited(() async {
         await _persistUserSessionToPrefs(userProfile!);
@@ -4446,7 +4487,7 @@ class AppState extends ChangeNotifier {
       }
 
       unawaited(fetchAdminFinancialReports());
-      notifyListeners();
+      _safeNotifyListeners();
 
       unawaited(() async {
         final custPhone = updatedOrder['phone']?.toString() ?? '';
@@ -4512,7 +4553,7 @@ class AppState extends ChangeNotifier {
     }
 
     unawaited(fetchAdminFinancialReports());
-    notifyListeners();
+    _safeNotifyListeners();
 
     unawaited(() async {
       final courierName = updatedMap['assigned_courier']?.toString() ?? '';
@@ -4629,7 +4670,7 @@ class AppState extends ChangeNotifier {
 
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
-    notifyListeners();
+    _safeNotifyListeners();
 
     unawaited(() async {
       final custPhone = updatedMap['phone']?.toString() ?? '';
