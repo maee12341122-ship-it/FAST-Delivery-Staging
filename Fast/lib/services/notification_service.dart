@@ -1,20 +1,36 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/order_tracking_screen.dart';
 
-class NotificationService {
-  static const String _appId = '60850bed-4af8-4df1-a2f5-77411630f447';
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('📩 [FCM Background Message]: ${message.messageId}');
+}
 
+class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static void Function(Map<String, dynamic> notificationItem)? onNotificationReceived;
+  static const AndroidNotificationChannel _highImportanceChannel =
+      AndroidNotificationChannel(
+    'high_importance_channel',
+    'تنبيهات صوتية - Fast Delivery',
+    description: 'قناة مخصصة لتنبيهات الطلبات والشات مع الصوت والاهتزاز',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+  );
+
+  static void Function(Map<String, dynamic> notificationItem)?
+      onNotificationReceived;
 
   static int _nextNotificationId() {
     return DateTime.now().microsecondsSinceEpoch % 2147483647;
@@ -34,7 +50,8 @@ class NotificationService {
     return clean;
   }
 
-  static String? _extractOrderIdFromMap(Map<dynamic, dynamic>? data, String fullText) {
+  static String? _extractOrderIdFromMap(
+      Map<dynamic, dynamic>? data, String fullText) {
     if (data != null) {
       final rawId = (data['order_id'] ?? data['related_id'] ?? data['orderId'])
           ?.toString()
@@ -78,20 +95,19 @@ class NotificationService {
     }
   }
 
-  /// ربط المستخدم الحالي بـ OneSignal عبر External ID لتسهيل الاستهداف
+  /// متوافق مع الاستدعاءات القديمة دون الاعتماد على OneSignal
   static Future<void> loginUser(String? userId) async {
     try {
       final cleanId = (userId ?? '').trim();
       if (cleanId.isNotEmpty) {
-        await OneSignal.login(cleanId);
-      } else {
-        await OneSignal.logout();
+        await getFcmTokenSafe();
       }
     } catch (e) {
-      debugPrint('⚠️ تعذر تحديث جلسة OneSignal login/logout: $e');
+      debugPrint('⚠️ تعذر تحديث جلسة FCM loginUser: $e');
     }
   }
 
+  /// تهيئة Firebase والإشعارات المحلية بدون إظهار نافذة طلب الإذن فوراً قبل شاشة الشعار وسياسة الخصوصية
   static Future<void> initialize({
     void Function(String playerId)? onPlayerIdChanged,
     void Function(Map<String, dynamic> notificationItem)? onExternalNotification,
@@ -101,14 +117,17 @@ class NotificationService {
     }
 
     try {
+      await Firebase.initializeApp();
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
       const DarwinInitializationSettings initializationSettingsIOS =
           DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
       );
 
       const InitializationSettings initializationSettings =
@@ -127,81 +146,109 @@ class NotificationService {
         },
       );
 
-      OneSignal.initialize(_appId);
-      await OneSignal.Notifications.requestPermission(true);
+      final androidPlugin = _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidPlugin?.createNotificationChannel(_highImportanceChannel);
 
-      // استقبال الإشعارات الخارجية أثناء فتح التطبيق أو في الخلفية
-      OneSignal.Notifications.addForegroundWillDisplayListener((event) {
-        final notif = event.notification;
-        final additionalMap = notif.additionalData != null
-            ? Map<String, dynamic>.from(notif.additionalData!)
-            : <String, dynamic>{};
+      // استقبال الإشعارات الخارجية أثناء فتح التطبيق (Foreground)
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        final additionalMap = Map<String, dynamic>.from(message.data);
+        final title =
+            message.notification?.title ?? additionalMap['title']?.toString();
+        final body =
+            message.notification?.body ?? additionalMap['body']?.toString();
 
         _recordExternalNotification(
-          title: notif.title,
-          body: notif.body,
+          title: title,
+          body: body,
           additionalData: additionalMap,
         );
 
         final orderId = _extractOrderIdFromMap(
           additionalMap,
-          '${notif.title ?? ''} ${notif.body ?? ''}',
+          '${title ?? ''} ${body ?? ''}',
         );
 
         unawaited(
           showLocalNotification(
-            notif.title ?? 'إشعار جديد 🔔',
-            notif.body ?? '',
+            (title != null && title.trim().isNotEmpty) ? title : 'إشعار جديد 🔔',
+            body ?? '',
             payload: orderId,
           ),
         );
       });
 
-      OneSignal.Notifications.addClickListener((event) {
-        debugPrint(
-            '🚀 [النقر على إشعار OneSignal]: ${event.notification.title}');
-
-        final data = event.notification.additionalData;
-        final additionalMap =
-            data != null ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      // النقر على الإشعار والتطبيق في الخلفية
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('🚀 [النقر على إشعار FCM]: ${message.notification?.title}');
+        final additionalMap = Map<String, dynamic>.from(message.data);
+        final title =
+            message.notification?.title ?? additionalMap['title']?.toString();
+        final body =
+            message.notification?.body ?? additionalMap['body']?.toString();
 
         _recordExternalNotification(
-          title: event.notification.title,
-          body: event.notification.body,
+          title: title,
+          body: body,
           additionalData: additionalMap,
         );
 
-        final fullText =
-            '${event.notification.title ?? ''} ${event.notification.body ?? ''}';
-        final orderId = _extractOrderIdFromMap(data, fullText);
-
+        final fullText = '${title ?? ''} ${body ?? ''}';
+        final orderId = _extractOrderIdFromMap(additionalMap, fullText);
         if (orderId != null && orderId.isNotEmpty) {
           navigateToOrderTracking(orderId);
         }
       });
 
-      OneSignal.User.pushSubscription.addObserver((state) {
-        final newId = state.current.id;
-        debugPrint('📱 [OneSignal Subscription ID الجديد]: $newId');
-        if (newId != null &&
-            newId.trim().isNotEmpty &&
-            onPlayerIdChanged != null) {
-          onPlayerIdChanged(newId.trim());
+      // مراقبة تحديث التوكن تلقائياً
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+        final clean = newToken.trim();
+        debugPrint('📱 [FCM Token الجديد]: $clean');
+        if (clean.isNotEmpty && onPlayerIdChanged != null) {
+          onPlayerIdChanged(clean);
         }
       });
 
-      final String? playerId = OneSignal.User.pushSubscription.id;
-      debugPrint('📱 [OneSignal Subscription ID الحالي]: $playerId');
-      if (playerId != null &&
-          playerId.trim().isNotEmpty &&
-          onPlayerIdChanged != null) {
-        onPlayerIdChanged(playerId.trim());
-      }
-
-      debugPrint('🟢 تم تهيئة نظام الإشعارات (OneSignal & Local) بنجاح');
+      debugPrint('🟢 تم تهيئة نظام الإشعارات (FCM & Local) بنجاح بدون طلب إذن مبكر');
     } catch (e) {
       debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
     }
+  }
+
+  /// يُستدعى فقط بعد شاشة الشعار والموافقة على سياسة الخصوصية
+  static Future<String?> requestPermissionAndFetchToken() async {
+    try {
+      final settings = await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      debugPrint('🔔 حالة إذن FCM: ${settings.authorizationStatus}');
+      return await getFcmTokenSafe();
+    } catch (e) {
+      debugPrint('⚠️ خطأ في طلب إذن FCM: $e');
+      return null;
+    }
+  }
+
+  /// جلب FCM Token بأمان مع إعادة المحاولة عند بطء الشبكة
+  static Future<String?> getFcmTokenSafe({int retries = 3}) async {
+    for (int attempt = 1; attempt <= retries; attempt++) {
+      try {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null && token.trim().isNotEmpty) {
+          debugPrint('📱 [FCM Device Token]: ${token.trim()}');
+          return token.trim();
+        }
+      } catch (e) {
+        debugPrint('⚠️ محاولة $attempt لجلب FCM Token فشلت: $e');
+      }
+      if (attempt < retries) {
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+    return null;
   }
 
   static void navigateToOrderTracking(String orderId) {
@@ -232,14 +279,8 @@ class NotificationService {
     String? identifierValue,
   }) async {
     try {
-      String? playerId = OneSignal.User.pushSubscription.id;
-
-      if (playerId == null || playerId.isEmpty) {
-        await Future.delayed(const Duration(seconds: 2));
-        playerId = OneSignal.User.pushSubscription.id;
-      }
-
-      if (playerId == null || playerId.isEmpty) return;
+      final String? fcmToken = await getFcmTokenSafe();
+      if (fcmToken == null || fcmToken.isEmpty) return;
 
       final client = Supabase.instance.client;
       final cleanTable = tableName.trim();
@@ -250,7 +291,7 @@ class NotificationService {
         if (intAdminId != null) {
           await client
               .from('admins')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .eq('id', intAdminId);
         } else if (identifierValue != null &&
             identifierValue.trim().isNotEmpty) {
@@ -259,7 +300,7 @@ class NotificationService {
               idVal.contains('@') ? idVal.split('@').first : idVal;
           await client
               .from('admins')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .eq('username', usernameVal);
         } else {
           final authUser = client.auth.currentUser;
@@ -269,7 +310,7 @@ class NotificationService {
                 email.contains('@') ? email.split('@').first : email;
             await client
                 .from('admins')
-                .update({'onesignal_player_id': playerId})
+                .update({'fcm_token': fcmToken})
                 .eq('username', usernameVal);
           }
         }
@@ -278,12 +319,12 @@ class NotificationService {
         if (authUser != null && cleanId == authUser.id) {
           await client
               .from('couriers')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .eq('auth_user_id', authUser.id);
         } else {
           await client
               .from('couriers')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .eq('id', cleanId);
         }
       } else if (cleanTable == 'customers') {
@@ -293,29 +334,28 @@ class NotificationService {
           final zeroPhone = '0$normalizedPhone';
           await client
               .from('customers')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .or('phone.eq.$normalizedPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
         } else {
           await client
               .from('customers')
-              .update({'onesignal_player_id': playerId})
+              .update({'fcm_token': fcmToken})
               .eq('id', cleanId);
         }
       } else {
         await client
             .from(cleanTable)
-            .update({'onesignal_player_id': playerId})
+            .update({'fcm_token': fcmToken})
             .eq('id', cleanId);
       }
 
-      debugPrint(
-          '✅ تم حفظ OneSignal Subscription ID ($playerId) في جدول $cleanTable بنجاح');
+      debugPrint('✅ تم حفظ FCM Token ($fcmToken) في جدول $cleanTable بنجاح');
     } catch (e) {
-      debugPrint('⚠️ خطأ في حفظ Player ID في Supabase: $e');
+      debugPrint('⚠️ خطأ في حفظ FCM Token في Supabase: $e');
     }
   }
 
-  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-onesignal-push)
+  /// إرسال الإشعار مباشرة عبر Supabase Edge Function (send-fcm-push)
   static Future<void> sendNotificationToUser({
     List<String>? playerIds,
     String? targetPlayerId,
@@ -334,24 +374,30 @@ class NotificationService {
     if (ids.isEmpty) return;
 
     try {
+      final dataMap = <String, dynamic>{
+        if (additionalData != null) ...additionalData,
+        if (orderId != null) 'order_id': orderId.toString(),
+        if (eventType != null && eventType.trim().isNotEmpty)
+          'event_type': eventType.trim(),
+      };
+
       final payload = <String, dynamic>{
-        'player_ids': ids,
-        'target_player_id': ids.first,
+        'tokens': ids,
+        'token': ids.first,
         'title': title.trim(),
         'body': body.trim(),
         if (orderId != null) 'order_id': orderId.toString(),
         if (eventType != null && eventType.trim().isNotEmpty)
           'event_type': eventType.trim(),
-        if (additionalData != null && additionalData.isNotEmpty)
-          'additional_data': additionalData,
+        'data': dataMap,
       };
 
       final res = await Supabase.instance.client.functions
-          .invoke('send-onesignal-push', body: payload)
+          .invoke('send-fcm-push', body: payload)
           .timeout(const Duration(seconds: 12));
 
       debugPrint(
-          '📨 استجابة send-onesignal-push (${res.status}): ${jsonEncode(res.data)}');
+          '📨 استجابة send-fcm-push (${res.status}): ${jsonEncode(res.data)}');
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار عبر Supabase Edge Function: $e');
     }
@@ -365,7 +411,7 @@ class NotificationService {
     try {
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
           AndroidNotificationDetails(
-        'fast_delivery_sound_channel_v3',
+        'high_importance_channel',
         'تنبيهات صوتية - Fast Delivery',
         channelDescription:
             'قناة مخصصة لتنبيهات الطلبات والشات مع الصوت والاهتزاز',
