@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
-import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 
 class AdminOrdersScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -469,23 +469,25 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
               // 1. حفظ التحديثات في قاعدة البيانات
               appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
 
-              // 2. إرسال إشعار للعميل عبر رقم الهاتف
+              // 2. إرسال إشعار FCM للعميل عبر رقم الهاتف
               try {
                 String customerPhone = order['phone']?.toString() ?? '';
                 if (customerPhone.isNotEmpty) {
                   final custRes = await appState.supabase
                       .from('customers')
-                      .select('onesignal_player_id')
+                      .select('fcm_token')
                       .eq('phone', customerPhone)
                       .maybeSingle();
 
-                  String? customerPlayerId = custRes?['onesignal_player_id']?.toString();
+                  String? customerToken = custRes?['fcm_token']?.toString();
 
-                  if (customerPlayerId != null && customerPlayerId.isNotEmpty) {
-                    await NotificationService.sendNotificationToUser(
-                      targetPlayerId: customerPlayerId,
-                      title: 'تم تسعير طلبك #${orderId} 📦',
+                  if (customerToken != null && customerToken.isNotEmpty) {
+                    await FcmPushService.sendPushToTokens(
+                      tokens: [customerToken],
+                      title: 'تم تسعير طلبك #$orderId 📦',
                       body: 'رسوم التوصيل: $fee ر.ي. قم بمراجعة السعر وقبول الطلب.',
+                      eventType: 'order_priced',
+                      data: {'order_id': orderId.toString()},
                     );
                   }
                 }
@@ -493,14 +495,21 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                 debugPrint('⚠️ خطأ في إرسال إشعار للعميل: $e');
               }
 
-              // 3. إرسال إشعار للمندوب
+              // 3. إرسال إشعار FCM للمندوب
               try {
-                String? courierPlayerId = await appState.getCourierPlayerIdByName(selectedCourier!);
-                if (courierPlayerId != null && courierPlayerId.isNotEmpty) {
-                  await NotificationService.sendNotificationToUser(
-                    targetPlayerId: courierPlayerId,
+                final courierRow = await appState.supabase
+                    .from('couriers')
+                    .select('fcm_token')
+                    .eq('name', selectedCourier!)
+                    .maybeSingle();
+                String? courierToken = courierRow?['fcm_token']?.toString();
+                if (courierToken != null && courierToken.isNotEmpty) {
+                  await FcmPushService.sendPushToTokens(
+                    tokens: [courierToken],
                     title: 'طلب جديد مسند إليك 🛵',
-                    body: 'تم إسناد الطلب #${orderId} إليك للتوصيل.',
+                    body: 'تم إسناد الطلب #$orderId إليك للتوصيل.',
+                    eventType: 'order_assigned',
+                    data: {'order_id': orderId.toString()},
                   );
                 }
               } catch (e) {
