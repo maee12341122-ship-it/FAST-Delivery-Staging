@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_state.dart';
-import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import 'admin_dashboard.dart';
@@ -61,17 +61,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
 
-      // حفظ معرف OneSignal للمشرف بأمان دون تمرير UUID خام كمعرّف رقمي
+      // مزامنة FCM token للمشرف بدون الاعتماد على OneSignal
       final authUserId = appState.supabase.auth.currentUser?.id;
       if (authUserId != null && authUserId.isNotEmpty) {
         try {
-          await NotificationService.saveUserPlayerId(
-            authUserId,
-            'admins',
-            identifierValue: username,
+          final adminRow = await appState.supabase
+              .from('admins')
+              .select('id')
+              .or('username.ilike.$username,username.ilike.${username.split('@').first}')
+              .maybeSingle();
+          await FcmPushService.requestPermissionAndSyncToken(
+            role: 'admin',
+            rowId: adminRow?['id'] ?? authUserId,
           );
         } catch (e) {
-          debugPrint('تعذر حفظ OneSignal Player ID للمشرف: $e');
+          debugPrint('تعذر مزامنة FCM token للمشرف: $e');
         }
       }
 
