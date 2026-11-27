@@ -114,20 +114,15 @@ void main() async {
 
 Future<void> _syncCurrentUserFcmToken(AppState appState) async {
   try {
-    if (appState.isAdminLoggedIn && appState.currentAdminId != null) {
-      await FcmPushService.syncTokenForCurrentUser(
-        role: 'admin',
-        rowId: appState.currentAdminId,
-      );
-    } else if (appState.currentCourier != null && appState.currentCourier!['id'] != null) {
+    if (appState.currentCourier != null && appState.currentCourier!['id'] != null) {
       await FcmPushService.syncTokenForCurrentUser(
         role: 'courier',
         rowId: appState.currentCourier!['id'],
       );
-    } else if (appState.currentCustomer != null && appState.currentCustomer!['id'] != null) {
+    } else if (appState.userProfile != null && appState.userProfile!['id'] != null) {
       await FcmPushService.syncTokenForCurrentUser(
-        role: 'customer',
-        rowId: appState.currentCustomer!['id'],
+        role: appState.isAdminLoggedIn ? 'admin' : 'customer',
+        rowId: appState.userProfile!['id'],
       );
     } else {
       // على الأقل اطبع التوكن لسهولة الاختبار حتى قبل تسجيل الدخول
