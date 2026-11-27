@@ -71,8 +71,13 @@ void main() async {
   try {
     await FcmPushService.initialize(
       onNotificationTap: (payload) {
-        final String title = payload['title']?.toString() ?? '';
-        final String body = payload['body']?.toString() ?? '';
+        final String title = (payload['title'] ?? 'إشعار جديد').toString();
+        final String body = (payload['body'] ?? '').toString();
+        appState.recordExternalPushNotification(
+          title: title,
+          body: body,
+          data: payload,
+        );
         handleNotificationData(payload, title, body);
       },
       onForegroundMessage: (messageData) {
