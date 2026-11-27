@@ -8,7 +8,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    await Firebase.initializeApp();
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
   } catch (e) {
     debugPrint('FCM Background init error: $e');
   }
@@ -31,16 +33,33 @@ class FcmPushService {
   static String? _lastPhone;
   static String? _cachedToken;
   static bool _initialized = false;
+  static Future<void>? _initFuture;
 
-  static Future<void> initialize() async {
-    try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
-      }
-      _initialized = true;
-    } catch (e) {
-      debugPrint('FCM Firebase.initializeApp error: $e');
+  static Future<void> _ensureFirebaseInitialized() async {
+    if (_initialized && Firebase.apps.isNotEmpty) return;
+    if (_initFuture != null) {
+      await _initFuture;
+      return;
     }
+    _initFuture = () async {
+      try {
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+        }
+        _initialized = true;
+      } catch (e) {
+        debugPrint('FCM Firebase.initializeApp error: $e');
+      } finally {
+        _initFuture = null;
+      }
+    }();
+    await _initFuture;
+  }
+
+  static Future<void> initialize({
+    void Function(Map<String, dynamic> payload)? onNotificationTap,
+  }) async {
+    await _ensureFirebaseInitialized();
 
     try {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
@@ -51,7 +70,14 @@ class FcmPushService {
     try {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const initSettings = InitializationSettings(android: androidInit);
-      await _localNotifications.initialize(initSettings);
+      await _localNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          if (onNotificationTap != null && response.payload != null) {
+            onNotificationTap({'raw_payload': response.payload});
+          }
+        },
+      );
 
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<
@@ -89,6 +115,31 @@ class FcmPushService {
       }
     });
 
+    if (onNotificationTap != null) {
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        final combined = <String, dynamic>{
+          ...message.data,
+          if (message.notification?.title != null)
+            'title': message.notification!.title,
+          if (message.notification?.body != null)
+            'body': message.notification!.body,
+        };
+        onNotificationTap(combined);
+      });
+
+      final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMsg != null) {
+        final combined = <String, dynamic>{
+          ...initialMsg.data,
+          if (initialMsg.notification?.title != null)
+            'title': initialMsg.notification!.title,
+          if (initialMsg.notification?.body != null)
+            'body': initialMsg.notification!.body,
+        };
+        onNotificationTap(combined);
+      }
+    }
+
     messagingTokenRefreshListener();
   }
 
@@ -114,10 +165,7 @@ class FcmPushService {
 
   static Future<NotificationSettings?> requestPermissionSafe() async {
     try {
-      if (!_initialized && Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
-        _initialized = true;
-      }
+      await _ensureFirebaseInitialized();
       final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
@@ -145,15 +193,7 @@ class FcmPushService {
   }
 
   static Future<String?> getTokenSafe({int retries = 3}) async {
-    try {
-      if (!_initialized && Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
-        _initialized = true;
-      }
-    } catch (e) {
-      debugPrint('FCM ensureInitialized error: $e');
-    }
-
+    await _ensureFirebaseInitialized();
     await requestPermissionSafe();
 
     for (int attempt = 1; attempt <= retries; attempt++) {
@@ -180,17 +220,14 @@ class FcmPushService {
   }
 
   static String _normalizePhoneDigits(String phone) {
-    var clean = phone.trim().replaceAll(' ', '');
-    if (clean.startsWith('+967')) {
-      clean = clean.substring(4);
+    var digitsOnly = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digitsOnly.startsWith('967') && digitsOnly.length > 9) {
+      digitsOnly = digitsOnly.substring(3);
     }
-    if (clean.startsWith('0')) {
-      clean = clean.substring(1);
+    if (digitsOnly.startsWith('0') && digitsOnly.length > 9) {
+      digitsOnly = digitsOnly.substring(1);
     }
-    if (clean.startsWith('967')) {
-      clean = clean.substring(3);
-    }
-    return clean;
+    return digitsOnly.trim();
   }
 
   static Future<bool> syncTokenForCurrentUser({
@@ -199,8 +236,10 @@ class FcmPushService {
     String? phone,
     String? explicitToken,
   }) async {
-    if (role != null && role.trim().isNotEmpty) _lastRole = role.trim();
-    if (rowId != null) _lastRowId = rowId;
+    if (role != null && role.trim().isNotEmpty) _lastRole = role.trim().toLowerCase();
+    if (rowId != null && rowId.toString().trim().isNotEmpty) {
+      _lastRowId = rowId;
+    }
     if (phone != null && phone.trim().isNotEmpty) _lastPhone = phone.trim();
 
     final effectiveRole = _lastRole;
@@ -240,24 +279,42 @@ class FcmPushService {
       }
 
       if (effectiveId != null) {
-        await supabase
+        final updatedById = await supabase
             .from(table)
             .update({'fcm_token': token})
-            .eq('id', effectiveId);
-        debugPrint('FCM synced to $table by id=$effectiveId');
-        return true;
+            .eq('id', effectiveId)
+            .select('id');
+        if (updatedById.isNotEmpty) {
+          debugPrint('FCM synced to $table by id=$effectiveId');
+          return true;
+        }
+        debugPrint('FCM id=$effectiveId not matched in $table, trying phone fallback...');
       }
 
-      final norm = _normalizePhoneDigits(effectivePhone!);
-      if (norm.isNotEmpty) {
-        final formattedPhone = '+967$norm';
-        final zeroPhone = '0$norm';
-        await supabase
-            .from(table)
-            .update({'fcm_token': token})
-            .or('phone.eq.$norm,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
-        debugPrint('FCM synced to $table by phone=$norm');
-        return true;
+      if (effectivePhone != null && effectivePhone.trim().isNotEmpty) {
+        final rawPhone = effectivePhone.trim();
+        final norm = _normalizePhoneDigits(rawPhone);
+        final candidates = <String>{
+          rawPhone,
+          if (norm.isNotEmpty) norm,
+          if (norm.isNotEmpty) '+967$norm',
+          if (norm.isNotEmpty) '967$norm',
+          if (norm.isNotEmpty) '0$norm',
+        }.where((s) => s.isNotEmpty).toList();
+
+        if (candidates.isNotEmpty) {
+          final orFilter = candidates.map((c) => 'phone.eq.$c').join(',');
+          final updatedByPhone = await supabase
+              .from(table)
+              .update({'fcm_token': token})
+              .or(orFilter)
+              .select('id');
+          if (updatedByPhone.isNotEmpty) {
+            debugPrint('FCM synced to $table by phone candidates=$candidates');
+            return true;
+          }
+          debugPrint('FCM phone candidates=$candidates did not match any row in $table');
+        }
       }
 
       return false;
