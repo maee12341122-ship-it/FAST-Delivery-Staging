@@ -795,8 +795,7 @@ child: ListView(
 shrinkWrap: true,
 children: [
 const Text(
-'مرحباً بك في تطبيق FAST لتوصيل الطلبات
-لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
 style: TextStyle(
 color: Colors.grey, fontSize: 12, height: 1.4),
 ),
@@ -3201,7 +3200,7 @@ _showPopupBadge = true;
 });
 Future.delayed(const Duration(seconds: 4), () {
 if (mounted) {
-_popupAnimController.reverse().then(() {
+_popupAnimController.reverse().then((_) {
 if (mounted) setState(() => _showPopupBadge = false);
 });
 }
@@ -3326,7 +3325,7 @@ _searchScope = 'all';
 }
 });
 if (_isSearching) {
-WidgetsBinding.instance.addPostFrameCallback(() {
+WidgetsBinding.instance.addPostFrameCallback((_) {
 if (mounted) {
 FocusScope.of(context)
 .requestFocus(_searchFocusNode);
@@ -4160,7 +4159,7 @@ color: isSelected
 selected: isSelected,
 selectedColor: accent,
 backgroundColor: cardBg,
-onSelected: () {
+onSelected: (_) {
 HapticFeedback.selectionClick();
 setState(() {
 selectedStoreSubCategory = sectionName;
