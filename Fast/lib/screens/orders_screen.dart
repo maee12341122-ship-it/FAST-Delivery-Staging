@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../services/fcm_push_service.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
-import '../services/notification_service.dart';
 import 'order_tracking_screen.dart'; // 🚀 استيراد شاشة التتبع والخرائط الحية
 
 class OrdersScreen extends StatefulWidget {
@@ -57,29 +57,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     final totalPrice = double.tryParse(order['total_price']?.toString() ?? '0') ?? (productsTotal + deliveryFee);
 
                     final notificationKey = '$orderId-$status';
-                    if (!_notifiedOrders.contains(notificationKey)) {
-                      if (status == 'pricingSentToCustomer') {
-                        _notifiedOrders.add(notificationKey);
-                        NotificationService.showLocalNotification(
-                          'تحديد سعر جديد للطلب #$orderId 🔔',
-                          'تم تحديد رسوم التوصيل وإجمالي السعر، انقر للموافقة.',
-                          payload: orderId,
-                        );
-                      } else if (status == 'onTheWay') {
-                        _notifiedOrders.add(notificationKey);
-                        NotificationService.showLocalNotification(
-                          'المندوب في الطريق 🛵',
-                          'خرج المندوب لتوصيل طلبك رقم #$orderId الآن!',
-                          payload: orderId,
-                        );
-                      } else if (status == 'delivered') {
-                        _notifiedOrders.add(notificationKey);
-                        NotificationService.showLocalNotification(
-                          'تم توصيل الطلب بنجاح ✅',
-                          'شكراً لاستخدامك فاست ديليفري، نتمنى لك وقتاً سعيداً!',
-                          payload: orderId,
-                        );
-                      }
+                    if (!_notifiedOrders.contains(notificationKey) &&
+                        (status == 'pricingSentToCustomer' ||
+                            status == 'onTheWay' ||
+                            status == 'delivered')) {
+                      _notifiedOrders.add(notificationKey);
                     }
 
                     return Card(
