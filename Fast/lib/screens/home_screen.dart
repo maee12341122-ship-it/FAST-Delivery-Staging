@@ -878,7 +878,22 @@ class _HomeScreenState extends State<HomeScreen>
                     Navigator.pop(dialogCtx);
                     // طلب إذن إشعارات FCM ومزامنة التوكن بعد الموافقة على سياسة الخصوصية
                     unawaited(() async {
-                      await FcmPushService.requestPermissionAndFetchToken();
+                      String? role;
+                      dynamic rowId;
+                      if (appState.isAdminLoggedIn) {
+                        role = 'admin';
+                        rowId = appState.userProfile?['id'];
+                      } else if (appState.currentCourier != null) {
+                        role = 'courier';
+                        rowId = appState.currentCourier?['id'];
+                      } else if (appState.userProfile != null) {
+                        role = 'customer';
+                        rowId = appState.userProfile?['id'];
+                      }
+                      await FcmPushService.requestPermissionAndSyncToken(
+                        role: role,
+                        rowId: rowId,
+                      );
                       await appState.syncFcmTokenForCurrentUsers();
                     }());
                   },
