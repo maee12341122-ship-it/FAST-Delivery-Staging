@@ -565,7 +565,10 @@ class AppState extends ChangeNotifier {
   Future<void> syncFcmTokenForCurrentUsers() async {
     try {
       final token = await FcmPushService.getTokenSafe();
-      if (token == null || token.trim().isEmpty) return;
+      if (token == null || token.trim().isEmpty) {
+        debugPrint('FCM sync skipped: token is null/empty');
+        return;
+      }
       final cleanToken = token.trim();
 
       final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
@@ -578,7 +581,10 @@ class AppState extends ChangeNotifier {
               .update({'fcm_token': cleanToken})
               .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
               .timeout(_fastNetworkTimeout);
-        } catch (_) {}
+          debugPrint('FCM synced for customer phone: $cleanPhone');
+        } catch (e) {
+          debugPrint('FCM customer update error: $e');
+        }
 
         if (isAdminLoggedIn) {
           try {
@@ -587,7 +593,10 @@ class AppState extends ChangeNotifier {
                 .update({'fcm_token': cleanToken})
                 .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
                 .timeout(_fastNetworkTimeout);
-          } catch (_) {}
+            debugPrint('FCM synced for admin phone: $cleanPhone');
+          } catch (e) {
+            debugPrint('FCM admin update error: $e');
+          }
         }
       }
 
@@ -598,7 +607,10 @@ class AppState extends ChangeNotifier {
               .update({'fcm_token': cleanToken})
               .eq('id', currentCourier!['id'])
               .timeout(_fastNetworkTimeout);
-        } catch (_) {}
+          debugPrint('FCM synced for courier id: ${currentCourier!['id']}');
+        } catch (e) {
+          debugPrint('FCM courier update error: $e');
+        }
       }
     } catch (e) {
       debugPrint('تعذر مزامنة FCM Token: $e');
