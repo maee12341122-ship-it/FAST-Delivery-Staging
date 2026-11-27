@@ -41,7 +41,8 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: isError ? const Color(0xFF2B1618) : const Color(0xFF16291C),
+        backgroundColor:
+            isError ? const Color(0xFF2B1618) : const Color(0xFF16291C),
       ),
     );
   }
@@ -174,9 +175,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                         TextFormField(
                           controller: _usernameController,
                           focusNode: _usernameFocus,
-                          keyboardType: TextInputAction.next == TextInputAction.next
-                              ? TextInputType.text
-                              : TextInputType.text,
+                          keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
                           enableSuggestions: false,
