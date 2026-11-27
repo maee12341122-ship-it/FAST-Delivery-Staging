@@ -52,11 +52,13 @@ class _HomeScreenState extends State<HomeScreen>
   // مؤقت Debounce لتنعيم البحث ومنع التقطيع أثناء الكتابة
   Timer? _searchDebounce;
   String _debouncedSearchQuery = '';
+  Timer? _popupHideTimer;
 
   final ScrollController _shopScrollController = ScrollController();
   final ScrollController _otherOrdersScrollController = ScrollController();
   bool _showScrollToTop = false;
   bool _isPrivacyDialogOpen = false;
+  bool _isPricingDialogShowing = false;
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -74,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen>
   final TextEditingController _giftPharmaOrderDetailsController =
       TextEditingController();
 
-  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressDescriptionController = TextEditingController();
@@ -91,6 +92,14 @@ class _HomeScreenState extends State<HomeScreen>
 
   static const String _supportPhoneDisplay = '775145534';
   static const String _supportPhoneIntl = '967775145534';
+  static const String _karimiAccountNumber = '2655872';
+
+  static const List<String> _defaultGiftStores = [
+    'شغف',
+    'فلاورز',
+    'دار التحف والهدايا',
+    'قصر التحف والهدايا',
+  ];
 
   Color _accent(AppState appState) =>
       appState.isDarkMode ? Colors.amber : const Color(0xFF0D47A1);
@@ -127,7 +136,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String formatLocationAddress(String? rawAddress) {
-    if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة';
+    if (rawAddress == null || rawAddress.trim().isEmpty) {
+      return 'تعز - مركز المدينة';
+    }
     if (rawAddress.contains('(') && rawAddress.contains(',')) {
       if (rawAddress.contains('13.57') || rawAddress.contains('44.00')) {
         return 'منطقة دي لوكس، تعز';
@@ -150,8 +161,11 @@ class _HomeScreenState extends State<HomeScreen>
     return c == 'هدايا واكسسوارات' || c == 'هدايا' || c == 'الهدايا';
   }
 
-  bool _isGiftOrPharmacyCategory(String? categoryName) {
-    return _isPharmacyCategory(categoryName) || _isGiftCategory(categoryName);
+  bool _isHomeProjectCategory(String? categoryName) {
+    final c = (categoryName ?? '').trim().toLowerCase();
+    return c == 'مشاريع منزلية' ||
+        c == 'المشاريع المنزلية' ||
+        c == 'home_projects';
   }
 
   Future<List<dynamic>> _fetchActivePromoBanners() async {
@@ -241,7 +255,6 @@ class _HomeScreenState extends State<HomeScreen>
         _debouncedSearchQuery = val.trim().toLowerCase();
       });
     });
-    // تحديث فوري فقط لإظهار/إخفاء زر المسح X
     setState(() {});
   }
 
@@ -322,12 +335,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     }
-    for (final giftStore in [
-      'شغف',
-      'فلاورز',
-      'دار التحف والهدايا',
-      'قصر التحف والهدايا'
-    ]) {
+    for (final giftStore in _defaultGiftStores) {
       if (giftStore.toLowerCase().contains(query)) {
         uniqueStores.putIfAbsent(
           giftStore.toLowerCase(),
@@ -357,8 +365,7 @@ class _HomeScreenState extends State<HomeScreen>
         return p.category.trim();
       }
     }
-    if (['شغف', 'فلاورز', 'دار التحف والهدايا', 'قصر التحف والهدايا']
-        .any((s) => s.toLowerCase() == lower)) {
+    if (_defaultGiftStores.any((s) => s.toLowerCase() == lower)) {
       return 'هدايا واكسسوارات';
     }
     return 'المطاعم';
@@ -979,6 +986,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _popupHideTimer?.cancel();
     _promoPageController.dispose();
     _shopScrollController.removeListener(_onShopScroll);
     _shopScrollController.dispose();
@@ -1046,8 +1054,7 @@ class _HomeScreenState extends State<HomeScreen>
                   shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات
-لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(
                           color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
@@ -1122,7 +1129,9 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
         ),
-      );
+      ).whenComplete(() {
+        _isPrivacyDialogOpen = false;
+      });
     }
   }
 
@@ -1150,7 +1159,7 @@ class _HomeScreenState extends State<HomeScreen>
         'https://wa.me/$_supportPhoneIntl?text=${Uri.encodeComponent(message)}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    } else if (mounted) {
       final appState = Provider.of<AppState>(context, listen: false);
       await appState.openFastWhatsApp(message: message);
     }
@@ -1936,6 +1945,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _handleProductTapOrAdd(
       BuildContext context, AppState appState, ProductModel product) async {
     await appState.fetchProductModifiers(product.id);
+    if (!context.mounted) return;
     if (appState.productModifiers.isEmpty) {
       appState.addToCart(CartItemModel(
         id: product.id,
@@ -1946,15 +1956,12 @@ class _HomeScreenState extends State<HomeScreen>
         imageUrl: product.imageUrl,
       ));
       HapticFeedback.lightImpact();
-      if (context.mounted) {
-        _showCleanSnackBar(
-          context,
-          'تمت إضافة ${product.name} للسلة بنجاح',
-          duration: const Duration(milliseconds: 900),
-        );
-      }
+      _showCleanSnackBar(
+        context,
+        'تمت إضافة ${product.name} للسلة بنجاح',
+        duration: const Duration(milliseconds: 900),
+      );
     } else {
-      if (!context.mounted) return;
       _showProductModifiersDialog(context, appState, product);
     }
   }
@@ -2462,133 +2469,137 @@ class _HomeScreenState extends State<HomeScreen>
     bool isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
     final accent = _accent(appState);
-    await showDialog(
-      context: parentContext,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            backgroundColor: cardBg,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(Icons.star, color: accent),
-                const SizedBox(width: 8),
-                Text('تقييم المندوب ($courierName)',
-                    style: TextStyle(
-                        color: accent,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                    'كيف كانت تجربة التوصيل وسرعة الخدمة مع المندوب؟',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(
-                        index < rating ? Icons.star : Icons.star_border,
-                        color: accent,
-                        size: 32,
-                      ),
-                      onPressed: isSubmitting
-                          ? null
-                          : () {
-                              setDialogState(() {
-                                rating = (index + 1).toDouble();
-                              });
-                            },
-                    );
-                  }),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: commentController,
-                  style: TextStyle(color: textColor),
-                  decoration: InputDecoration(
-                    labelText: 'ملاحظات أو تعليق (اختياري)',
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: appState.isDarkMode
-                        ? const Color(0xFF121212)
-                        : Colors.grey[100],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () => Navigator.of(dialogContext).pop(),
-                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+    try {
+      await showDialog(
+        context: parentContext,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: cardBg,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.star, color: accent),
+                  const SizedBox(width: 8),
+                  Text('تقييم المندوب ($courierName)',
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                ],
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: accent),
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setDialogState(() => isSubmitting = true);
-                        try {
-                          await appState.submitCourierRating(
-                            orderId: orderId,
-                            courierName: courierName,
-                            rating: rating,
-                            reviewText: commentController.text.trim(),
-                          );
-                          if (mounted) setState(() {});
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop();
-                          }
-                          if (parentContext.mounted) {
-                            _showCleanSnackBar(parentContext,
-                                'شكراً لك! تم إرسال تقييم المندوب بنجاح');
-                          }
-                        } catch (e) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() => isSubmitting = false);
-                          }
-                          if (parentContext.mounted) {
-                            _showCleanSnackBar(
-                              parentContext,
-                              e.toString().replaceAll('Exception: ', ''),
-                              backgroundColor: Colors.redAccent,
-                            );
-                          }
-                        }
-                      },
-                child: isSubmitting
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: appState.isDarkMode
-                              ? Colors.black
-                              : Colors.white,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                      'كيف كانت تجربة التوصيل وسرعة الخدمة مع المندوب؟',
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < rating ? Icons.star : Icons.star_border,
+                          color: accent,
+                          size: 32,
                         ),
-                      )
-                    : Text('إرسال التقييم',
-                        style: TextStyle(
+                        onPressed: isSubmitting
+                            ? null
+                            : () {
+                                setDialogState(() {
+                                  rating = (index + 1).toDouble();
+                                });
+                              },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: commentController,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      labelText: 'ملاحظات أو تعليق (اختياري)',
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      border: const OutlineInputBorder(),
+                      filled: true,
+                      fillColor: appState.isDarkMode
+                          ? const Color(0xFF121212)
+                          : Colors.grey[100],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child:
+                      const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: accent),
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            await appState.submitCourierRating(
+                              orderId: orderId,
+                              courierName: courierName,
+                              rating: rating,
+                              reviewText: commentController.text.trim(),
+                            );
+                            if (mounted) setState(() {});
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                            if (parentContext.mounted) {
+                              _showCleanSnackBar(parentContext,
+                                  'شكراً لك! تم إرسال تقييم المندوب بنجاح');
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => isSubmitting = false);
+                            }
+                            if (parentContext.mounted) {
+                              _showCleanSnackBar(
+                                parentContext,
+                                e.toString().replaceAll('Exception: ', ''),
+                                backgroundColor: Colors.redAccent,
+                              );
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                             color: appState.isDarkMode
                                 ? Colors.black
                                 : Colors.white,
-                            fontWeight: FontWeight.bold)),
-              ),
-            ],
+                          ),
+                        )
+                      : Text('إرسال التقييم',
+                          style: TextStyle(
+                              color: appState.isDarkMode
+                                  ? Colors.black
+                                  : Colors.white,
+                              fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    commentController.dispose();
+      );
+    } finally {
+      commentController.dispose();
+    }
   }
 
   Future<void> _showRestaurantRatingDialog(
@@ -2602,133 +2613,137 @@ class _HomeScreenState extends State<HomeScreen>
     bool isSubmitting = false;
     final TextEditingController commentController = TextEditingController();
     final accent = _accent(appState);
-    await showDialog(
-      context: parentContext,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            backgroundColor: cardBg,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(Icons.restaurant_menu, color: accent),
-                const SizedBox(width: 8),
-                Text('تقييم مطعم ($restaurantName)',
-                    style: TextStyle(
-                        color: accent,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('كيف كانت جودة الطعام والوجبات من هذا المطعم؟',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      icon: Icon(
-                        index < rating ? Icons.star : Icons.star_border,
-                        color: accent,
-                        size: 32,
-                      ),
-                      onPressed: isSubmitting
-                          ? null
-                          : () {
-                              setDialogState(() {
-                                rating = (index + 1).toDouble();
-                              });
-                            },
-                    );
-                  }),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: commentController,
-                  style: TextStyle(color: textColor),
-                  decoration: InputDecoration(
-                    labelText: 'ملاحظات عن الطعام (اختياري)',
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: appState.isDarkMode
-                        ? const Color(0xFF121212)
-                        : Colors.grey[100],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () => Navigator.of(dialogContext).pop(),
-                child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+    try {
+      await showDialog(
+        context: parentContext,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: cardBg,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.restaurant_menu, color: accent),
+                  const SizedBox(width: 8),
+                  Text('تقييم مطعم ($restaurantName)',
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                ],
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: accent),
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setDialogState(() => isSubmitting = true);
-                        try {
-                          await appState.submitRestaurantRating(
-                            orderId: orderId,
-                            rating: rating,
-                            reviewText: commentController.text.trim(),
-                            restaurantName: restaurantName,
-                          );
-                          unawaited(_fetchCustomerRatingsSummaries());
-                          if (mounted) setState(() {});
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop();
-                          }
-                          if (parentContext.mounted) {
-                            _showCleanSnackBar(parentContext,
-                                'شكراً لك! تم إرسال تقييم المطعم بنجاح');
-                          }
-                        } catch (e) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() => isSubmitting = false);
-                          }
-                          if (parentContext.mounted) {
-                            _showCleanSnackBar(
-                              parentContext,
-                              e.toString().replaceAll('Exception: ', ''),
-                              backgroundColor: Colors.redAccent,
-                            );
-                          }
-                        }
-                      },
-                child: isSubmitting
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: appState.isDarkMode
-                              ? Colors.black
-                              : Colors.white,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('كيف كانت جودة الطعام والوجبات من هذا المطعم؟',
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < rating ? Icons.star : Icons.star_border,
+                          color: accent,
+                          size: 32,
                         ),
-                      )
-                    : Text('إرسال التقييم',
-                        style: TextStyle(
+                        onPressed: isSubmitting
+                            ? null
+                            : () {
+                                setDialogState(() {
+                                  rating = (index + 1).toDouble();
+                                });
+                              },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: commentController,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      labelText: 'ملاحظات عن الطعام (اختياري)',
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      border: const OutlineInputBorder(),
+                      filled: true,
+                      fillColor: appState.isDarkMode
+                          ? const Color(0xFF121212)
+                          : Colors.grey[100],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child:
+                      const Text('إغلاق', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: accent),
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            await appState.submitRestaurantRating(
+                              orderId: orderId,
+                              rating: rating,
+                              reviewText: commentController.text.trim(),
+                              restaurantName: restaurantName,
+                            );
+                            unawaited(_fetchCustomerRatingsSummaries());
+                            if (mounted) setState(() {});
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                            if (parentContext.mounted) {
+                              _showCleanSnackBar(parentContext,
+                                  'شكراً لك! تم إرسال تقييم المطعم بنجاح');
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => isSubmitting = false);
+                            }
+                            if (parentContext.mounted) {
+                              _showCleanSnackBar(
+                                parentContext,
+                                e.toString().replaceAll('Exception: ', ''),
+                                backgroundColor: Colors.redAccent,
+                              );
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                             color: appState.isDarkMode
                                 ? Colors.black
                                 : Colors.white,
-                            fontWeight: FontWeight.bold)),
-              ),
-            ],
+                          ),
+                        )
+                      : Text('إرسال التقييم',
+                          style: TextStyle(
+                              color: appState.isDarkMode
+                                  ? Colors.black
+                                  : Colors.white,
+                              fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    commentController.dispose();
+      );
+    } finally {
+      commentController.dispose();
+    }
   }
 
   void _showEnterPriceDialog(
@@ -3154,7 +3169,6 @@ class _HomeScreenState extends State<HomeScreen>
                                     ),
                                   ],
                                   const SizedBox(height: 12),
-                                  // ملخص الفاتورة السريع قبل التأكيد
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
@@ -3249,7 +3263,7 @@ class _HomeScreenState extends State<HomeScreen>
                                                     fontSize: 11,
                                                     fontWeight:
                                                         FontWeight.bold)),
-                                            Text('2655872',
+                                            Text(_karimiAccountNumber,
                                                 style: TextStyle(
                                                     color: textColor,
                                                     fontSize: 14,
@@ -3264,9 +3278,9 @@ class _HomeScreenState extends State<HomeScreen>
                                           onPressed: () {
                                             Clipboard.setData(
                                                 const ClipboardData(
-                                                    text: '2655872'));
+                                                    text: _karimiAccountNumber));
                                             _showCleanSnackBar(context,
-                                                'تم نسخ رقم حاسب الكريمي (2655872) بنجاح');
+                                                'تم نسخ رقم حاسب الكريمي ($_karimiAccountNumber) بنجاح');
                                           },
                                         ),
                                       ],
@@ -3450,6 +3464,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _checkAndShowPricingDialog(
       BuildContext context, AppState appState, Color cardBg, Color textColor) {
     if (_isPrivacyDialogOpen ||
+        _isPricingDialogShowing ||
         !appState.hasAcceptedPrivacyPolicy ||
         appState.userProfile == null ||
         appState.isAdminLoggedIn ||
@@ -3463,8 +3478,12 @@ class _HomeScreenState extends State<HomeScreen>
               status == 'pricing_sent_to_customer') &&
           !_shownPricingDialogs.contains(orderId)) {
         _shownPricingDialogs.add(orderId);
+        _isPricingDialogShowing = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!context.mounted) return;
+          if (!context.mounted) {
+            _isPricingDialogShowing = false;
+            return;
+          }
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -3538,8 +3557,11 @@ class _HomeScreenState extends State<HomeScreen>
                 ],
               ),
             ),
-          );
+          ).whenComplete(() {
+            _isPricingDialogShowing = false;
+          });
         });
+        break;
       }
     }
   }
@@ -3614,15 +3636,13 @@ class _HomeScreenState extends State<HomeScreen>
       _latestNotificationText =
           appState.latestNotificationMessage ?? 'لديك إشعار جديد!';
       _popupAnimController.forward(from: 0.0);
-      setState(() {
-        _showPopupBadge = true;
-      });
-      Future.delayed(const Duration(seconds: 4), () {
-        if (mounted) {
-          _popupAnimController.reverse().then((_) {
-            if (mounted) setState(() => _showPopupBadge = false);
-          });
-        }
+      _showPopupBadge = true;
+      _popupHideTimer?.cancel();
+      _popupHideTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        _popupAnimController.reverse().then((_) {
+          if (mounted) setState(() => _showPopupBadge = false);
+        });
       });
       _previousUnreadCount = appState.unreadNotificationsCount;
     } else if (appState.unreadNotificationsCount < _previousUnreadCount) {
@@ -3635,7 +3655,11 @@ class _HomeScreenState extends State<HomeScreen>
     final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
     final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
 
-    _checkAndShowPricingDialog(context, appState, cardBg, textColor);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkAndShowPricingDialog(context, appState, cardBg, textColor);
+      }
+    });
 
     final List<Widget> pages = [
       _buildShopTab(appState, cardBg, textColor),
@@ -4168,27 +4192,31 @@ class _HomeScreenState extends State<HomeScreen>
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10))),
                     onPressed: () {
-                      if (_customItemNameController.text.isNotEmpty &&
-                          _customItemPriceController.text.isNotEmpty) {
-                        final price =
-                            double.tryParse(_customItemPriceController.text) ??
-                                1000.0;
-                        final nameText = _customItemNameController.text.trim();
-                        final notesText =
-                            _customItemNotesController.text.trim();
-                        final combinedName = notesText.isNotEmpty
-                            ? '$nameText — ملاحظة للمندوب: $notesText'
-                            : nameText;
-                        appState.addCustomOrderToCart(
-                            customName: combinedName,
-                            estimatedPrice: price);
-                        _customItemNameController.clear();
-                        _customItemPriceController.clear();
-                        _customItemNotesController.clear();
-                        FocusScope.of(context).unfocus();
-                        _showCleanSnackBar(
-                            context, 'تمت إضافة الطلب الخاص للسلة');
+                      final nameText = _customItemNameController.text.trim();
+                      final priceText = _customItemPriceController.text.trim();
+                      final parsedPrice = double.tryParse(priceText);
+                      if (nameText.isEmpty) {
+                        _showCleanSnackBar(context, 'الرجاء إدخال تفاصيل الطلب');
+                        return;
                       }
+                      if (parsedPrice == null || parsedPrice <= 0) {
+                        _showCleanSnackBar(
+                            context, 'الرجاء إدخال سعر تقديري صحيح أكبر من صفر');
+                        return;
+                      }
+                      final notesText = _customItemNotesController.text.trim();
+                      final combinedName = notesText.isNotEmpty
+                          ? '$nameText — ملاحظة للمندوب: $notesText'
+                          : nameText;
+                      appState.addCustomOrderToCart(
+                          customName: combinedName,
+                          estimatedPrice: parsedPrice);
+                      _customItemNameController.clear();
+                      _customItemPriceController.clear();
+                      _customItemNotesController.clear();
+                      FocusScope.of(context).unfocus();
+                      _showCleanSnackBar(
+                          context, 'تمت إضافة الطلب الخاص للسلة');
                     },
                     child: Text('إضافة للسلة',
                         style: TextStyle(
@@ -4212,14 +4240,12 @@ class _HomeScreenState extends State<HomeScreen>
     final bool isGiftSelected =
         _isGiftCategory(selectedCategory) && !hasActiveSearch;
 
-    List filteredProducts = [];
+    List<ProductModel> filteredProducts = [];
     final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
         selectedCategory == 'حلويات ومعجنات' ||
-        selectedCategory == 'هدايا واكسسوارات' ||
-        selectedCategory == 'هدايا' ||
+        _isGiftCategory(selectedCategory) ||
         selectedCategory == 'البقالات' ||
-        selectedCategory == 'مشاريع منزلية' ||
-        selectedCategory == 'المشاريع المنزلية';
+        _isHomeProjectCategory(selectedCategory);
 
     if (isPharmacyDirect) {
       filteredProducts = const [];
@@ -4229,8 +4255,7 @@ class _HomeScreenState extends State<HomeScreen>
         final sCat = selectedCategory.trim().toLowerCase();
         final matchesCategory = selectedCategory == 'الكل' ||
             pCat == sCat ||
-            ((sCat == 'مشاريع منزلية' || sCat == 'المشاريع المنزلية') &&
-                (pCat == 'مشاريع منزلية' || pCat == 'المشاريع المنزلية')) ||
+            (_isHomeProjectCategory(sCat) && _isHomeProjectCategory(pCat)) ||
             (_isGiftCategory(sCat) && _isGiftCategory(pCat));
         final matchesRestaurant =
             p.restaurantName.trim().toLowerCase() ==
@@ -4300,16 +4325,13 @@ class _HomeScreenState extends State<HomeScreen>
             Builder(
               builder: (context) {
                 final targetCat = selectedCategory.trim().toLowerCase();
-                final isHomeProjCat = targetCat == 'مشاريع منزلية' ||
-                    targetCat == 'المشاريع المنزلية';
+                final isHomeProjCat = _isHomeProjectCategory(targetCat);
                 final isGiftCat = _isGiftCategory(targetCat);
 
                 bool matchesTargetCategory(String rawCat) {
                   final c = rawCat.trim().toLowerCase();
                   if (isHomeProjCat) {
-                    return c == 'مشاريع منزلية' ||
-                        c == 'المشاريع المنزلية' ||
-                        c == 'home_projects';
+                    return _isHomeProjectCategory(c);
                   }
                   if (isGiftCat) {
                     return _isGiftCategory(c);
@@ -4367,12 +4389,7 @@ class _HomeScreenState extends State<HomeScreen>
                   }
                 }
                 if (isGiftCat) {
-                  for (final defaultGiftStore in [
-                    'شغف',
-                    'فلاورز',
-                    'دار التحف والهدايا',
-                    'قصر التحف والهدايا',
-                  ]) {
+                  for (final defaultGiftStore in _defaultGiftStores) {
                     addOrEnrichStore({
                       'name': defaultGiftStore,
                       'logo_url': '',
@@ -4744,275 +4761,275 @@ class _HomeScreenState extends State<HomeScreen>
                   final int pCount = _productRatingCounts[pKey] ?? 0;
                   return RepaintBoundary(
                     child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () {
-                        if (isVariable) {
-                          _showEnterPriceDialog(context, appState, product);
-                        } else {
-                          _handleProductTapOrAdd(context, appState, product);
-                        }
-                      },
-                      child: Ink(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          borderRadius: BorderRadius.circular(14),
-                          border:
-                              Border.all(color: accent.withOpacity(0.35)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.12),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                      child: product.imageUrl.isNotEmpty
-                                          ? CachedNetworkImage(
-                                              imageUrl: product.imageUrl,
-                                              width: double.infinity,
-                                              fit: BoxFit.cover,
-                                              placeholder: (context, url) =>
-                                                  Center(
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                              color: accent,
-                                                              strokeWidth:
-                                                                  2)),
-                                              errorWidget: (context, url,
-                                                      error) =>
-                                                  Container(
-                                                color:
-                                                    accent.withOpacity(0.1),
-                                                child: Icon(Icons.fastfood,
-                                                    color: accent,
-                                                    size: 32),
-                                              ),
-                                            )
-                                          : Container(
-                                              width: double.infinity,
-                                              color:
-                                                  accent.withOpacity(0.15),
-                                              child: Icon(Icons.fastfood,
-                                                  color: accent, size: 32),
-                                            ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 6,
-                                    left: 6,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        HapticFeedback.lightImpact();
-                                        appState.toggleFavorite(product.id);
-                                        _showCleanSnackBar(
-                                          context,
-                                          !isFav
-                                              ? 'تمت إضافة ${product.name} إلى المفضلة'
-                                              : 'تمت إزالة ${product.name} من المفضلة',
-                                          duration:
-                                              const Duration(milliseconds: 800),
-                                        );
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(5),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              Colors.black.withOpacity(0.55),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          isFav
-                                              ? Icons.favorite
-                                              : Icons.favorite_border,
-                                          color: isFav
-                                              ? Colors.redAccent
-                                              : Colors.white,
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              product.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  color: textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13.5),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              product.restaurantName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.grey, fontSize: 11),
-                            ),
-                            if (pRating != null) ...[
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  Icon(Icons.star_rounded,
-                                      size: 14,
-                                      color: appState.isDarkMode
-                                          ? Colors.amber
-                                          : Colors.amber.shade700),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '${pRating.toStringAsFixed(1)} ($pCount)',
-                                    style: TextStyle(
-                                      color: textColor.withOpacity(0.85),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          if (isVariable) {
+                            _showEnterPriceDialog(context, appState, product);
+                          } else {
+                            _handleProductTapOrAdd(context, appState, product);
+                          }
+                        },
+                        child: Ink(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border:
+                                Border.all(color: accent.withOpacity(0.35)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.12),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
                             ],
-                            const SizedBox(height: 4),
-                            Text(
-                              isVariable
-                                  ? 'يدوي'
-                                  : '${_formatPrice(product.price)} ر.ي',
-                              style: TextStyle(
-                                  color: accent,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13),
-                            ),
-                            const SizedBox(height: 8),
-                            isVariable
-                                ? SizedBox(
-                                    width: double.infinity,
-                                    height: 36,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: accent,
-                                        padding: EdgeInsets.zero,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(10)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        child: product.imageUrl.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: product.imageUrl,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                placeholder: (context, url) =>
+                                                    Center(
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                                color: accent,
+                                                                strokeWidth:
+                                                                    2)),
+                                                errorWidget: (context, url,
+                                                        error) =>
+                                                    Container(
+                                                  color:
+                                                      accent.withOpacity(0.1),
+                                                  child: Icon(Icons.fastfood,
+                                                      color: accent,
+                                                      size: 32),
+                                                ),
+                                              )
+                                            : Container(
+                                                width: double.infinity,
+                                                color:
+                                                    accent.withOpacity(0.15),
+                                                child: Icon(Icons.fastfood,
+                                                    color: accent, size: 32),
+                                              ),
                                       ),
-                                      onPressed: () =>
-                                          _showEnterPriceDialog(
-                                              context, appState, product),
-                                      child: Text('حدد السعر',
-                                          style: TextStyle(
-                                              color: appState.isDarkMode
-                                                  ? Colors.black
-                                                  : Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold)),
                                     ),
-                                  )
-                                : (qtyInCart == 0
-                                    ? SizedBox(
-                                        width: double.infinity,
-                                        height: 36,
-                                        child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: accent,
-                                            padding: EdgeInsets.zero,
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                        10)),
+                                    Positioned(
+                                      top: 6,
+                                      left: 6,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          HapticFeedback.lightImpact();
+                                          appState.toggleFavorite(product.id);
+                                          _showCleanSnackBar(
+                                            context,
+                                            !isFav
+                                                ? 'تمت إضافة ${product.name} إلى المفضلة'
+                                                : 'تمت إزالة ${product.name} من المفضلة',
+                                            duration:
+                                                const Duration(milliseconds: 800),
+                                          );
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(5),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                Colors.black.withOpacity(0.55),
+                                            shape: BoxShape.circle,
                                           ),
-                                          onPressed: () =>
-                                              _handleProductTapOrAdd(
-                                                  context,
-                                                  appState,
-                                                  product),
-                                          child: Text('إضافة',
-                                              style: TextStyle(
-                                                  color: appState.isDarkMode
-                                                      ? Colors.black
-                                                      : Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight:
-                                                      FontWeight.bold)),
+                                          child: Icon(
+                                            isFav
+                                                ? Icons.favorite
+                                                : Icons.favorite_border,
+                                            color: isFav
+                                                ? Colors.redAccent
+                                                : Colors.white,
+                                            size: 18,
+                                          ),
                                         ),
-                                      )
-                                    : Container(
-                                        height: 36,
-                                        decoration: BoxDecoration(
-                                            color: accent,
-                                            borderRadius:
-                                                BorderRadius.circular(10)),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceAround,
-                                          children: [
-                                            InkWell(
-                                                onTap: () {
-                                                  HapticFeedback
-                                                      .selectionClick();
-                                                  appState.updateQuantity(
-                                                      product.id, -1);
-                                                },
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.all(
-                                                          6.0),
-                                                  child: Icon(Icons.remove,
-                                                      size: 16,
-                                                      color: appState
-                                                              .isDarkMode
-                                                          ? Colors.black
-                                                          : Colors.white),
-                                                )),
-                                            Text('$qtyInCart',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                product.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: textColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13.5),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                product.restaurantName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 11),
+                              ),
+                              if (pRating != null) ...[
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    Icon(Icons.star_rounded,
+                                        size: 14,
+                                        color: appState.isDarkMode
+                                            ? Colors.amber
+                                            : Colors.amber.shade700),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${pRating.toStringAsFixed(1)} ($pCount)',
+                                      style: TextStyle(
+                                        color: textColor.withOpacity(0.85),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              const SizedBox(height: 4),
+                              Text(
+                                isVariable
+                                    ? 'يدوي'
+                                    : '${_formatPrice(product.price)} ر.ي',
+                                style: TextStyle(
+                                    color: accent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13),
+                              ),
+                              const SizedBox(height: 8),
+                              isVariable
+                                  ? SizedBox(
+                                      width: double.infinity,
+                                      height: 36,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: accent,
+                                          padding: EdgeInsets.zero,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                        ),
+                                        onPressed: () =>
+                                            _showEnterPriceDialog(
+                                                context, appState, product),
+                                        child: Text('حدد السعر',
+                                            style: TextStyle(
+                                                color: appState.isDarkMode
+                                                    ? Colors.black
+                                                    : Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold)),
+                                      ),
+                                    )
+                                  : (qtyInCart == 0
+                                      ? SizedBox(
+                                          width: double.infinity,
+                                          height: 36,
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: accent,
+                                              padding: EdgeInsets.zero,
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          10)),
+                                            ),
+                                            onPressed: () =>
+                                                _handleProductTapOrAdd(
+                                                    context,
+                                                    appState,
+                                                    product),
+                                            child: Text('إضافة',
                                                 style: TextStyle(
-                                                    color:
-                                                        appState.isDarkMode
-                                                            ? Colors.black
-                                                            : Colors.white,
+                                                    color: appState.isDarkMode
+                                                        ? Colors.black
+                                                        : Colors.white,
+                                                    fontSize: 12,
                                                     fontWeight:
-                                                        FontWeight.bold,
-                                                    fontSize: 13)),
-                                            InkWell(
-                                                onTap: () {
-                                                  HapticFeedback
-                                                      .selectionClick();
-                                                  appState.updateQuantity(
-                                                      product.id, 1);
-                                                },
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.all(
-                                                          6.0),
-                                                  child: Icon(Icons.add,
-                                                      size: 16,
-                                                      color: appState
-                                                              .isDarkMode
-                                                          ? Colors.black
-                                                          : Colors.white),
-                                                )),
-                                          ],
-                                        ),
-                                      )),
-                          ],
+                                                        FontWeight.bold)),
+                                          ),
+                                        )
+                                      : Container(
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                              color: accent,
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceAround,
+                                            children: [
+                                              InkWell(
+                                                  onTap: () {
+                                                    HapticFeedback
+                                                        .selectionClick();
+                                                    appState.updateQuantity(
+                                                        product.id, -1);
+                                                  },
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            6.0),
+                                                    child: Icon(Icons.remove,
+                                                        size: 16,
+                                                        color: appState
+                                                                .isDarkMode
+                                                            ? Colors.black
+                                                            : Colors.white),
+                                                  )),
+                                              Text('$qtyInCart',
+                                                  style: TextStyle(
+                                                      color:
+                                                          appState.isDarkMode
+                                                              ? Colors.black
+                                                              : Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 13)),
+                                              InkWell(
+                                                  onTap: () {
+                                                    HapticFeedback
+                                                        .selectionClick();
+                                                    appState.updateQuantity(
+                                                        product.id, 1);
+                                                  },
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                            6.0),
+                                                    child: Icon(Icons.add,
+                                                        size: 16,
+                                                        color: appState
+                                                                .isDarkMode
+                                                            ? Colors.black
+                                                            : Colors.white),
+                                                  )),
+                                            ],
+                                          ),
+                                        )),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   );
                 },
               ),
@@ -5266,7 +5283,7 @@ class _HomeScreenState extends State<HomeScreen>
                               fontSize: 11,
                               fontWeight: FontWeight.bold)),
                       const SizedBox(height: 2),
-                      Text('2655872',
+                      Text(_karimiAccountNumber,
                           style: TextStyle(
                               color: textColor,
                               fontSize: 16,
@@ -5287,9 +5304,10 @@ class _HomeScreenState extends State<HomeScreen>
                       borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: () {
-                  Clipboard.setData(const ClipboardData(text: '2655872'));
+                  Clipboard.setData(
+                      const ClipboardData(text: _karimiAccountNumber));
                   _showCleanSnackBar(context,
-                      'تم نسخ رقم حاسب الكريمي (2655872) بنجاح');
+                      'تم نسخ رقم حاسب الكريمي ($_karimiAccountNumber) بنجاح');
                 },
                 icon: const Icon(Icons.copy, size: 14),
                 label: const Text('نسخ الحساب',
