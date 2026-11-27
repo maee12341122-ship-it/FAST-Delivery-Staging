@@ -1046,7 +1046,8 @@ class _HomeScreenState extends State<HomeScreen>
                   shrinkWrap: true,
                   children: [
                     const Text(
-                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+                      'مرحباً بك في تطبيق FAST لتوصيل الطلبات
+لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
                       style: TextStyle(
                           color: Colors.grey, fontSize: 12, height: 1.4),
                     ),
@@ -3531,7 +3532,7 @@ class _HomeScreenState extends State<HomeScreen>
                       Navigator.pop(context);
                       _showCleanSnackBar(context, 'تم رفض الطلب وإلغاؤه');
                     },
-                    child: const Text('رفض وإلغاء',
+                    child: const Text('إلغاء الطلب',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
