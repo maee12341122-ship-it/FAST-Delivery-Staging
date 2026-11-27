@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -26,6 +27,8 @@ class FcmPushService {
     'إشعارات التطبيق المهمة',
     description: 'قناة إشعارات الطلبات والتنبيهات الفورية',
     importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
   );
 
   static String? _lastRole;
@@ -33,7 +36,16 @@ class FcmPushService {
   static String? _lastPhone;
   static String? _cachedToken;
   static bool _initialized = false;
+  static bool _openedListenersAttached = false;
   static Future<void>? _initFuture;
+  static void Function(Map<String, dynamic> payload)? _onTapCallback;
+  static void Function(Map<String, dynamic> messageData)? _onForegroundMessage;
+
+  static void setForegroundMessageHandler(
+    void Function(Map<String, dynamic> messageData)? handler,
+  ) {
+    _onForegroundMessage = handler;
+  }
 
   static Future<void> _ensureFirebaseInitialized() async {
     if (_initialized && Firebase.apps.isNotEmpty) return;
@@ -58,64 +70,104 @@ class FcmPushService {
 
   static Future<void> initialize({
     void Function(Map<String, dynamic> payload)? onNotificationTap,
+    void Function(Map<String, dynamic> messageData)? onForegroundMessage,
   }) async {
+    if (onNotificationTap != null) {
+      _onTapCallback = onNotificationTap;
+    }
+    if (onForegroundMessage != null) {
+      _onForegroundMessage = onForegroundMessage;
+    }
+
     await _ensureFirebaseInitialized();
 
-    try {
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    } catch (e) {
-      debugPrint('FCM onBackgroundMessage error: $e');
-    }
-
-    try {
-      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const initSettings = InitializationSettings(android: androidInit);
-      await _localNotifications.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: (NotificationResponse response) {
-          if (onNotificationTap != null && response.payload != null) {
-            onNotificationTap({'raw_payload': response.payload});
-          }
-        },
-      );
-
-      final androidPlugin = _localNotifications
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidPlugin?.createNotificationChannel(_channel);
-    } catch (e) {
-      debugPrint('FCM local notifications init error: $e');
-    }
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      final title = message.notification?.title ??
-          message.data['title']?.toString() ??
-          'إشعار جديد';
-      final body =
-          message.notification?.body ?? message.data['body']?.toString() ?? '';
-      if (title.isNotEmpty || body.isNotEmpty) {
-        try {
-          await _localNotifications.show(
-            DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            title,
-            body,
-            NotificationDetails(
-              android: AndroidNotificationDetails(
-                _channel.id,
-                _channel.name,
-                channelDescription: _channel.description,
-                importance: Importance.max,
-                priority: Priority.high,
-              ),
-            ),
-          );
-        } catch (e) {
-          debugPrint('FCM foreground show error: $e');
-        }
+    if (!_initialized) {
+      try {
+        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      } catch (e) {
+        debugPrint('FCM onBackgroundMessage error: $e');
       }
-    });
 
-    if (onNotificationTap != null) {
+      try {
+        const androidInit =
+            AndroidInitializationSettings('@mipmap/ic_launcher');
+        const initSettings = InitializationSettings(android: androidInit);
+        await _localNotifications.initialize(
+          initSettings,
+          onDidReceiveNotificationResponse: (NotificationResponse response) {
+            final raw = response.payload;
+            if (raw != null && raw.isNotEmpty && _onTapCallback != null) {
+              try {
+                final decoded = jsonDecode(raw);
+                if (decoded is Map) {
+                  _onTapCallback!(Map<String, dynamic>.from(decoded));
+                  return;
+                }
+              } catch (_) {}
+              _onTapCallback!({'order_id': raw, 'raw_payload': raw});
+            }
+          },
+        );
+
+        final androidPlugin = _localNotifications
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.createNotificationChannel(_channel);
+      } catch (e) {
+        debugPrint('FCM local notifications init error: $e');
+      }
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        final combined = <String, dynamic>{
+          ...message.data,
+          if (message.notification?.title != null)
+            'title': message.notification!.title,
+          if (message.notification?.body != null)
+            'body': message.notification!.body,
+        };
+
+        final title = combined['title']?.toString() ?? 'إشعار جديد';
+        final body = combined['body']?.toString() ?? '';
+
+        if (_onForegroundMessage != null) {
+          try {
+            _onForegroundMessage!(combined);
+          } catch (e) {
+            debugPrint('FCM onForegroundMessage callback error: $e');
+          }
+        }
+
+        if (title.isNotEmpty || body.isNotEmpty) {
+          try {
+            await _localNotifications.show(
+              DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              title,
+              body,
+              NotificationDetails(
+                android: AndroidNotificationDetails(
+                  _channel.id,
+                  _channel.name,
+                  channelDescription: _channel.description,
+                  importance: Importance.max,
+                  priority: Priority.high,
+                  playSound: true,
+                  enableVibration: true,
+                ),
+              ),
+              payload: jsonEncode(combined),
+            );
+          } catch (e) {
+            debugPrint('FCM foreground show error: $e');
+          }
+        }
+      });
+
+      messagingTokenRefreshListener();
+      _initialized = true;
+    }
+
+    if (!_openedListenersAttached && _onTapCallback != null) {
+      _openedListenersAttached = true;
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         final combined = <String, dynamic>{
           ...message.data,
@@ -124,7 +176,7 @@ class FcmPushService {
           if (message.notification?.body != null)
             'body': message.notification!.body,
         };
-        onNotificationTap(combined);
+        _onTapCallback?.call(combined);
       });
 
       final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
@@ -136,11 +188,9 @@ class FcmPushService {
           if (initialMsg.notification?.body != null)
             'body': initialMsg.notification!.body,
         };
-        onNotificationTap(combined);
+        _onTapCallback?.call(combined);
       }
     }
-
-    messagingTokenRefreshListener();
   }
 
   static void messagingTokenRefreshListener() {
@@ -236,11 +286,15 @@ class FcmPushService {
     String? phone,
     String? explicitToken,
   }) async {
-    if (role != null && role.trim().isNotEmpty) _lastRole = role.trim().toLowerCase();
+    if (role != null && role.trim().isNotEmpty) {
+      _lastRole = role.trim().toLowerCase();
+    }
     if (rowId != null && rowId.toString().trim().isNotEmpty) {
       _lastRowId = rowId;
     }
-    if (phone != null && phone.trim().isNotEmpty) _lastPhone = phone.trim();
+    if (phone != null && phone.trim().isNotEmpty) {
+      _lastPhone = phone.trim();
+    }
 
     final effectiveRole = _lastRole;
     final effectiveId = _lastRowId;
@@ -278,17 +332,21 @@ class FcmPushService {
         return false;
       }
 
-      if (effectiveId != null) {
+      if (effectiveId != null && effectiveId.toString().trim().isNotEmpty) {
+        final idVal = effectiveId.toString().trim();
+        final parsedIntId = int.tryParse(idVal);
+        final filterId = parsedIntId ?? idVal;
         final updatedById = await supabase
             .from(table)
             .update({'fcm_token': token})
-            .eq('id', effectiveId)
+            .eq('id', filterId)
             .select('id');
         if (updatedById.isNotEmpty) {
-          debugPrint('FCM synced to $table by id=$effectiveId');
+          debugPrint('FCM synced to $table by id=$filterId');
           return true;
         }
-        debugPrint('FCM id=$effectiveId not matched in $table, trying phone fallback...');
+        debugPrint(
+            'FCM id=$filterId not matched in $table, trying phone fallback...');
       }
 
       if (effectivePhone != null && effectivePhone.trim().isNotEmpty) {
@@ -313,7 +371,8 @@ class FcmPushService {
             debugPrint('FCM synced to $table by phone candidates=$candidates');
             return true;
           }
-          debugPrint('FCM phone candidates=$candidates did not match any row in $table');
+          debugPrint(
+              'FCM phone candidates=$candidates did not match any row in $table');
         }
       }
 
