@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/order_tracking_screen.dart';
+import '../screens/chat_screen.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -24,6 +25,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  static bool _isInitialized = false;
+  static final Set<String> _recentlyShownKeys = <String>{};
 
   static const AndroidNotificationChannel _highImportanceChannel =
       AndroidNotificationChannel(
@@ -44,15 +48,9 @@ class NotificationService {
 
   static String _normalizePhone(String phone) {
     var clean = phone.trim().replaceAll(' ', '');
-    if (clean.startsWith('+967')) {
-      clean = clean.substring(4);
-    }
-    if (clean.startsWith('0')) {
-      clean = clean.substring(1);
-    }
-    if (clean.startsWith('967')) {
-      clean = clean.substring(3);
-    }
+    if (clean.startsWith('+967')) clean = clean.substring(4);
+    if (clean.startsWith('0')) clean = clean.substring(1);
+    if (clean.startsWith('967')) clean = clean.substring(3);
     return clean;
   }
 
@@ -69,9 +67,20 @@ class NotificationService {
     return _extractOrderIdFromText(fullText);
   }
 
+  static bool _isDuplicateEvent(String key) {
+    if (key.isEmpty) return false;
+    if (_recentlyShownKeys.contains(key)) return true;
+    _recentlyShownKeys.add(key);
+    if (_recentlyShownKeys.length > 150) {
+      _recentlyShownKeys.remove(_recentlyShownKeys.first);
+    }
+    return false;
+  }
+
   static void _recordExternalNotification({
     required String? title,
     required String? body,
+    String? messageId,
     Map<String, dynamic>? additionalData,
   }) {
     final cleanTitle = (title ?? '').trim();
@@ -83,10 +92,16 @@ class NotificationService {
       '$cleanTitle $cleanBody',
     );
 
+    final dedupeKey = (messageId != null && messageId.trim().isNotEmpty)
+        ? 'fcm_${messageId.trim()}'
+        : '${cleanTitle}_${cleanBody}_${orderId ?? ''}';
+
     final item = <String, dynamic>{
       'title': cleanTitle.isNotEmpty ? cleanTitle : 'إشعار جديد 🔔',
       'body': cleanBody,
       'time': DateTime.now().toIso8601String(),
+      'is_read': false,
+      'dedupe_key': dedupeKey,
       if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
       if (additionalData != null && additionalData.isNotEmpty)
         'additionalData': additionalData,
@@ -119,6 +134,8 @@ class NotificationService {
     if (onExternalNotification != null) {
       onNotificationReceived = onExternalNotification;
     }
+    if (_isInitialized) return;
+    _isInitialized = true;
 
     try {
       if (Firebase.apps.isEmpty) {
@@ -147,7 +164,7 @@ class NotificationService {
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('🚀 [النقر على الإشعار المحلي]: ${response.payload}');
           if (response.payload != null && response.payload!.isNotEmpty) {
-            navigateToOrderTracking(response.payload!);
+            handleNotificationNavigationFromPayload(response.payload!);
           }
         },
       );
@@ -167,6 +184,7 @@ class NotificationService {
         _recordExternalNotification(
           title: title,
           body: body,
+          messageId: message.messageId,
           additionalData: additionalMap,
         );
 
@@ -175,17 +193,22 @@ class NotificationService {
           '${title ?? ''} ${body ?? ''}',
         );
 
+        final payloadJson = jsonEncode({
+          ...additionalMap,
+          if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
+        });
+
         unawaited(
           showLocalNotification(
             (title != null && title.trim().isNotEmpty) ? title : 'إشعار جديد 🔔',
             body ?? '',
-            payload: orderId,
+            payload: payloadJson,
+            dedupeKey: message.messageId,
           ),
         );
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        debugPrint('🚀 [النقر على إشعار FCM]: ${message.notification?.title}');
         final additionalMap = Map<String, dynamic>.from(message.data);
         final title =
             message.notification?.title ?? additionalMap['title']?.toString();
@@ -195,27 +218,91 @@ class NotificationService {
         _recordExternalNotification(
           title: title,
           body: body,
+          messageId: message.messageId,
           additionalData: additionalMap,
         );
 
-        final fullText = '${title ?? ''} ${body ?? ''}';
-        final orderId = _extractOrderIdFromMap(additionalMap, fullText);
-        if (orderId != null && orderId.isNotEmpty) {
-          navigateToOrderTracking(orderId);
-        }
+        handleNotificationNavigationFromMap(additionalMap,
+            fallbackText: '${title ?? ''} ${body ?? ''}');
       });
+
+      final initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMessage != null) {
+        final additionalMap = Map<String, dynamic>.from(initialMessage.data);
+        final title = initialMessage.notification?.title ??
+            additionalMap['title']?.toString();
+        final body = initialMessage.notification?.body ??
+            additionalMap['body']?.toString();
+
+        _recordExternalNotification(
+          title: title,
+          body: body,
+          messageId: initialMessage.messageId,
+          additionalData: additionalMap,
+        );
+
+        Future.delayed(const Duration(milliseconds: 600), () {
+          handleNotificationNavigationFromMap(additionalMap,
+              fallbackText: '${title ?? ''} ${body ?? ''}');
+        });
+      }
 
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         final clean = newToken.trim();
-        debugPrint('📱 [FCM Token الجديد]: $clean');
         if (clean.isNotEmpty && onPlayerIdChanged != null) {
           onPlayerIdChanged(clean);
         }
       });
 
-      debugPrint('🟢 تم تهيئة نظام الإشعارات (FCM & Local) بنجاح');
+      debugPrint('🟢 تم تهيئة نظام الإشعارات الموحد بنجاح');
     } catch (e) {
+      _isInitialized = false;
       debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
+    }
+  }
+
+  static void handleNotificationNavigationFromPayload(String rawPayload) {
+    try {
+      final decoded = jsonDecode(rawPayload);
+      if (decoded is Map) {
+        handleNotificationNavigationFromMap(
+            Map<String, dynamic>.from(decoded));
+        return;
+      }
+    } catch (_) {}
+    navigateToOrderTracking(rawPayload);
+  }
+
+  static void handleNotificationNavigationFromMap(
+    Map<String, dynamic> data, {
+    String fallbackText = '',
+  }) {
+    final type = (data['type'] ?? data['event_type'] ?? data['screen'] ?? '')
+        .toString()
+        .toLowerCase();
+    final orderId = _extractOrderIdFromMap(data, fallbackText);
+    final chatId =
+        (data['chat_id'] ?? data['chatId'] ?? data['room_id'])?.toString().trim();
+
+    if ((type.contains('chat') || type.contains('message') || (chatId != null && chatId.isNotEmpty)) &&
+        ((orderId != null && orderId.isNotEmpty) || (chatId != null && chatId.isNotEmpty))) {
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!.push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              orderId: (orderId != null && orderId.isNotEmpty) ? orderId : chatId!,
+              userRole: (data['user_role'] ?? 'customer').toString(),
+              targetChat: (data['target_chat'] ?? 'admin_customer').toString(),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (orderId != null && orderId.isNotEmpty) {
+      navigateToOrderTracking(orderId);
     }
   }
 
@@ -238,7 +325,6 @@ class NotificationService {
       try {
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null && token.trim().isNotEmpty) {
-          debugPrint('📱 [FCM Device Token]: ${token.trim()}');
           return token.trim();
         }
       } catch (e) {
@@ -258,9 +344,6 @@ class NotificationService {
           builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
         ),
       );
-      debugPrint('📦 تم توجيه المستخدم مباشرة لتتبع الطلب #$orderId');
-    } else {
-      debugPrint('⚠️ تعذر الانتقال، مفتاح التنقل غير جاهز بعد.');
     }
   }
 
@@ -289,43 +372,30 @@ class NotificationService {
       if (cleanTable == 'admins') {
         final intAdminId = int.tryParse(cleanId);
         if (intAdminId != null) {
-          await client
-              .from('admins')
-              .update({'fcm_token': fcmToken})
-              .eq('id', intAdminId);
-        } else if (identifierValue != null &&
-            identifierValue.trim().isNotEmpty) {
+          await client.from('admins').update({'fcm_token': fcmToken}).eq('id', intAdminId);
+        } else if (identifierValue != null && identifierValue.trim().isNotEmpty) {
           final idVal = identifierValue.trim().toLowerCase();
-          final usernameVal =
-              idVal.contains('@') ? idVal.split('@').first : idVal;
-          await client
-              .from('admins')
-              .update({'fcm_token': fcmToken})
-              .eq('username', usernameVal);
+          final usernameVal = idVal.contains('@') ? idVal.split('@').first : idVal;
+          await client.from('admins').update({'fcm_token': fcmToken}).eq('username', usernameVal);
         } else {
           final authUser = client.auth.currentUser;
           final email = (authUser?.email ?? '').trim().toLowerCase();
           if (email.isNotEmpty) {
-            final usernameVal =
-                email.contains('@') ? email.split('@').first : email;
-            await client
-                .from('admins')
-                .update({'fcm_token': fcmToken})
-                .eq('username', usernameVal);
+            final usernameVal = email.contains('@') ? email.split('@').first : email;
+            await client.from('admins').update({'fcm_token': fcmToken}).eq('username', usernameVal);
           }
         }
       } else if (cleanTable == 'couriers') {
         final authUser = client.auth.currentUser;
         if (authUser != null && cleanId == authUser.id) {
-          await client
-              .from('couriers')
-              .update({'fcm_token': fcmToken})
-              .eq('auth_user_id', authUser.id);
+          await client.from('couriers').update({'fcm_token': fcmToken}).eq('auth_user_id', authUser.id);
         } else {
-          await client
-              .from('couriers')
-              .update({'fcm_token': fcmToken})
-              .eq('id', cleanId);
+          final intCourierId = int.tryParse(cleanId);
+          if (intCourierId != null) {
+            await client.from('couriers').update({'fcm_token': fcmToken}).eq('id', intCourierId);
+          } else {
+            await client.from('couriers').update({'fcm_token': fcmToken}).eq('id', cleanId);
+          }
         }
       } else if (cleanTable == 'customers') {
         final normalizedPhone = _normalizePhone(cleanId);
@@ -337,19 +407,11 @@ class NotificationService {
               .update({'fcm_token': fcmToken})
               .or('phone.eq.$normalizedPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
         } else {
-          await client
-              .from('customers')
-              .update({'fcm_token': fcmToken})
-              .eq('id', cleanId);
+          await client.from('customers').update({'fcm_token': fcmToken}).eq('id', cleanId);
         }
       } else {
-        await client
-            .from(cleanTable)
-            .update({'fcm_token': fcmToken})
-            .eq('id', cleanId);
+        await client.from(cleanTable).update({'fcm_token': fcmToken}).eq('id', cleanId);
       }
-
-      debugPrint('✅ تم حفظ FCM Token ($fcmToken) في جدول $cleanTable بنجاح');
     } catch (e) {
       debugPrint('⚠️ خطأ في حفظ FCM Token في Supabase: $e');
     }
@@ -391,12 +453,9 @@ class NotificationService {
         'data': dataMap,
       };
 
-      final res = await Supabase.instance.client.functions
+      await Supabase.instance.client.functions
           .invoke('send-fcm-push', body: payload)
           .timeout(const Duration(seconds: 12));
-
-      debugPrint(
-          '📨 استجابة send-fcm-push (${res.status}): ${jsonEncode(res.data)}');
     } catch (e) {
       debugPrint('❌ خطأ في إرسال الإشعار عبر Supabase Edge Function: $e');
     }
@@ -406,7 +465,13 @@ class NotificationService {
     String title,
     String body, {
     String? payload,
+    String? dedupeKey,
   }) async {
+    final key = (dedupeKey != null && dedupeKey.trim().isNotEmpty)
+        ? dedupeKey.trim()
+        : '${title.trim()}_${body.trim()}';
+    if (_isDuplicateEvent(key)) return;
+
     try {
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
           AndroidNotificationDetails(
@@ -442,7 +507,6 @@ class NotificationService {
         platformChannelSpecifics,
         payload: orderIdPayload,
       );
-      debugPrint('📢 [تم عرض الإشعار المحلي الصوتي]: $title - $body');
     } catch (e) {
       debugPrint('❌ خطأ في إظهار الإشعار المحلي: $e');
     }
