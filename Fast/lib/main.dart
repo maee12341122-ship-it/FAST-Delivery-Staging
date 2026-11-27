@@ -28,14 +28,7 @@ void main() async {
     debugPrint('⚠️ خطأ في اتصال Supabase: $e');
   }
 
-  try {
-    await FcmPushService.initialize();
-  } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة إشعارات FCM: $e');
-  }
-
   final appState = AppState();
-  unawaited(_syncCurrentUserFcmToken(appState));
 
   void handleNotificationData(Map<String, dynamic> data, String title, String body) {
     final String? orderId = data['order_id']?.toString() ??
@@ -71,6 +64,22 @@ void main() async {
       }
     }
   }
+
+  try {
+    await FcmPushService.initialize(
+      onNotificationTap: (payload) {
+        final String title = payload['title']?.toString() ?? '';
+        final String body = payload['body']?.toString() ?? '';
+        handleNotificationData(payload, title, body);
+      },
+    );
+  } catch (e) {
+    debugPrint('⚠️ خطأ في تهيئة إشعارات FCM: $e');
+  }
+
+  // طلب إذن الإشعارات ومزامنة التوكن فور توفر بيانات المستخدم
+  unawaited(FcmPushService.requestPermissionSafe());
+  unawaited(appState.syncFcmTokenForCurrentUsers());
 
   try {
     // فتح التطبيق من إشعار وهو في الخلفية
@@ -110,27 +119,6 @@ void main() async {
       child: FastApp(hasSeenOnboarding: hasSeenOnboarding),
     ),
   );
-}
-
-Future<void> _syncCurrentUserFcmToken(AppState appState) async {
-  try {
-    if (appState.currentCourier != null && appState.currentCourier!['id'] != null) {
-      await FcmPushService.syncTokenForCurrentUser(
-        role: 'courier',
-        rowId: appState.currentCourier!['id'],
-      );
-    } else if (appState.userProfile != null && appState.userProfile!['id'] != null) {
-      await FcmPushService.syncTokenForCurrentUser(
-        role: appState.isAdminLoggedIn ? 'admin' : 'customer',
-        rowId: appState.userProfile!['id'],
-      );
-    } else {
-      // على الأقل اطبع التوكن لسهولة الاختبار حتى قبل تسجيل الدخول
-      await FcmPushService.getTokenSafe();
-    }
-  } catch (e) {
-    debugPrint('⚠️ خطأ أثناء مزامنة FCM token للمستخدم الحالي: $e');
-  }
 }
 
 String? _extractOrderIdFromNotification(String title, String body) {
