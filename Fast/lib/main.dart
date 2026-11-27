@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'services/notification_service.dart';
+import 'services/fcm_push_service.dart';
 import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -29,56 +29,77 @@ void main() async {
   }
 
   try {
-    await NotificationService.initialize();
+    await FcmPushService.initialize();
   } catch (e) {
-    debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
+    debugPrint('⚠️ خطأ في تهيئة إشعارات FCM: $e');
   }
 
   final appState = AppState();
-  unawaited(appState.syncOneSignalPlayerIdForCurrentUsers());
+  unawaited(_syncCurrentUserFcmToken(appState));
+
+  void handleNotificationData(Map<String, dynamic> data, String title, String body) {
+    final String? orderId = data['order_id']?.toString() ??
+        data['related_id']?.toString() ??
+        _extractOrderIdFromNotification(title, body);
+
+    if (orderId != null && orderId.isNotEmpty) {
+      final String eventType =
+          data['type']?.toString() ?? data['event_type']?.toString() ?? '';
+      final bool isChatNotification = eventType == 'chat' ||
+          eventType == 'chat_message' ||
+          title.contains('رسالة جديدة');
+
+      if (isChatNotification) {
+        final String role = appState.isAdminLoggedIn
+            ? 'admin'
+            : (appState.currentCourier != null ? 'courier' : 'customer');
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              orderId: orderId,
+              userRole: role,
+              targetChat: 'unified_order_chat',
+            ),
+          ),
+        );
+      } else {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
+          ),
+        );
+      }
+    }
+  }
 
   try {
-    OneSignal.Notifications.addClickListener((event) {
-      final data = event.notification.additionalData;
-      final String title = event.notification.title ?? '';
-      final String body = event.notification.body ?? '';
-      final String? orderId = data?['order_id']?.toString() ??
-          data?['related_id']?.toString() ??
-          _extractOrderIdFromNotification(title, body);
-
-      if (orderId != null && orderId.isNotEmpty) {
-        final String eventType =
-            data?['type']?.toString() ?? data?['event_type']?.toString() ?? '';
-        final bool isChatNotification = eventType == 'chat' ||
-            eventType == 'chat_message' ||
-            title.contains('رسالة جديدة');
-
-        if (isChatNotification) {
-          final String role = appState.isAdminLoggedIn
-              ? 'admin'
-              : (appState.currentCourier != null ? 'courier' : 'customer');
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (context) => ChatScreen(
-                orderId: orderId,
-                userRole: role,
-                targetChat: 'unified_order_chat',
-              ),
-            ),
-          );
-        } else {
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
-            ),
-          );
-        }
-      }
+    // فتح التطبيق من إشعار وهو في الخلفية
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      final String title =
+          message.notification?.title ?? message.data['title']?.toString() ?? '';
+      final String body =
+          message.notification?.body ?? message.data['body']?.toString() ?? '';
+      handleNotificationData(message.data, title, body);
     });
 
-    debugPrint('✅ تم تسجيل مستمع النقر الموحد على إشعارات OneSignal بنجاح');
+    // فتح التطبيق من إشعار والتطبيق مغلق تماماً (Terminated)
+    final RemoteMessage? initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final String title = initialMessage.notification?.title ??
+            initialMessage.data['title']?.toString() ??
+            '';
+        final String body = initialMessage.notification?.body ??
+            initialMessage.data['body']?.toString() ??
+            '';
+        handleNotificationData(initialMessage.data, title, body);
+      });
+    }
+
+    debugPrint('✅ تم تسجيل مستمع النقر الموحد على إشعارات FCM بنجاح');
   } catch (e) {
-    debugPrint('⚠️ خطأ في تسجيل مستمع النقر لـ OneSignal: $e');
+    debugPrint('⚠️ خطأ في تسجيل مستمع النقر لـ FCM: $e');
   }
 
   runApp(
@@ -89,6 +110,32 @@ void main() async {
       child: FastApp(hasSeenOnboarding: hasSeenOnboarding),
     ),
   );
+}
+
+Future<void> _syncCurrentUserFcmToken(AppState appState) async {
+  try {
+    if (appState.isAdminLoggedIn && appState.currentAdminId != null) {
+      await FcmPushService.syncTokenForCurrentUser(
+        role: 'admin',
+        rowId: appState.currentAdminId,
+      );
+    } else if (appState.currentCourier != null && appState.currentCourier!['id'] != null) {
+      await FcmPushService.syncTokenForCurrentUser(
+        role: 'courier',
+        rowId: appState.currentCourier!['id'],
+      );
+    } else if (appState.currentCustomer != null && appState.currentCustomer!['id'] != null) {
+      await FcmPushService.syncTokenForCurrentUser(
+        role: 'customer',
+        rowId: appState.currentCustomer!['id'],
+      );
+    } else {
+      // على الأقل اطبع التوكن لسهولة الاختبار حتى قبل تسجيل الدخول
+      await FcmPushService.getTokenSafe();
+    }
+  } catch (e) {
+    debugPrint('⚠️ خطأ أثناء مزامنة FCM token للمستخدم الحالي: $e');
+  }
 }
 
 String? _extractOrderIdFromNotification(String title, String body) {
