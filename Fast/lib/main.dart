@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -30,14 +29,18 @@ void main() async {
 
   final appState = AppState();
 
-  void handleNotificationData(Map<String, dynamic> data, String title, String body) {
-    final String? orderId = data['order_id']?.toString() ??
-        data['related_id']?.toString() ??
+  void handleNotificationData(
+    Map<String, dynamic> data,
+    String title,
+    String body,
+  ) {
+    final String? orderId = data['order_id']?.toString().trim() ??
+        data['related_id']?.toString().trim() ??
         _extractOrderIdFromNotification(title, body);
 
     if (orderId != null && orderId.isNotEmpty) {
       final String eventType =
-          data['type']?.toString() ?? data['event_type']?.toString() ?? '';
+          (data['type'] ?? data['event_type'] ?? '').toString().trim();
       final bool isChatNotification = eventType == 'chat' ||
           eventType == 'chat_message' ||
           title.contains('رسالة جديدة');
@@ -72,44 +75,22 @@ void main() async {
         final String body = payload['body']?.toString() ?? '';
         handleNotificationData(payload, title, body);
       },
+      onForegroundMessage: (messageData) {
+        final String title = (messageData['title'] ?? 'إشعار جديد').toString();
+        final String body = (messageData['body'] ?? '').toString();
+        appState.recordExternalPushNotification(
+          title: title,
+          body: body,
+          data: messageData,
+        );
+      },
     );
   } catch (e) {
     debugPrint('⚠️ خطأ في تهيئة إشعارات FCM: $e');
   }
 
-  // طلب إذن الإشعارات ومزامنة التوكن فور توفر بيانات المستخدم
   unawaited(FcmPushService.requestPermissionSafe());
   unawaited(appState.syncFcmTokenForCurrentUsers());
-
-  try {
-    // فتح التطبيق من إشعار وهو في الخلفية
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      final String title =
-          message.notification?.title ?? message.data['title']?.toString() ?? '';
-      final String body =
-          message.notification?.body ?? message.data['body']?.toString() ?? '';
-      handleNotificationData(message.data, title, body);
-    });
-
-    // فتح التطبيق من إشعار والتطبيق مغلق تماماً (Terminated)
-    final RemoteMessage? initialMessage =
-        await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final String title = initialMessage.notification?.title ??
-            initialMessage.data['title']?.toString() ??
-            '';
-        final String body = initialMessage.notification?.body ??
-            initialMessage.data['body']?.toString() ??
-            '';
-        handleNotificationData(initialMessage.data, title, body);
-      });
-    }
-
-    debugPrint('✅ تم تسجيل مستمع النقر الموحد على إشعارات FCM بنجاح');
-  } catch (e) {
-    debugPrint('⚠️ خطأ في تسجيل مستمع النقر لـ FCM: $e');
-  }
 
   runApp(
     MultiProvider(
