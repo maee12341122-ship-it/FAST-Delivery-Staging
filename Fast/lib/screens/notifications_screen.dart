@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import 'order_tracking_screen.dart';
+import 'chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -29,11 +30,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final count = context.read<AppState>().notifications.length;
+      final appState = context.read<AppState>();
+      final count = appState.unreadNotificationsCount;
       _previousCount = count;
       if (count > 0) {
         _badgeAnimController.forward(from: 0.0);
       }
+      // تحديث الإشعارات من قاعدة البيانات عند فتح الشاشة
+      appState.fetchNotificationsFromSupabase();
     });
   }
 
@@ -66,9 +70,50 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return null;
   }
 
-  void _handleNotificationTap(
-      BuildContext context, Map<String, dynamic> notif) {
+  bool _isChatNotification(Map<String, dynamic> notif) {
+    final eventType =
+        (notif['event_type'] ?? notif['type'] ?? '').toString().toLowerCase();
+    if (eventType.contains('chat') || eventType.contains('message')) {
+      return true;
+    }
+    final additional = notif['additionalData'] ?? notif['additional_data'];
+    if (additional is Map) {
+      final addType =
+          (additional['type'] ?? additional['event_type'] ?? '')
+              .toString()
+              .toLowerCase();
+      if (addType.contains('chat') || addType.contains('message')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _handleNotificationTap(
+      BuildContext context, AppState appState, Map<String, dynamic> notif) async {
+    await appState.markNotificationAsRead(notif);
+    if (!context.mounted) return;
+
     final orderId = _extractOrderIdFromNotification(notif);
+    if (_isChatNotification(notif) && orderId != null && orderId.isNotEmpty) {
+      final String role = appState.isAdminLoggedIn
+          ? 'admin'
+          : (appState.currentCourier != null ? 'courier' : 'customer');
+      final String targetChat =
+          role == 'courier' ? 'admin_courier' : 'admin_customer';
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            orderId: orderId,
+            userRole: role,
+            targetChat: targetChat,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (orderId != null && orderId.isNotEmpty) {
       Navigator.push(
         context,
@@ -83,13 +128,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
     final notifications = appState.notifications;
+    final unreadCount = appState.unreadNotificationsCount;
     final isDark = appState.isDarkMode;
 
-    if (notifications.length > _previousCount) {
+    if (unreadCount > _previousCount) {
       _badgeAnimController.forward(from: 0.0);
-      _previousCount = notifications.length;
-    } else if (notifications.length < _previousCount) {
-      _previousCount = notifications.length;
+      _previousCount = unreadCount;
+    } else if (unreadCount < _previousCount) {
+      _previousCount = unreadCount;
     }
 
     return Directionality(
@@ -110,7 +156,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 ),
               ),
               const Spacer(),
-              if (notifications.isNotEmpty)
+              if (unreadCount > 0)
                 ScaleTransition(
                   scale: _scaleAnimation,
                   child: Container(
@@ -133,7 +179,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                         const Icon(Icons.bolt, size: 14, color: Colors.black),
                         const SizedBox(width: 4),
                         Text(
-                          'جديد (${notifications.length})',
+                          'جديد ($unreadCount)',
                           style: const TextStyle(
                             color: Colors.black,
                             fontSize: 11,
@@ -146,102 +192,153 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 ),
             ],
           ),
+          actions: [
+            if (unreadCount > 0)
+              IconButton(
+                tooltip: 'تحديد الكل كمقروء',
+                icon: const Icon(Icons.done_all, color: Colors.amber),
+                onPressed: () => appState.markAllNotificationsAsRead(),
+              ),
+          ],
           iconTheme: const IconThemeData(color: Colors.amber),
         ),
-        body: notifications.isEmpty
-            ? const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.notifications_off_outlined,
-                        size: 60, color: Colors.grey),
-                    SizedBox(height: 12),
-                    Text(
-                      'لا توجد إشعارات جديدة حالياً 📭',
-                      style: TextStyle(color: Colors.grey, fontSize: 15),
-                    ),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: notifications.length,
-                itemBuilder: (context, index) {
-                  final notif = Map<String, dynamic>.from(notifications[index]);
-                  final String title =
-                      notif['title']?.toString() ?? 'إشعار جديد';
-                  final String body = notif['body']?.toString() ?? '';
-                  final DateTime? time = notif['time'] is DateTime
-                      ? notif['time'] as DateTime
-                      : DateTime.tryParse(notif['time']?.toString() ?? '');
-                  final String? linkedOrderId =
-                      _extractOrderIdFromNotification(notif);
-
-                  return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.amber.withOpacity(0.2)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 6,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: ListTile(
-                      onTap: linkedOrderId != null
-                          ? () => _handleNotificationTap(context, notif)
-                          : null,
-                      contentPadding: const EdgeInsets.all(12),
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.notifications_active,
-                            color: Colors.amber, size: 22),
-                      ),
-                      title: Text(
-                        title,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        body: RefreshIndicator(
+          color: Colors.amber,
+          onRefresh: () => appState.fetchNotificationsFromSupabase(),
+          child: notifications.isEmpty
+              ? ListView(
+                  children: const [
+                    SizedBox(height: 180),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const SizedBox(height: 4),
+                          Icon(Icons.notifications_off_outlined,
+                              size: 60, color: Colors.grey),
+                          SizedBox(height: 12),
                           Text(
-                            body,
-                            style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.black54,
-                              fontSize: 12,
-                            ),
+                            'لا توجد إشعارات جديدة حالياً 📭',
+                            style: TextStyle(color: Colors.grey, fontSize: 15),
                           ),
-                          if (time != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              '${time.hour}:${time.minute.toString().padLeft(2, '0')} - ${time.year}/${time.month}/${time.day}',
-                              style: const TextStyle(
-                                  color: Colors.grey, fontSize: 10),
-                            ),
-                          ],
                         ],
                       ),
-                      trailing: linkedOrderId != null
-                          ? const Icon(Icons.arrow_forward_ios,
-                              color: Colors.amber, size: 15)
-                          : null,
                     ),
-                  );
-                },
-              ),
+                  ],
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: notifications.length,
+                  itemBuilder: (context, index) {
+                    final notif =
+                        Map<String, dynamic>.from(notifications[index]);
+                    final String title =
+                        notif['title']?.toString() ?? 'إشعار جديد';
+                    final String body = notif['body']?.toString() ?? '';
+                    final bool isRead = notif['is_read'] == true;
+                    final DateTime? time = notif['time'] is DateTime
+                        ? notif['time'] as DateTime
+                        : DateTime.tryParse(
+                            (notif['created_at'] ?? notif['time'] ?? '')
+                                .toString());
+                    final String? linkedOrderId =
+                        _extractOrderIdFromNotification(notif);
+
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? (isRead
+                                ? const Color(0xFF1A1A1A)
+                                : const Color(0xFF252218))
+                            : (isRead ? Colors.white : const Color(0xFFFFFBEB)),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isRead
+                              ? Colors.amber.withOpacity(0.15)
+                              : Colors.amber.withOpacity(0.55),
+                          width: isRead ? 1.0 : 1.4,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        onTap: () =>
+                            _handleNotificationTap(context, appState, notif),
+                        contentPadding: const EdgeInsets.all(12),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(isRead ? 0.1 : 0.22),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isRead
+                                ? Icons.notifications_none
+                                : Icons.notifications_active,
+                            color: Colors.amber,
+                            size: 22,
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : Colors.black87,
+                                  fontWeight: isRead
+                                      ? FontWeight.w600
+                                      : FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            if (!isRead)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Colors.amber,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text(
+                              body,
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if (time != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                '${time.hour}:${time.minute.toString().padLeft(2, '0')} - ${time.year}/${time.month}/${time.day}',
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 10),
+                              ),
+                            ],
+                          ],
+                        ),
+                        trailing: linkedOrderId != null
+                            ? const Icon(Icons.arrow_forward_ios,
+                                color: Colors.amber, size: 15)
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }
