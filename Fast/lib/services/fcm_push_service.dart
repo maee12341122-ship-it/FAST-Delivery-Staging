@@ -311,9 +311,12 @@ class FcmPushService {
       return false;
     }
 
-    if (effectiveRole == null ||
-        (effectiveId == null &&
-            (effectivePhone == null || effectivePhone.trim().isNotEmpty))) {
+    final hasValidId =
+        effectiveId != null && effectiveId.toString().trim().isNotEmpty;
+    final hasValidPhone =
+        effectivePhone != null && effectivePhone.trim().isNotEmpty;
+
+    if (effectiveRole == null || (!hasValidId && !hasValidPhone)) {
       debugPrint(
         'FCM syncTokenForCurrentUser aborted: missing role/id/phone (role=$effectiveRole, id=$effectiveId, phone=$effectivePhone)',
       );
@@ -334,7 +337,7 @@ class FcmPushService {
         return false;
       }
 
-      if (effectiveId != null && effectiveId.toString().trim().isNotEmpty) {
+      if (hasValidId) {
         final idVal = effectiveId.toString().trim();
         final parsedIntId = int.tryParse(idVal);
         final filterId = parsedIntId ?? idVal;
@@ -351,8 +354,8 @@ class FcmPushService {
             'FCM id=$filterId not matched in $table, trying phone fallback...');
       }
 
-      if (effectivePhone != null && effectivePhone.trim().isNotEmpty) {
-        final rawPhone = effectivePhone.trim();
+      if (hasValidPhone) {
+        final rawPhone = effectivePhone!.trim();
         final norm = _normalizePhoneDigits(rawPhone);
         final candidates = <String>{
           rawPhone,
