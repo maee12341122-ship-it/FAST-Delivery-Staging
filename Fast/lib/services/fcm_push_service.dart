@@ -35,7 +35,8 @@ class FcmPushService {
   static dynamic _lastRowId;
   static String? _lastPhone;
   static String? _cachedToken;
-  static bool _initialized = false;
+  static bool _firebaseReady = false;
+  static bool _listenersInitialized = false;
   static bool _openedListenersAttached = false;
   static Future<void>? _initFuture;
   static void Function(Map<String, dynamic> payload)? _onTapCallback;
@@ -48,7 +49,7 @@ class FcmPushService {
   }
 
   static Future<void> _ensureFirebaseInitialized() async {
-    if (_initialized && Firebase.apps.isNotEmpty) return;
+    if (_firebaseReady && Firebase.apps.isNotEmpty) return;
     if (_initFuture != null) {
       await _initFuture;
       return;
@@ -58,7 +59,7 @@ class FcmPushService {
         if (Firebase.apps.isEmpty) {
           await Firebase.initializeApp();
         }
-        _initialized = true;
+        _firebaseReady = Firebase.apps.isNotEmpty;
       } catch (e) {
         debugPrint('FCM Firebase.initializeApp error: $e');
       } finally {
@@ -81,7 +82,9 @@ class FcmPushService {
 
     await _ensureFirebaseInitialized();
 
-    if (!_initialized) {
+    if (!_listenersInitialized) {
+      _listenersInitialized = true;
+
       try {
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       } catch (e) {
@@ -163,7 +166,6 @@ class FcmPushService {
       });
 
       messagingTokenRefreshListener();
-      _initialized = true;
     }
 
     if (!_openedListenersAttached && _onTapCallback != null) {
@@ -311,7 +313,7 @@ class FcmPushService {
 
     if (effectiveRole == null ||
         (effectiveId == null &&
-            (effectivePhone == null || effectivePhone.trim().isEmpty))) {
+            (effectivePhone == null || effectivePhone.trim().isNotEmpty))) {
       debugPrint(
         'FCM syncTokenForCurrentUser aborted: missing role/id/phone (role=$effectiveRole, id=$effectiveId, phone=$effectivePhone)',
       );
