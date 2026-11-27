@@ -212,7 +212,7 @@ class _AdminScreenState extends State<AdminScreen>
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
@@ -252,36 +252,46 @@ class _AdminScreenState extends State<AdminScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
               onPressed: () async {
                 if (titleController.text.trim().isNotEmpty) {
-                  if (banner == null) {
-                    await Supabase.instance.client
-                        .from('promo_banners')
-                        .insert({
-                      'title': titleController.text.trim(),
-                      'subtitle': subtitleController.text.trim(),
-                      'code': codeController.text.trim(),
-                      'is_active': true,
-                    });
-                  } else {
-                    await Supabase.instance.client
-                        .from('promo_banners')
-                        .update({
-                      'title': titleController.text.trim(),
-                      'subtitle': subtitleController.text.trim(),
-                      'code': codeController.text.trim(),
-                    }).eq('id', banner['id']);
+                  try {
+                    if (banner == null) {
+                      await Supabase.instance.client
+                          .from('promo_banners')
+                          .insert({
+                        'title': titleController.text.trim(),
+                        'subtitle': subtitleController.text.trim(),
+                        'code': codeController.text.trim(),
+                        'is_active': true,
+                      });
+                    } else {
+                      await Supabase.instance.client
+                          .from('promo_banners')
+                          .update({
+                        'title': titleController.text.trim(),
+                        'subtitle': subtitleController.text.trim(),
+                        'code': codeController.text.trim(),
+                      }).eq('id', banner['id']);
+                    }
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
+                    if (mounted) setState(() {});
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('تم حفظ البنر بنجاح ✅')));
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('تعذر حفظ البنر: $e')),
+                      );
+                    }
                   }
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                  setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم حفظ البنر بنجاح ✅')));
                 }
               },
               child: const Text('حفظ',
@@ -291,13 +301,19 @@ class _AdminScreenState extends State<AdminScreen>
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        titleController.dispose();
+        subtitleController.dispose();
+        codeController.dispose();
+      });
+    });
   }
 
   void _showBannersManagementDialog(BuildContext context, AppState appState) {
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
@@ -317,7 +333,7 @@ class _AdminScreenState extends State<AdminScreen>
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('إضافة بنر'),
                   onPressed: () {
-                    Navigator.pop(context);
+                    Navigator.pop(dialogContext);
                     _showAddOrEditBannerDialog(context, appState, null);
                   },
                 ),
@@ -354,7 +370,7 @@ class _AdminScreenState extends State<AdminScreen>
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                             side: BorderSide(
-                                color: Colors.amber.withOpacity(0.3))),
+                                color: Colors.amber.withValues(alpha: 0.3))),
                         child: ListTile(
                           title: Text(banner['title']?.toString() ?? '',
                               style: const TextStyle(
@@ -372,7 +388,7 @@ class _AdminScreenState extends State<AdminScreen>
                                 icon: const Icon(Icons.edit,
                                     color: Colors.blueAccent, size: 20),
                                 onPressed: () {
-                                  Navigator.pop(context);
+                                  Navigator.pop(dialogContext);
                                   _showAddOrEditBannerDialog(
                                       context, appState, banner);
                                 },
@@ -405,7 +421,7 @@ class _AdminScreenState extends State<AdminScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
             ],
@@ -418,7 +434,7 @@ class _AdminScreenState extends State<AdminScreen>
   void _showRestaurantRatingsDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -478,7 +494,8 @@ class _AdminScreenState extends State<AdminScreen>
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: Colors.amber.withOpacity(0.3)),
+                          side: BorderSide(
+                              color: Colors.amber.withValues(alpha: 0.3)),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(12.0),
@@ -529,7 +546,7 @@ class _AdminScreenState extends State<AdminScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
               ),
             ],
@@ -626,7 +643,7 @@ class _AdminScreenState extends State<AdminScreen>
             margin: const EdgeInsets.symmetric(vertical: 8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.amber.withOpacity(0.4)),
+              side: BorderSide(color: Colors.amber.withValues(alpha: 0.4)),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -658,8 +675,8 @@ class _AdminScreenState extends State<AdminScreen>
                                     horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: isBusy
-                                      ? Colors.orange.withOpacity(0.2)
-                                      : Colors.green.withOpacity(0.2),
+                                      ? Colors.orange.withValues(alpha: 0.2)
+                                      : Colors.green.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -683,7 +700,7 @@ class _AdminScreenState extends State<AdminScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.2),
+                              color: Colors.green.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(color: Colors.green),
                             ),
@@ -824,10 +841,10 @@ class _AdminScreenState extends State<AdminScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
+                      color: Colors.amber.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
-                      border:
-                          Border.all(color: Colors.amber.withOpacity(0.35)),
+                      border: Border.all(
+                          color: Colors.amber.withValues(alpha: 0.35)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -891,7 +908,7 @@ class _AdminScreenState extends State<AdminScreen>
             decoration: BoxDecoration(
               color: const Color(0xFF1E1E1E),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1201,14 +1218,15 @@ class _AdminScreenState extends State<AdminScreen>
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: Colors.amber.withOpacity(0.4), width: 1.5),
+                            color: Colors.amber.withValues(alpha: 0.4),
+                            width: 1.5),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                                color: Colors.amber.withOpacity(0.2),
+                                color: Colors.amber.withValues(alpha: 0.2),
                                 shape: BoxShape.circle),
                             child: const Icon(Icons.remove_red_eye,
                                 color: Colors.amber, size: 20),
@@ -1240,14 +1258,15 @@ class _AdminScreenState extends State<AdminScreen>
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: Colors.green.withOpacity(0.4), width: 1.5),
+                            color: Colors.green.withValues(alpha: 0.4),
+                            width: 1.5),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.2),
+                                color: Colors.green.withValues(alpha: 0.2),
                                 shape: BoxShape.circle),
                             child: const Icon(Icons.check_circle,
                                 color: Colors.greenAccent, size: 20),
@@ -1560,7 +1579,7 @@ class _AdminScreenState extends State<AdminScreen>
               side: BorderSide(
                   color: needsPricingOrReassign
                       ? Colors.amber
-                      : Colors.green.withOpacity(0.4),
+                      : Colors.green.withValues(alpha: 0.4),
                   width: 1.5),
             ),
             child: InkWell(
@@ -1592,7 +1611,7 @@ class _AdminScreenState extends State<AdminScreen>
                             IconButton(
                               style: IconButton.styleFrom(
                                   backgroundColor:
-                                      Colors.red.withOpacity(0.2)),
+                                      Colors.red.withValues(alpha: 0.2)),
                               icon: const Icon(Icons.delete_forever,
                                   color: Colors.redAccent, size: 20),
                               tooltip: 'حذف الطلب',
@@ -1677,7 +1696,7 @@ class _AdminScreenState extends State<AdminScreen>
                             IconButton(
                               style: IconButton.styleFrom(
                                   backgroundColor:
-                                      Colors.amber.withOpacity(0.2)),
+                                      Colors.amber.withValues(alpha: 0.2)),
                               icon: const Icon(Icons.map,
                                   color: Colors.amber, size: 20),
                               tooltip: 'تتبع الطلب',
@@ -1707,8 +1726,8 @@ class _AdminScreenState extends State<AdminScreen>
                                   horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: needsPricingOrReassign
-                                    ? Colors.amber.withOpacity(0.15)
-                                    : Colors.green.withOpacity(0.2),
+                                    ? Colors.amber.withValues(alpha: 0.15)
+                                    : Colors.green.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                     color: needsPricingOrReassign
@@ -1733,10 +1752,10 @@ class _AdminScreenState extends State<AdminScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.15),
+                          color: Colors.amber.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
-                          border:
-                              Border.all(color: Colors.amber.withOpacity(0.5)),
+                          border: Border.all(
+                              color: Colors.amber.withValues(alpha: 0.5)),
                         ),
                         child: Text(
                           '🏠 مشروع منزلي: ${projectName.isNotEmpty ? projectName : 'مشاريع منزلية'}',
@@ -1836,7 +1855,7 @@ class _AdminScreenState extends State<AdminScreen>
                           const SizedBox(width: 8),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedCouriersForOrder[orderId],
+                              initialValue: _selectedCouriersForOrder[orderId],
                               dropdownColor: const Color(0xFF1E1E1E),
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 12),
