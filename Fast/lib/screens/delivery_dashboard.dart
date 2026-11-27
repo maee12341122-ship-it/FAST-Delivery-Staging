@@ -22,42 +22,60 @@ class DeliveryDashboard extends StatefulWidget {
 }
 
 class _DeliveryDashboardState extends State<DeliveryDashboard> {
+  static const LatLng _defaultTaizLocation = LatLng(13.5779, 44.0219);
+  static const Set<String> _validStatuses = {'available', 'busy', 'offline'};
+
   String _status = 'available';
   bool _isUpdatingStatus = false;
+  final Set<String> _busyOrderIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    final currentCourier = context.read<AppState>().currentCourier;
-    final initialStatus = currentCourier?['status']?.toString().trim();
-    if (initialStatus == 'available' ||
-        initialStatus == 'busy' ||
-        initialStatus == 'offline') {
-      _status = initialStatus!;
-    }
-    _syncCourierLocationToSupabase(const LatLng(13.5779, 44.0219));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final currentCourier = context.read<AppState>().currentCourier;
+      final initialStatus = currentCourier?['status']?.toString().trim();
+      if (initialStatus != null && _validStatuses.contains(initialStatus)) {
+        setState(() {
+          _status = initialStatus;
+        });
+      }
+      _syncCourierLocationToSupabase(_defaultTaizLocation);
+    });
+  }
+
+  String get _courierIdentifier {
+    final trimmedId = widget.courierId.trim();
+    if (trimmedId.isNotEmpty) return trimmedId;
+    return widget.courierName.trim();
   }
 
   Future<void> _syncCourierLocationToSupabase(LatLng position) async {
     try {
-      final identifier = widget.courierName.trim().isNotEmpty
-          ? widget.courierName.trim()
-          : widget.courierId.trim();
+      final identifier = _courierIdentifier;
       if (identifier.isEmpty) return;
 
-      await Supabase.instance.client.from('courier_locations').upsert({
-        'courier_id': identifier,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }, onConflict: 'courier_id');
+      await Supabase.instance.client.from('courier_locations').upsert(
+        {
+          'courier_id': identifier,
+          'courier_name': widget.courierName.trim(),
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'courier_id',
+      );
     } catch (e) {
       debugPrint('⚠️ تعذر مزامنة موقع المندوب: $e');
     }
   }
 
   Future<void> _updateCourierStatus(
-      BuildContext context, AppState appState, String newStatus) async {
+    BuildContext context,
+    AppState appState,
+    String newStatus,
+  ) async {
     if (_isUpdatingStatus || newStatus == _status) return;
     final previousStatus = _status;
 
@@ -67,12 +85,19 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
     });
 
     try {
-      final intId = int.tryParse(widget.courierId.trim());
+      final trimmedId = widget.courierId.trim();
+      final intId = int.tryParse(trimmedId);
+
       if (intId != null) {
         await Supabase.instance.client
             .from('couriers')
             .update({'status': newStatus})
             .eq('id', intId);
+      } else if (trimmedId.isNotEmpty) {
+        await Supabase.instance.client
+            .from('couriers')
+            .update({'status': newStatus})
+            .eq('id', trimmedId);
       } else if (widget.courierName.trim().isNotEmpty) {
         await Supabase.instance.client
             .from('couriers')
@@ -88,11 +113,11 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
       }
 
       if (!mounted) return;
-      final label = newStatus == 'available'
-          ? 'متاح 🟢'
-          : newStatus == 'busy'
-              ? 'مشغول 🟡'
-              : 'خارج الخدمة 🔴';
+      final label = switch (newStatus) {
+        'available' => 'متاح 🟢',
+        'busy' => 'مشغول 🟡',
+        _ => 'خارج الخدمة 🔴',
+      };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تحديث حالتك إلى: $label')),
       );
@@ -109,55 +134,82 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
     }
   }
 
-  // 🗺️ دالة محسنة لاستخراج الإحداثيات بدقة عالية وتجاوز الأقواس والأسطر
   LatLng? _extractLatLng(String addressText) {
-    final regExp = RegExp(r'([0-9]+\.[0-9]+)');
+    final regExp = RegExp(r'(-?[0-9]+(?:\.[0-9]+)?)');
     final matches = regExp.allMatches(addressText).toList();
 
     if (matches.length >= 2) {
-      double? num1 = double.tryParse(matches[0].group(0) ?? '');
-      double? num2 = double.tryParse(matches[1].group(0) ?? '');
+      final num1 = double.tryParse(matches[0].group(0) ?? '');
+      final num2 = double.tryParse(matches[1].group(0) ?? '');
 
       if (num1 != null && num2 != null) {
-        double lat, lng;
-        if (num1 >= 13.0 && num1 < 15.0 && num2 >= 43.0 && num2 < 46.0) {
-          lat = num1;
-          lng = num2;
-        } else if (num2 >= 13.0 &&
-            num2 < 15.0 &&
-            num1 >= 43.0 &&
-            num1 < 46.0) {
-          lat = num2;
-          lng = num1;
-        } else {
-          lat = num1;
-          lng = num2;
+        if (num1 >= 12.0 && num1 <= 19.0 && num2 >= 41.0 && num2 <= 55.0) {
+          return LatLng(num1, num2);
         }
-        return LatLng(lat, lng);
+        if (num2 >= 12.0 && num2 <= 19.0 && num1 >= 41.0 && num1 <= 55.0) {
+          return LatLng(num2, num1);
+        }
+        if (num1.abs() <= 90.0 && num2.abs() <= 180.0) {
+          return LatLng(num1, num2);
+        }
       }
     }
-    return const LatLng(13.5779, 44.0219); // افتراضي لتعز
+    return null;
   }
 
-  // 🧭 دالة فتح خرائط جوجل بالإحداثيات الدقيقة المباشرة
   Future<void> _openNavigation(String addressText) async {
     final latLng = _extractLatLng(addressText);
-    Uri url;
+    final Uri url;
+
     if (latLng != null) {
       url = Uri.parse(
-          'https://www.google.com/maps/search/?api=1&query=${latLng.latitude},${latLng.longitude}');
+        'https://www.google.com/maps/search/?api=1&query=${latLng.latitude},${latLng.longitude}',
+      );
     } else {
+      if (addressText.trim().isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا يوجد عنوان أو إحداثيات متاحة للطلب')),
+        );
+        return;
+      }
       url = Uri.parse(
-          'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(addressText)}');
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(addressText.trim())}',
+      );
     }
 
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
+    try {
+      final launched =
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر فتح تطبيق خرائط جوجل')),
         );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح تطبيق خرائط جوجل')),
+      );
+    }
+  }
+
+  Future<void> _runOrderAction(
+    String orderId,
+    Future<void> Function() action,
+  ) async {
+    if (_busyOrderIds.contains(orderId)) return;
+    setState(() => _busyOrderIds.add(orderId));
+    try {
+      await action();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busyOrderIds.remove(orderId));
       }
     }
   }
@@ -180,9 +232,8 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
-    final allOrders = appState.orders;
-
-    final courierOrders = allOrders.where(_isOrderAssignedToCourier).toList();
+    final courierOrders =
+        appState.orders.where(_isOrderAssignedToCourier).toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -194,9 +245,10 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
           title: Text(
             'لوحة المندوب: ${widget.courierName}',
             style: const TextStyle(
-                color: AppConstants.gold,
-                fontWeight: FontWeight.bold,
-                fontSize: 16),
+              color: AppConstants.gold,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
         ),
         body: Padding(
@@ -222,9 +274,10 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                           Text(
                             'تحديث حالة التوفر:',
                             style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold),
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -271,11 +324,14 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
               const SizedBox(height: 20),
               const Align(
                 alignment: Alignment.centerRight,
-                child: Text('الطلبات المسندة إليك 📦',
-                    style: TextStyle(
-                        color: AppConstants.gold,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
+                child: Text(
+                  'الطلبات المسندة إليك 📦',
+                  style: TextStyle(
+                    color: AppConstants.gold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
               Expanded(
@@ -287,19 +343,24 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                  color: AppConstants.gold.withOpacity(0.1),
-                                  shape: BoxShape.circle),
-                              child: const Icon(Icons.local_shipping_outlined,
-                                  size: 50, color: AppConstants.gold),
+                                color: AppConstants.gold.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.local_shipping_outlined,
+                                size: 50,
+                                color: AppConstants.gold,
+                              ),
                             ),
                             const SizedBox(height: 16),
                             const Text(
                               'لا توجد طلبات مسندة لك حالياً\nستظهر الطلبات هنا فور إرسالها من المشرف 🚀',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold),
+                                color: Colors.grey,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -328,6 +389,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                   '0';
 
                           final status = order['status']?.toString() ?? '';
+                          final isOrderBusy = _busyOrderIds.contains(orderId);
 
                           final paymentMethod =
                               order['payment_method']?.toString() ?? 'cash';
@@ -340,6 +402,7 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                               : '💳 مدفوع مسبقاً عبر ($paymentMethod) - حساب: $paymentAccount (لا تحصل نقداً)';
 
                           final orderLatLng = _extractLatLng(address);
+                          final mapTarget = orderLatLng ?? _defaultTaizLocation;
 
                           return Card(
                             color: const Color(0xFF1E1E1E),
@@ -358,16 +421,22 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('طلب #$orderId',
-                                          style: const TextStyle(
-                                              color: AppConstants.gold,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15)),
-                                      Text('الإجمالي: $totalPrice ر.ي',
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15)),
+                                      Text(
+                                        'طلب #$orderId',
+                                        style: const TextStyle(
+                                          color: AppConstants.gold,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      Text(
+                                        'الإجمالي: $totalPrice ر.ي',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const Divider(color: Colors.white12),
@@ -375,15 +444,20 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('🛍️ سعر المنتجات: $itemsPrice ر.ي',
-                                          style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 13)),
-                                      Text('🏍️ رسوم التوصيل: $deliveryFee ر.ي',
-                                          style: const TextStyle(
-                                              color: AppConstants.gold,
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.bold)),
+                                      Text(
+                                        '🛍️ سعر المنتجات: $itemsPrice ر.ي',
+                                        style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13),
+                                      ),
+                                      Text(
+                                        '🏍️ رسوم التوصيل: $deliveryFee ر.ي',
+                                        style: const TextStyle(
+                                          color: AppConstants.gold,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -397,9 +471,11 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                       style: const TextStyle(
                                           color: Colors.white70)),
                                   const SizedBox(height: 6),
-                                  Text('المنتجات: $itemsDesc',
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 13)),
+                                  Text(
+                                    'المنتجات: $itemsDesc',
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 13),
+                                  ),
                                   const SizedBox(height: 10),
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
@@ -408,18 +484,19 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                       width: double.infinity,
                                       child: GoogleMap(
                                         initialCameraPosition: CameraPosition(
-                                          target: orderLatLng ??
-                                              const LatLng(13.5779, 44.0219),
+                                          target: mapTarget,
                                           zoom: 15,
                                         ),
                                         markers: {
                                           Marker(
-                                            markerId: MarkerId(orderId),
-                                            position: orderLatLng ??
-                                                const LatLng(13.5779, 44.0219),
+                                            markerId: MarkerId(orderId.isEmpty
+                                                ? 'order_$index'
+                                                : orderId),
+                                            position: mapTarget,
                                             infoWindow: InfoWindow(
-                                                title:
-                                                    'موقع العميل: $customerName'),
+                                              title:
+                                                  'موقع العميل: $customerName',
+                                            ),
                                           ),
                                         },
                                         liteModeEnabled: true,
@@ -437,16 +514,18 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                         side: const BorderSide(
                                             color: Colors.lightBlueAccent),
                                         shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8)),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
                                       ),
                                       onPressed: () => _openNavigation(address),
                                       icon: const Icon(Icons.navigation,
                                           size: 16),
                                       label: const Text(
-                                          'التوجيه الدقيق إلى موقع العميل عبر الخريطة 🧭',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold)),
+                                        'التوجيه الدقيق إلى موقع العميل عبر الخريطة 🧭',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -459,9 +538,10 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                           : Colors.blue.withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                          color: isCash
-                                              ? Colors.green
-                                              : Colors.blueAccent),
+                                        color: isCash
+                                            ? Colors.green
+                                            : Colors.blueAccent,
+                                      ),
                                     ),
                                     child: Text(
                                       paymentDisplay,
@@ -506,22 +586,17 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                       if (status == 'waitingCourierApproval') ...[
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.red,
-                                              foregroundColor: Colors.white),
-                                          onPressed: () async {
-                                            try {
-                                              await appState
-                                                  .courierRespondToOrder(
-                                                      orderId, false);
-                                            } catch (e) {
-                                              if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(e.toString())),
-                                              );
-                                            }
-                                          },
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          onPressed: isOrderBusy
+                                              ? null
+                                              : () => _runOrderAction(
+                                                    orderId,
+                                                    () => appState
+                                                        .courierRespondToOrder(
+                                                            orderId, false),
+                                                  ),
                                           icon: const Icon(Icons.close,
                                               size: 16),
                                           label: const Text('رفض الطلب'),
@@ -529,26 +604,23 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                         const SizedBox(width: 8),
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.green,
-                                              foregroundColor: Colors.white),
-                                          onPressed: () async {
-                                            try {
-                                              await appState
-                                                  .courierRespondToOrder(
-                                                      orderId, true);
-                                              if (orderLatLng != null) {
-                                                await _syncCourierLocationToSupabase(
-                                                    orderLatLng);
-                                              }
-                                            } catch (e) {
-                                              if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(e.toString())),
-                                              );
-                                            }
-                                          },
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          onPressed: isOrderBusy
+                                              ? null
+                                              : () => _runOrderAction(
+                                                    orderId,
+                                                    () async {
+                                                      await appState
+                                                          .courierRespondToOrder(
+                                                              orderId, true);
+                                                      if (orderLatLng != null) {
+                                                        await _syncCourierLocationToSupabase(
+                                                            orderLatLng);
+                                                      }
+                                                    },
+                                                  ),
                                           icon:
                                               const Icon(Icons.check, size: 16),
                                           label: const Text('قبول الطلب'),
@@ -558,22 +630,17 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                           status == 'acceptedByCourier')
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.amber,
-                                              foregroundColor: Colors.black),
-                                          onPressed: () async {
-                                            try {
-                                              await appState
-                                                  .courierUpdateArrival(
-                                                      orderId);
-                                            } catch (e) {
-                                              if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(e.toString())),
-                                              );
-                                            }
-                                          },
+                                            backgroundColor: Colors.amber,
+                                            foregroundColor: Colors.black,
+                                          ),
+                                          onPressed: isOrderBusy
+                                              ? null
+                                              : () => _runOrderAction(
+                                                    orderId,
+                                                    () => appState
+                                                        .courierUpdateArrival(
+                                                            orderId),
+                                                  ),
                                           icon: const Icon(Icons.location_pin,
                                               size: 16),
                                           label: const Text('وصلت لموقع العميل'),
@@ -582,21 +649,17 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                           status == 'arrivedToCustomer')
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.blueAccent,
-                                              foregroundColor: Colors.white),
-                                          onPressed: () async {
-                                            try {
-                                              await appState
-                                                  .markOrderDelivered(orderId);
-                                            } catch (e) {
-                                              if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(
-                                                    content: Text(e.toString())),
-                                              );
-                                            }
-                                          },
+                                            backgroundColor: Colors.blueAccent,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          onPressed: isOrderBusy
+                                              ? null
+                                              : () => _runOrderAction(
+                                                    orderId,
+                                                    () => appState
+                                                        .markOrderDelivered(
+                                                            orderId),
+                                                  ),
                                           icon: const Icon(Icons.done_all,
                                               size: 16),
                                           label:
