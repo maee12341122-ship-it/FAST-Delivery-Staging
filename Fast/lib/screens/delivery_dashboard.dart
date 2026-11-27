@@ -162,16 +162,27 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
     }
   }
 
+  bool _isOrderAssignedToCourier(Map<String, dynamic> order) {
+    final assigned =
+        order['assigned_courier']?.toString().trim().toLowerCase() ?? '';
+    final driver = order['driver_name']?.toString().trim().toLowerCase() ?? '';
+    final courierIdField =
+        order['courier_id']?.toString().trim().toLowerCase() ?? '';
+    final targetName = widget.courierName.trim().toLowerCase();
+    final targetId = widget.courierId.trim().toLowerCase();
+
+    return (targetName.isNotEmpty &&
+            (assigned == targetName || driver == targetName)) ||
+        (targetId.isNotEmpty &&
+            (assigned == targetId || courierIdField == targetId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final allOrders = appState.orders;
 
-    final courierOrders = allOrders.where((order) {
-      String assigned = order['assigned_courier']?.toString().trim() ?? '';
-      return assigned == widget.courierName.trim() ||
-          assigned == widget.courierId.trim();
-    }).toList();
+    final courierOrders = allOrders.where(_isOrderAssignedToCourier).toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -543,7 +554,8 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                           label: const Text('قبول الطلب'),
                                         ),
                                       ],
-                                      if (status == 'onTheWay')
+                                      if (status == 'onTheWay' ||
+                                          status == 'acceptedByCourier')
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
                                               backgroundColor: Colors.amber,
@@ -566,7 +578,8 @@ class _DeliveryDashboardState extends State<DeliveryDashboard> {
                                               size: 16),
                                           label: const Text('وصلت لموقع العميل'),
                                         ),
-                                      if (status == 'arrived')
+                                      if (status == 'arrived' ||
+                                          status == 'arrivedToCustomer')
                                         ElevatedButton.icon(
                                           style: ElevatedButton.styleFrom(
                                               backgroundColor: Colors.blueAccent,
