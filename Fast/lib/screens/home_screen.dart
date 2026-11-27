@@ -24,69 +24,69 @@ import 'order_tracking_screen.dart';
 import 'customer/custom_delivery_screen.dart';
 import 'admin_screen.dart';
 import 'courier_screen.dart';
-​class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatefulWidget {
 const HomeScreen({super.key});
-​@override
+@override
 State<HomeScreen> createState() => _HomeScreenState();
 }
-​class _HomeScreenState extends State<HomeScreen>
+class _HomeScreenState extends State<HomeScreen>
 with SingleTickerProviderStateMixin {
 int _currentIndex = 0;
 String selectedCategory = 'الكل';
 String? selectedRestaurantName;
 String selectedStoreSubCategory = 'الكل';
-​final Map<String, double> _restaurantAvgRatings = {};
+final Map<String, double> _restaurantAvgRatings = {};
 final Map<String, int> _restaurantRatingCounts = {};
 final Map<String, double> _productAvgRatings = {};
 final Map<String, int> _productRatingCounts = {};
 bool _isLoadingRatings = false;
-​final ScrollController _shopScrollController = ScrollController();
+final ScrollController _shopScrollController = ScrollController();
 final ScrollController _otherOrdersScrollController = ScrollController();
 bool _showScrollToTop = false;
 bool _isPrivacyDialogOpen = false;
-​final TextEditingController _searchController = TextEditingController();
+final TextEditingController _searchController = TextEditingController();
 final FocusNode _searchFocusNode = FocusNode();
 bool _isSearching = false;
 String _searchScope = 'all';
-​final TextEditingController _customItemNameController = TextEditingController();
+final TextEditingController _customItemNameController = TextEditingController();
 final TextEditingController _customItemPriceController = TextEditingController();
 final TextEditingController _customItemNotesController = TextEditingController();
-​final TextEditingController _giftPharmaOrderNameController =
+final TextEditingController _giftPharmaOrderNameController =
 TextEditingController();
 final TextEditingController _giftPharmaOrderPriceController =
 TextEditingController();
 final TextEditingController _giftPharmaOrderDetailsController =
 TextEditingController();
-​final _formKey = GlobalKey<FormState>();
+final _formKey = GlobalKey<FormState>();
 final _nameController = TextEditingController();
 final _phoneController = TextEditingController();
 final _addressDescriptionController = TextEditingController();
 String _selectedPaymentMethod = 'cash';
 bool _isSubmittingCheckout = false;
-​final Set<String> _shownPricingDialogs = {};
-​late AnimationController _popupAnimController;
+final Set<String> _shownPricingDialogs = {};
+late AnimationController _popupAnimController;
 late Animation<double> _popupScaleAnimation;
 int _previousUnreadCount = 0;
 bool _showPopupBadge = false;
 String _latestNotificationText = 'إشعار جديد!';
-​static const String _supportPhoneDisplay = '775145534';
+static const String _supportPhoneDisplay = '775145534';
 static const String _supportPhoneIntl = '967775145534';
-​Color _accent(AppState appState) =>
+Color _accent(AppState appState) =>
 appState.isDarkMode ? Colors.amber : const Color(0xFF0D47A1);
-​String _formatPrice(double value) {
+String _formatPrice(double value) {
 if (value % 1 == 0) {
 return value.toInt().toString();
 }
 return value.toStringAsFixed(1);
 }
-​String _formatHourLabel(int hour) {
+String _formatHourLabel(int hour) {
 final normalized = ((hour % 24) + 24) % 24;
 if (normalized == 0 || normalized == 24) return '12:00 ص';
 if (normalized == 12) return '12:00 م';
-if (normalized < 12) return 'normalized:00 ص';
-return '{normalized - 12}:00 م';
+if (normalized < 12) return '$normalized:00 ص';
+return '${normalized - 12}:00 م';
 }
-​String formatLocationAddress(String? rawAddress) {
+String formatLocationAddress(String? rawAddress) {
 if (rawAddress == null || rawAddress.isEmpty) return 'تعز - مركز المدينة';
 if (rawAddress.contains('(') && rawAddress.contains(',')) {
 if (rawAddress.contains('13.57') || rawAddress.contains('44.00')) {
@@ -99,7 +99,7 @@ return 'منطقة معتمدة، تعز';
 }
 return rawAddress;
 }
-​bool _isGiftOrPharmacyCategory(String? categoryName) {
+bool _isGiftOrPharmacyCategory(String? categoryName) {
 final c = (categoryName ?? '').trim().toLowerCase();
 return c == 'الصيدلية الآمنة' ||
 c == 'الصيدلية' ||
@@ -108,22 +108,22 @@ c == 'هدايا واكسسوارات' ||
 c == 'هدايا' ||
 c == 'الهدايا';
 }
-​Future<void> _fetchCustomerRatingsSummaries() async {
+Future<void> _fetchCustomerRatingsSummaries() async {
 if (_isLoadingRatings) return;
 _isLoadingRatings = true;
 try {
 final rows = await Supabase.instance.client
 .from('ratings_and_reviews')
 .select('target_type, target_id, rating');
-​final Map<String, List<double>> restaurantScores = {};
+final Map<String, List<double>> restaurantScores = {};
 final Map<String, List<double>> productScores = {};
-​for (final row in rows) {
+for (final row in rows) {
 if (row is! Map) continue;
 final type = (row['target_type'] ?? '').toString().trim().toLowerCase();
 final targetId = (row['target_id'] ?? '').toString().trim();
 final ratingVal = double.tryParse(row['rating']?.toString() ?? '');
 if (targetId.isEmpty || ratingVal == null || ratingVal <= 0) continue;
-​if (type == 'restaurant' || type == 'restaurants' || type == 'store') {
+if (type == 'restaurant' || type == 'restaurants' || type == 'store') {
 restaurantScores
 .putIfAbsent(targetId.toLowerCase(), () => [])
 .add(ratingVal);
@@ -133,7 +133,7 @@ productScores
 .add(ratingVal);
 }
 }
-​final Map<String, double> rAvg = {};
+final Map<String, double> rAvg = {};
 final Map<String, int> rCnt = {};
 restaurantScores.forEach((key, list) {
 if (list.isNotEmpty) {
@@ -142,7 +142,7 @@ rAvg[key] = sum / list.length;
 rCnt[key] = list.length;
 }
 });
-​final Map<String, double> pAvg = {};
+final Map<String, double> pAvg = {};
 final Map<String, int> pCnt = {};
 productScores.forEach((key, list) {
 if (list.isNotEmpty) {
@@ -151,7 +151,7 @@ pAvg[key] = sum / list.length;
 pCnt[key] = list.length;
 }
 });
-​if (!mounted) return;
+if (!mounted) return;
 setState(() {
 _restaurantAvgRatings
 ..clear()
@@ -172,7 +172,7 @@ debugPrint('⚠️ تعذر جلب ملخص تقييمات العميل: $e');
 _isLoadingRatings = false;
 }
 }
-​String _searchHintText() {
+String _searchHintText() {
 switch (_searchScope) {
 case 'products':
 return 'ابحث في أسماء المنتجات والوجبات...';
@@ -184,7 +184,7 @@ default:
 return 'ابحث عن منتج، متجر، أو قسم داخلي...';
 }
 }
-​bool _matchesProductSearch(ProductModel product, String query) {
+bool _matchesProductSearch(ProductModel product, String query) {
 if (query.isEmpty) return true;
 switch (_searchScope) {
 case 'products':
@@ -200,11 +200,11 @@ product.subCategory.toLowerCase().contains(query) ||
 product.category.toLowerCase().contains(query);
 }
 }
-​List<Map<String, String>> _findMatchingStores(
+List<Map<String, String>> _findMatchingStores(
 AppState appState, String query) {
 if (query.isEmpty) return const [];
 final Map<String, Map<String, String>> uniqueStores = {};
-​for (final r in appState.restaurantsList) {
+for (final r in appState.restaurantsList) {
 final name = (r['name'] ?? '').toString().trim();
 final cat = (r['category'] ?? r['type'] ?? '').toString().trim();
 if (name.isEmpty) continue;
@@ -216,7 +216,7 @@ name.toLowerCase(),
 );
 }
 }
-​for (final hp in appState.homeProjectsList) {
+for (final hp in appState.homeProjectsList) {
 final name = (hp['name'] ?? '').toString().trim();
 if (name.isEmpty) continue;
 if (name.toLowerCase().contains(query)) {
@@ -226,7 +226,7 @@ name.toLowerCase(),
 );
 }
 }
-​for (final p in appState.products) {
+for (final p in appState.products) {
 final name = p.restaurantName.trim();
 if (name.isEmpty) continue;
 if (name.toLowerCase().contains(query)) {
@@ -241,9 +241,9 @@ name.toLowerCase(),
 );
 }
 }
-​return uniqueStores.values.take(6).toList();
+return uniqueStores.values.take(6).toList();
 }
-​String _resolveStoreCategory(AppState appState, String storeName) {
+String _resolveStoreCategory(AppState appState, String storeName) {
 final lower = storeName.trim().toLowerCase();
 for (final r in appState.restaurantsList) {
 if ((r['name'] ?? '').toString().trim().toLowerCase() == lower) {
@@ -264,13 +264,13 @@ return p.category.trim();
 }
 return 'المطاعم';
 }
-​double? _resolveStoreRating(AppState appState, String storeName,
+double? _resolveStoreRating(AppState appState, String storeName,
 {Map<String, dynamic>? storeMap}) {
 final lower = storeName.trim().toLowerCase();
 if (_restaurantAvgRatings.containsKey(lower)) {
 return _restaurantAvgRatings[lower];
 }
-​final fromState = appState.getRestaurantRatingInfo(
+final fromState = appState.getRestaurantRatingInfo(
 restaurantId: storeMap?['id']?.toString(),
 restaurantName: storeName,
 );
@@ -278,14 +278,14 @@ if (fromState != null && fromState['avg'] != null) {
 final parsed = double.tryParse(fromState['avg'].toString());
 if (parsed != null && parsed > 0) return parsed;
 }
-​final direct = storeMap?['rating'] ??
+final direct = storeMap?['rating'] ??
 storeMap?['avg_rating'] ??
 storeMap?['average_rating'];
 if (direct != null) {
 final parsed = double.tryParse(direct.toString());
 if (parsed != null && parsed > 0) return parsed;
 }
-​for (final r in appState.restaurantsList) {
+for (final r in appState.restaurantsList) {
 if ((r['name'] ?? '').toString().trim().toLowerCase() == lower) {
 final rVal = r['rating'] ?? r['avg_rating'] ?? r['average_rating'];
 if (rVal != null) {
@@ -296,12 +296,12 @@ if (parsed != null && parsed > 0) return parsed;
 }
 return null;
 }
-​Widget _buildIntegratedSearchBar(
+Widget _buildIntegratedSearchBar(
 AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 final query = _searchController.text.trim().toLowerCase();
 final matchingStores = _findMatchingStores(appState, query);
-​final searchScopes = [
+final searchScopes = [
 {'key': 'all', 'label': 'الكل', 'icon': Icons.all_inclusive},
 {'key': 'products', 'label': 'المنتجات', 'icon': Icons.fastfood},
 {'key': 'stores', 'label': 'المتاجر', 'icon': Icons.storefront},
@@ -311,7 +311,7 @@ final matchingStores = _findMatchingStores(appState, query);
 'icon': Icons.category
 },
 ];
-​return AnimatedContainer(
+return AnimatedContainer(
 duration: const Duration(milliseconds: 260),
 curve: Curves.easeOutCubic,
 margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -362,7 +362,7 @@ suffixIcon: _searchController.text.isNotEmpty
 icon: Icon(Icons.close_rounded,
 color: accent, size: 19),
 onPressed: () {
-searchController.clear();
+_searchController.clear();
 setState(() {});
 },
 )
@@ -379,7 +379,7 @@ borderRadius: BorderRadius.circular(10),
 borderSide: BorderSide.none,
 ),
 ),
-onChanged: () => setState(() {}),
+onChanged: (_) => setState(() {}),
 ),
 ),
 if (_isSearching || query.isNotEmpty) ...[
@@ -422,7 +422,7 @@ final key = item['key'] as String;
 final label = item['label'] as String;
 final icon = item['icon'] as IconData;
 final isSelected = _searchScope == key;
-​return Padding(
+return Padding(
 padding: const EdgeInsets.only(left: 6),
 child: InkWell(
 borderRadius: BorderRadius.circular(8),
@@ -514,7 +514,7 @@ selectedStoreSubCategory = 'الكل';
 _searchController.clear();
 _isSearching = false;
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 },
 );
 }).toList(),
@@ -527,10 +527,10 @@ _scrollHomeToTop(animated: true);
 ),
 );
 }
-​Map<String, dynamic> _extractNotificationPayload(
+Map<String, dynamic> _extractNotificationPayload(
 Map<String, dynamic> notification) {
 final Map<String, dynamic> payload = {};
-​final nested = notification['data'] ??
+final nested = notification['data'] ??
 notification['additionalData'] ??
 notification['payload'];
 if (nested is Map) {
@@ -538,7 +538,7 @@ nested.forEach((k, v) {
 payload[k.toString()] = v;
 });
 }
-​for (final key in [
+for (final key in [
 'type',
 'screen',
 'route',
@@ -566,12 +566,12 @@ if (notification[key] != null && !payload.containsKey(key)) {
 payload[key] = notification[key];
 }
 }
-​return payload;
+return payload;
 }
-​void _handleNotificationTap(
+void _handleNotificationTap(
 BuildContext context, Map<String, dynamic> notification) {
 final payload = _extractNotificationPayload(notification);
-​final String notifType = (payload['type'] ??
+final String notifType = (payload['type'] ??
 payload['screen'] ??
 payload['route'] ??
 payload['target'] ??
@@ -579,23 +579,23 @@ payload['target'] ??
 .toString()
 .trim()
 .toLowerCase();
-​final String? chatId = (payload['chat_id'] ??
+final String? chatId = (payload['chat_id'] ??
 payload['chatId'] ??
 payload['room_id'] ??
 payload['roomId'])
 ?.toString()
 .trim();
-​final String? orderId = (payload['order_id'] ??
+final String? orderId = (payload['order_id'] ??
 payload['orderId'] ??
 payload['related_id'] ??
 _extractOrderIdFromText(
 '${payload['title'] ?? ''} ${payload['message'] ?? ''} ${payload['body'] ?? ''}'))
 ?.toString()
 .trim();
-​final bool isChatNotification = notifType.contains('chat') ||
+final bool isChatNotification = notifType.contains('chat') ||
 notifType.contains('message') ||
 (chatId != null && chatId.isNotEmpty);
-​if (isChatNotification &&
+if (isChatNotification &&
 ((orderId != null && orderId.isNotEmpty) ||
 (chatId != null && chatId.isNotEmpty))) {
 final String userRole =
@@ -607,7 +607,7 @@ payload['targetChat'] ??
 'admin_customer')
 .toString()
 .trim();
-​Navigator.push(
+Navigator.push(
 context,
 PageRouteBuilder(
 pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
@@ -622,7 +622,7 @@ return FadeTransition(opacity: animation, child: child);
 );
 return;
 }
-​if (orderId != null && orderId.isNotEmpty) {
+if (orderId != null && orderId.isNotEmpty) {
 Navigator.push(
 context,
 PageRouteBuilder(
@@ -646,7 +646,7 @@ return FadeTransition(opacity: animation, child: child);
 );
 }
 }
-​String? _extractOrderIdFromText(String text) {
+String? _extractOrderIdFromText(String text) {
 final RegExp regExp = RegExp(r'(?:طلب|#)\s*(\d+)');
 final match = regExp.firstMatch(text);
 if (match != null && match.groupCount >= 1) {
@@ -654,8 +654,8 @@ return match.group(1);
 }
 return null;
 }
-​void scrollHomeToTop({bool animated = true}) {
-WidgetsBinding.instance.addPostFrameCallback(() {
+void scrollHomeToTop({bool animated = true}) {
+WidgetsBinding.instance.addPostFrameCallback((_) {
 if (!mounted) return;
 for (final controller in [
 _shopScrollController,
@@ -675,7 +675,7 @@ controller.jumpTo(0.0);
 }
 });
 }
-​void _resetToHomeView({bool clearSearch = true, bool animateScroll = true}) {
+void _resetToHomeView({bool clearSearch = true, bool animateScroll = true}) {
 FocusScope.of(context).unfocus();
 setState(() {
 _currentIndex = 0;
@@ -688,20 +688,20 @@ _searchScope = 'all';
 _isSearching = false;
 }
 });
-_scrollHomeToTop(animated: animateScroll);
+scrollHomeToTop(animated: animateScroll);
 }
-​void _onShopScroll() {
+void _onShopScroll() {
 if (!_shopScrollController.hasClients) return;
 final shouldShow = _shopScrollController.offset > 360;
 if (shouldShow != _showScrollToTop && mounted) {
 setState(() => _showScrollToTop = shouldShow);
 }
 }
-​@override
+@override
 void initState() {
 super.initState();
 _shopScrollController.addListener(_onShopScroll);
-​_popupAnimController = AnimationController(
+_popupAnimController = AnimationController(
 duration: const Duration(milliseconds: 400),
 vsync: this,
 );
@@ -709,7 +709,7 @@ _popupScaleAnimation = CurvedAnimation(
 parent: _popupAnimController,
 curve: Curves.elasticOut,
 );
-​WidgetsBinding.instance.addPostFrameCallback((_) {
+WidgetsBinding.instance.addPostFrameCallback((_) {
 if (!mounted) return;
 final appState = Provider.of<AppState>(context, listen: false);
 unawaited(appState.fetchStoreSettings());
@@ -718,17 +718,17 @@ unawaited(appState.fetchProductsFromSupabase());
 unawaited(_fetchCustomerRatingsSummaries());
 unawaited(FcmPushService.initialize());
 unawaited(appState.syncFcmTokenForCurrentUsers());
-​if (appState.userProfile != null) {
+if (appState.userProfile != null) {
 _nameController.text = appState.userProfile?['name'] ?? '';
 _phoneController.text = appState.userProfile?['phone'] ?? '';
 _addressDescriptionController.text =
 appState.userProfile?['address'] ?? '';
 }
 _previousUnreadCount = appState.unreadNotificationsCount;
-​_checkAndShowPrivacyPolicyDialog(context, appState);
+_checkAndShowPrivacyPolicyDialog(context, appState);
 });
 }
-​@override
+@override
 void dispose() {
 _shopScrollController.removeListener(_onShopScroll);
 _shopScrollController.dispose();
@@ -747,10 +747,10 @@ _phoneController.dispose();
 _addressDescriptionController.dispose();
 super.dispose();
 }
-​void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
+void _checkAndShowPrivacyPolicyDialog(BuildContext context, AppState appState) {
 final bool hasAcceptedPrivacy = appState.hasAcceptedPrivacyPolicy;
 final accent = _accent(appState);
-​if (!hasAcceptedPrivacy && !_isPrivacyDialogOpen) {
+if (!hasAcceptedPrivacy && !_isPrivacyDialogOpen) {
 _isPrivacyDialogOpen = true;
 showDialog(
 context: context,
@@ -795,7 +795,8 @@ child: ListView(
 shrinkWrap: true,
 children: [
 const Text(
-'مرحباً بك في تطبيق FAST لتوصيل الطلبات\nلضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
+'مرحباً بك في تطبيق FAST لتوصيل الطلبات
+لضمان تقديم أفضل خدمة سريعة وآمنة، يرجى قراءة التعليمات والسياسات التالية بعناية:',
 style: TextStyle(
 color: Colors.grey, fontSize: 12, height: 1.4),
 ),
@@ -873,7 +874,7 @@ TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
 );
 }
 }
-​Widget _buildPrivacyPoint(
+Widget _buildPrivacyPoint(
 String title, String desc, Color accent, bool isDark) {
 return Column(
 crossAxisAlignment: CrossAxisAlignment.start,
@@ -890,10 +891,10 @@ height: 1.4)),
 ],
 );
 }
-​Future<void> _launchWhatsApp(
+Future<void> _launchWhatsApp(
 {String message = 'مرحباً، أود الاستفسار عن خدمة التوصيل'}) async {
 final uri = Uri.parse(
-'https://wa.me/_supportPhoneIntl?text={Uri.encodeComponent(message)}');
+'https://wa.me/$_supportPhoneIntl?text=${Uri.encodeComponent(message)}');
 if (await canLaunchUrl(uri)) {
 await launchUrl(uri, mode: LaunchMode.externalApplication);
 } else {
@@ -901,23 +902,23 @@ final appState = Provider.of<AppState>(context, listen: false);
 await appState.openFastWhatsApp(message: message);
 }
 }
-​Future<void> _launchPhoneCall() async {
+Future<void> _launchPhoneCall() async {
 final Uri url = Uri.parse('tel:$_supportPhoneDisplay');
 if (await canLaunchUrl(url)) {
 await launchUrl(url);
 }
 }
-​Future<void> _launchWhatsAppForAd() async {
+Future<void> _launchWhatsAppForAd() async {
 await _launchWhatsApp(
 message: 'مرحباً، أريد الاستفسار عن حجز مساحة إعلانية في تطبيق FAST.');
 }
-​Widget _buildStoreHoursStatusBar(
+Widget _buildStoreHoursStatusBar(
 AppState appState, Color cardBg, Color textColor) {
 final bool isOpen = appState.isStoreOpen;
 final String hoursText =
 '${_formatHourLabel(appState.startHour)} - ${_formatHourLabel(appState.endHour)}';
 final Color statusColor = isOpen ? Colors.green : Colors.redAccent;
-​return Container(
+return Container(
 margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
 decoration: BoxDecoration(
@@ -961,7 +962,7 @@ fontWeight: FontWeight.w600,
 ),
 );
 }
-​Widget _buildDynamicPromoBanners(AppState appState) {
+Widget _buildDynamicPromoBanners(AppState appState) {
 return FutureBuilder<List<dynamic>>(
 future: Supabase.instance.client
 .from('promo_banners')
@@ -973,7 +974,7 @@ if (!snapshot.hasData || (snapshot.data ?? []).isEmpty) {
 return const SizedBox.shrink();
 }
 final banners = snapshot.data!;
-​return SizedBox(
+return SizedBox(
 height: 98,
 child: PageView.builder(
 controller: PageController(viewportFraction: 0.92),
@@ -1047,7 +1048,7 @@ size: 28),
 },
 );
 }
-​Widget _buildAdBannerWidget(
+Widget _buildAdBannerWidget(
 AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 return Container(
@@ -1099,12 +1100,12 @@ style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
 ),
 );
 }
-​Widget _buildWasalliAndOtherOrdersRow(
+Widget _buildWasalliAndOtherOrdersRow(
 BuildContext context, AppState appState, String token) {
 final accent = _accent(appState);
 final isDark = appState.isDarkMode;
 final isOtherSelected = selectedCategory == 'طلبات أخرى';
-​return Padding(
+return Padding(
 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
 child: Row(
 children: [
@@ -1194,7 +1195,7 @@ selectedRestaurantName = null;
 selectedStoreSubCategory = 'الكل';
 _searchController.clear();
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 },
 child: Ink(
 padding:
@@ -1267,7 +1268,7 @@ size: 13,
 ),
 );
 }
-​Widget _buildCategoriesHorizontalList(
+Widget _buildCategoriesHorizontalList(
 AppState appState, Color textColor, Color cardBg) {
 final accent = _accent(appState);
 final categoriesList = [
@@ -1317,7 +1318,7 @@ final categoriesList = [
 'category': 'طلبات أخرى'
 },
 ];
-​return Container(
+return Container(
 margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
 padding: const EdgeInsets.all(8),
 decoration: BoxDecoration(
@@ -1353,7 +1354,7 @@ itemBuilder: (context, index) {
 final catItem = categoriesList[index];
 final catName = catItem['category'] as String;
 final isSelected = selectedCategory == catName;
-​return GestureDetector(
+return GestureDetector(
 onTap: () {
 HapticFeedback.selectionClick();
 setState(() {
@@ -1362,7 +1363,7 @@ selectedRestaurantName = null;
 selectedStoreSubCategory = 'الكل';
 _searchController.clear();
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 },
 child: AnimatedContainer(
 duration: const Duration(milliseconds: 200),
@@ -1411,7 +1412,7 @@ fontSize: 11,
 ),
 );
 }
-​Widget _buildGiftOrPharmacyOrderForm(
+Widget _buildGiftOrPharmacyOrderForm(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 final isPharmacy = selectedCategory.trim().toLowerCase() ==
@@ -1419,7 +1420,7 @@ final isPharmacy = selectedCategory.trim().toLowerCase() ==
 selectedCategory.trim().toLowerCase() == 'الصيدلية';
 final sectionLabel =
 isPharmacy ? 'قسم الصيدلية' : 'قسم الهدايا والإكسسوارات';
-​return Container(
+return Container(
 margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
 padding: const EdgeInsets.all(14),
 decoration: BoxDecoration(
@@ -1544,7 +1545,7 @@ final priceText = _giftPharmaOrderPriceController.text.trim();
 final orderDetails =
 _giftPharmaOrderDetailsController.text.trim();
 final parsedPrice = double.tryParse(priceText);
-​if (orderName.isEmpty) {
+if (orderName.isEmpty) {
 ScaffoldMessenger.of(context).showSnackBar(
 const SnackBar(content: Text('الرجاء إدخال اسم الطلب')),
 );
@@ -1564,19 +1565,19 @@ content: Text('الرجاء إدخال شرح وتفاصيل الطلب')),
 );
 return;
 }
-​final storePrefix = selectedRestaurantName != null
+final storePrefix = selectedRestaurantName != null
 ? '[$selectedRestaurantName - $sectionLabel] '
 : '[$sectionLabel] ';
 final combinedCustomName =
-'storePrefixorderName — شرح الطلب: $orderDetails';
-​appState.addCustomOrderToCart(
+'$storePrefix$orderName — شرح الطلب: $orderDetails';
+appState.addCustomOrderToCart(
 customName: combinedCustomName,
 estimatedPrice: parsedPrice,
 );
-​_giftPharmaOrderNameController.clear();
+_giftPharmaOrderNameController.clear();
 _giftPharmaOrderPriceController.clear();
 _giftPharmaOrderDetailsController.clear();
-​HapticFeedback.lightImpact();
+HapticFeedback.lightImpact();
 ScaffoldMessenger.of(context).showSnackBar(
 const SnackBar(
 content: Text('تمت إضافة الطلب إلى السلة بنجاح'),
@@ -1594,10 +1595,10 @@ style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
 ),
 );
 }
-​void _handleProductTapOrAdd(
+void _handleProductTapOrAdd(
 BuildContext context, AppState appState, ProductModel product) async {
 await appState.fetchProductModifiers(product.id);
-​if (appState.productModifiers.isEmpty) {
+if (appState.productModifiers.isEmpty) {
 appState.addToCart(CartItemModel(
 id: product.id,
 name: product.name,
@@ -1620,12 +1621,12 @@ if (!context.mounted) return;
 _showProductModifiersDialog(context, appState, product);
 }
 }
-​void _showProductModifiersDialog(
+void _showProductModifiersDialog(
 BuildContext context, AppState appState, ProductModel product) {
 final Set<String> selectedModifiers = {};
 double additionalTotalPrice = 0.0;
 final accent = _accent(appState);
-​showDialog(
+showDialog(
 context: context,
 builder: (context) => GestureDetector(
 onTap: () => FocusScope.of(context).unfocus(),
@@ -1709,7 +1710,7 @@ mod['additional_price']?.toString() ??
 0.0;
 final bool isSelected =
 selectedModifiers.contains(modName);
-​return CheckboxListTile(
+return CheckboxListTile(
 activeColor: accent,
 checkColor: appState.isDarkMode
 ? Colors.black
@@ -1724,7 +1725,7 @@ color: appState.isDarkMode
 fontSize: 14),
 ),
 subtitle: modPrice > 0
-? Text('+{_formatPrice(modPrice)} ر.ي',
+? Text('+${_formatPrice(modPrice)} ر.ي',
 style: TextStyle(
 color: accent, fontSize: 12))
 : null,
@@ -1752,7 +1753,7 @@ const Text('السعر الإجمالي:',
 style:
 TextStyle(color: Colors.grey, fontSize: 13)),
 Text(
-'{_formatPrice(product.price + additionalTotalPrice)} ر.ي',
+'${_formatPrice(product.price + additionalTotalPrice)} ر.ي',
 style: TextStyle(
 color: accent,
 fontWeight: FontWeight.bold,
@@ -1784,15 +1785,15 @@ if (selectedModifiers.isNotEmpty) {
 finalProductName +=
 ' (الإضافات: ${selectedModifiers.join(', ')})';
 }
-​appState.addToCart(CartItemModel(
-id: '{product.id}-{DateTime.now().millisecondsSinceEpoch}',
+appState.addToCart(CartItemModel(
+id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
 name: finalProductName,
 price: product.price + additionalTotalPrice,
 quantity: 1,
 restaurantId: product.restaurantName,
 imageUrl: product.imageUrl,
 ));
-​Navigator.pop(context);
+Navigator.pop(context);
 HapticFeedback.lightImpact();
 ScaffoldMessenger.of(context).showSnackBar(
 SnackBar(
@@ -1810,7 +1811,7 @@ style: TextStyle(fontWeight: FontWeight.bold)),
 ),
 );
 }
-​void _showContactUsDialog(
+void _showContactUsDialog(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 showDialog(
@@ -1850,7 +1851,7 @@ message:
 'مرحباً، أستفسر عن خدمات التوصيل في تطبيق FAST'),
 icon: const Icon(Icons.chat, color: Colors.white),
 label: const Text(
-'خدمة العملاء واتساب (_supportPhoneDisplay)',
+'خدمة العملاء واتساب ($_supportPhoneDisplay)',
 style: TextStyle(fontWeight: FontWeight.bold)),
 ),
 const SizedBox(height: 12),
@@ -1865,7 +1866,7 @@ borderRadius: BorderRadius.circular(10)),
 onPressed: _launchPhoneCall,
 icon: Icon(Icons.phone, color: accent),
 label: const Text(
-'اتصل بخدمة العملاء (_supportPhoneDisplay)',
+'اتصل بخدمة العملاء ($_supportPhoneDisplay)',
 style: TextStyle(fontWeight: FontWeight.bold)),
 ),
 ],
@@ -1880,7 +1881,7 @@ child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
 ),
 );
 }
-​void showExitConfirmationDialog(
+void showExitConfirmationDialog(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 showDialog(
@@ -1927,7 +1928,7 @@ child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
 ),
 );
 }
-​void _showHowToUseDialog(
+void _showHowToUseDialog(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
 showDialog(
@@ -2002,7 +2003,7 @@ fontWeight: FontWeight.bold)),
 ),
 );
 }
-​Widget _buildInstructionStep(
+Widget _buildInstructionStep(
 String title, String desc, Color textColor, Color accent) {
 return Column(
 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2017,7 +2018,7 @@ color: textColor.withOpacity(0.8), fontSize: 12, height: 1.4)),
 ],
 );
 }
-​bool _isCustomOrSpecialOrder(
+bool _isCustomOrSpecialOrder(
 Map<dynamic, dynamic> order, String itemsText) {
 final trimmedItems = itemsText.trim();
 if (trimmedItems.startsWith('طلب خاص') ||
@@ -2026,7 +2027,7 @@ trimmedItems.contains('خدمة وصل لي') ||
 trimmedItems.contains('مكان الاستلام:')) {
 return true;
 }
-​final orderType = (order['order_type'] ?? order['type'] ?? '')
+final orderType = (order['order_type'] ?? order['type'] ?? '')
 .toString()
 .trim()
 .toLowerCase();
@@ -2036,32 +2037,32 @@ orderType == 'custom_delivery' ||
 orderType == 'wasalli') {
 return true;
 }
-​return false;
+return false;
 }
-​Map<String, dynamic> _resolveRestaurantOrderInfo(
+Map<String, dynamic> _resolveRestaurantOrderInfo(
 AppState appState, Map<dynamic, dynamic> order) {
 final String itemsText =
 (order['items_desc'] ?? order['items_description'] ?? '').toString();
-​if (_isCustomOrSpecialOrder(order, itemsText)) {
+if (_isCustomOrSpecialOrder(order, itemsText)) {
 return {
 'isRestaurant': false,
 'restaurantName': '',
 };
 }
-​String rawRestaurantName = (order['restaurant_name'] ??
+String rawRestaurantName = (order['restaurant_name'] ??
 order['restaurantName'] ??
 order['store_name'] ??
 '')
 .toString()
 .trim();
-​if (rawRestaurantName == 'طلب خاص' ||
+if (rawRestaurantName == 'طلب خاص' ||
 rawRestaurantName.startsWith('طلب خاص')) {
 return {
 'isRestaurant': false,
 'restaurantName': '',
 };
 }
-​if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
+if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
 for (final item in appState.cartItems) {
 if (item.restaurantId.trim().isNotEmpty &&
 itemsText.contains(item.name)) {
@@ -2070,7 +2071,7 @@ break;
 }
 }
 }
-​if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
+if (rawRestaurantName.isEmpty || rawRestaurantName == 'المطعم') {
 for (final product in appState.products) {
 if (product.category.trim() == 'المطاعم' &&
 product.name.isNotEmpty &&
@@ -2080,8 +2081,8 @@ break;
 }
 }
 }
-​bool belongsToRestaurantsCategory = false;
-​if (rawRestaurantName.isNotEmpty) {
+bool belongsToRestaurantsCategory = false;
+if (rawRestaurantName.isNotEmpty) {
 final matchedStore = appState.restaurantsList.firstWhere(
 (r) =>
 (r['name'] ?? '').toString().trim().toLowerCase() ==
@@ -2093,22 +2094,22 @@ if (storeCat == 'المطاعم') {
 belongsToRestaurantsCategory = true;
 }
 }
-​if (!belongsToRestaurantsCategory && rawRestaurantName.isNotEmpty) {
+if (!belongsToRestaurantsCategory && rawRestaurantName.isNotEmpty) {
 belongsToRestaurantsCategory = appState.products.any((p) =>
 p.category.trim() == 'المطاعم' &&
 p.restaurantName.trim().toLowerCase() ==
 rawRestaurantName.toLowerCase());
 }
-​final bool isRestaurant =
+final bool isRestaurant =
 belongsToRestaurantsCategory || appState.isRestaurantOrder(order);
-​final String resolvedName =
+final String resolvedName =
 rawRestaurantName.isNotEmpty ? rawRestaurantName : 'المطعم';
-​return {
+return {
 'isRestaurant': isRestaurant,
 'restaurantName': resolvedName,
 };
 }
-​Future<void> _showRatingDialog(
+Future<void> _showRatingDialog(
 BuildContext parentContext,
 AppState appState,
 String orderId,
@@ -2119,7 +2120,7 @@ double rating = 5.0;
 bool isSubmitting = false;
 final TextEditingController commentController = TextEditingController();
 final accent = _accent(appState);
-​await showDialog(
+await showDialog(
 context: parentContext,
 builder: (dialogContext) => StatefulBuilder(
 builder: (context, setDialogState) => Directionality(
@@ -2253,7 +2254,7 @@ fontWeight: FontWeight.bold)),
 );
 commentController.dispose();
 }
-​Future<void> _showRestaurantRatingDialog(
+Future<void> _showRestaurantRatingDialog(
 BuildContext parentContext,
 AppState appState,
 String orderId,
@@ -2264,7 +2265,7 @@ double rating = 5.0;
 bool isSubmitting = false;
 final TextEditingController commentController = TextEditingController();
 final accent = _accent(appState);
-​await showDialog(
+await showDialog(
 context: parentContext,
 builder: (dialogContext) => StatefulBuilder(
 builder: (context, setDialogState) => Directionality(
@@ -2398,12 +2399,12 @@ fontWeight: FontWeight.bold)),
 );
 commentController.dispose();
 }
-​void _showEnterPriceDialog(
+void _showEnterPriceDialog(
 BuildContext context, AppState appState, ProductModel product) {
 final TextEditingController priceController = TextEditingController();
 final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 final accent = _accent(appState);
-​showDialog(
+showDialog(
 context: context,
 builder: (context) => GestureDetector(
 onTap: () => FocusScope.of(context).unfocus(),
@@ -2491,8 +2492,8 @@ onPressed: () {
 if (formKey.currentState!.validate()) {
 final double enteredPrice =
 double.parse(priceController.text.trim());
-​appState.addToCart(CartItemModel(
-id: '{product.id}-{DateTime.now().millisecondsSinceEpoch}',
+appState.addToCart(CartItemModel(
+id: '${product.id}-${DateTime.now().millisecondsSinceEpoch}',
 name: '${product.name} (بسعر محدد)',
 price: enteredPrice,
 quantity: 1,
@@ -2501,7 +2502,7 @@ restaurantId: product.restaurantName.isNotEmpty
 : 'قسم الخضار والفواكه',
 imageUrl: product.imageUrl,
 ));
-​Navigator.pop(context);
+Navigator.pop(context);
 HapticFeedback.lightImpact();
 ScaffoldMessenger.of(context).showSnackBar(
 SnackBar(
@@ -2521,19 +2522,19 @@ fontWeight: FontWeight.bold)),
 ),
 );
 }
-​void _showCheckoutDialog(
+void _showCheckoutDialog(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 if (_isSubmittingCheckout) return;
-​if (appState.userProfile != null) {
+if (appState.userProfile != null) {
 _nameController.text = appState.userProfile?['name'] ?? '';
 _phoneController.text = appState.userProfile?['phone'] ?? '';
 _addressDescriptionController.text =
 appState.userProfile?['address'] ?? '';
 }
-​final TextEditingController couponController = TextEditingController();
+final TextEditingController couponController = TextEditingController();
 final accent = _accent(appState);
 bool isSubmittingOrder = false;
-​showModalBottomSheet(
+showModalBottomSheet(
 context: context,
 isScrollControlled: true,
 isDismissible: false,
@@ -2939,16 +2940,16 @@ return;
 _isSubmittingCheckout = true;
 setDialogState(() =>
 isSubmittingOrder = true);
-​final itemsDescription =
+final itemsDescription =
 appState.cartItems
 .map((item) =>
-'{item.name} (x{item.quantity})')
+'${item.name} (x${item.quantity})')
 .join(', ');
-​final double finalAmountToPay =
+final double finalAmountToPay =
 appState.totalAmount -
 appState
 .couponDiscountAmount;
-​try {
+try {
 await appState.createOrder(
 customerName:
 _nameController.text
@@ -3027,23 +3028,23 @@ fontSize: 15),
 ),
 );
 }
-​void _checkAndShowPricingDialog(
+void _checkAndShowPricingDialog(
 BuildContext context, AppState appState, Color cardBg, Color textColor) {
 if (_isPrivacyDialogOpen ||
 !appState.hasAcceptedPrivacyPolicy ||
 appState.userProfile == null ||
 appState.isAdminLoggedIn ||
 appState.currentCourier != null) return;
-​final accent = _accent(appState);
+final accent = _accent(appState);
 final customerOrders = appState.customerOrders;
 for (var order in customerOrders) {
 final orderId = order['id']?.toString() ?? '';
 final status = order['status']?.toString() ?? '';
-​if ((status == 'pricingSentToCustomer' ||
+if ((status == 'pricingSentToCustomer' ||
 status == 'pricing_sent_to_customer') &&
 !_shownPricingDialogs.contains(orderId)) {
 _shownPricingDialogs.add(orderId);
-​WidgetsBinding.instance.addPostFrameCallback((_) {
+WidgetsBinding.instance.addPostFrameCallback((_) {
 if (!context.mounted) return;
 showDialog(
 context: context,
@@ -3066,12 +3067,12 @@ content: Column(
 mainAxisSize: MainAxisSize.min,
 crossAxisAlignment: CrossAxisAlignment.start,
 children: [
-Text('طلب #orderId',
+Text('طلب #$orderId',
 style: TextStyle(
 color: accent, fontWeight: FontWeight.bold)),
 const SizedBox(height: 8),
 Text(
-'• رسوم التوصيل: ({order['delivery_fee'] ?? 0} ر.ي)',
+'• رسوم التوصيل: (${order['delivery_fee'] ?? 0} ر.ي)',
 style: TextStyle(color: textColor, fontSize: 14)),
 Text('• الإجمالي الكلي: ${order['total_price'] ?? 0} ر.ي',
 style: TextStyle(
@@ -3128,7 +3129,7 @@ style: TextStyle(fontWeight: FontWeight.bold)),
 }
 }
 }
-​Widget _buildNetworkStatusBar(AppState appState) {
+Widget _buildNetworkStatusBar(AppState appState) {
 if (appState.isConnectedToInternet) {
 return const SizedBox.shrink();
 }
@@ -3150,7 +3151,7 @@ color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
 ),
 );
 }
-​Widget _buildOrderWarningNotice(AppState appState) {
+Widget _buildOrderWarningNotice(AppState appState) {
 final isDark = appState.isDarkMode;
 final bg = isDark ? Colors.amber : const Color(0xFF0D47A1);
 final fg = isDark ? Colors.black : Colors.white;
@@ -3187,11 +3188,11 @@ textAlign: TextAlign.center,
 ),
 );
 }
-​@override
+@override
 Widget build(BuildContext context) {
 final appState = Provider.of<AppState>(context);
 final accent = _accent(appState);
-​if (appState.unreadNotificationsCount > _previousUnreadCount) {
+if (appState.unreadNotificationsCount > _previousUnreadCount) {
 _latestNotificationText =
 appState.latestNotificationMessage ?? 'لديك إشعار جديد!';
 _popupAnimController.forward(from: 0.0);
@@ -3200,7 +3201,7 @@ _showPopupBadge = true;
 });
 Future.delayed(const Duration(seconds: 4), () {
 if (mounted) {
-popupAnimController.reverse().then(() {
+_popupAnimController.reverse().then(() {
 if (mounted) setState(() => _showPopupBadge = false);
 });
 }
@@ -3209,37 +3210,37 @@ _previousUnreadCount = appState.unreadNotificationsCount;
 } else if (appState.unreadNotificationsCount < _previousUnreadCount) {
 _previousUnreadCount = appState.unreadNotificationsCount;
 }
-​final themeBg = appState.isDarkMode
+final themeBg = appState.isDarkMode
 ? const Color(0xFF121212)
 : const Color(0xFFF7F8FA);
 final cardBg = appState.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
 final textColor = appState.isDarkMode ? Colors.white : Colors.black87;
-​_checkAndShowPricingDialog(context, appState, cardBg, textColor);
-​final List<Widget> pages = [
+_checkAndShowPricingDialog(context, appState, cardBg, textColor);
+final List<Widget> pages = [
 _buildShopTab(appState, cardBg, textColor),
 _buildCartTab(appState, cardBg, textColor),
 _buildOrdersTab(appState, cardBg, textColor),
 _buildProfileTab(appState, cardBg, textColor),
 ];
-​return GestureDetector(
+return GestureDetector(
 onTap: () => FocusScope.of(context).unfocus(),
 child: PopScope(
 canPop: false,
 onPopInvokedWithResult: (didPop, result) {
 if (didPop) return;
-​if (_currentIndex == 0 && selectedRestaurantName != null) {
+if (_currentIndex == 0 && selectedRestaurantName != null) {
 setState(() {
 selectedRestaurantName = null;
 selectedStoreSubCategory = 'الكل';
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 } else if (_currentIndex == 0 && selectedCategory != 'الكل') {
 setState(() {
 selectedCategory = 'الكل';
 selectedRestaurantName = null;
 selectedStoreSubCategory = 'الكل';
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 } else if (_currentIndex != 0) {
 _resetToHomeView(clearSearch: false, animateScroll: true);
 } else {
@@ -3324,7 +3325,7 @@ _searchController.clear();
 _searchScope = 'all';
 }
 });
-if (isSearching) {
+if (_isSearching) {
 WidgetsBinding.instance.addPostFrameCallback(() {
 if (mounted) {
 FocusScope.of(context)
@@ -3446,7 +3447,7 @@ minWidth: 18,
 minHeight: 18,
 ),
 child: Text(
-'{appState.unreadNotificationsCount}',
+'${appState.unreadNotificationsCount}',
 style: const TextStyle(
 color: Colors.white,
 fontSize: 10,
@@ -3491,7 +3492,7 @@ color: accent.withOpacity(0.5), width: 1.2),
 ),
 onPressed: () {
 HapticFeedback.lightImpact();
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 },
 child: const Icon(Icons.keyboard_arrow_up_rounded),
 ),
@@ -3556,7 +3557,7 @@ CrossAxisAlignment.start,
 mainAxisSize: MainAxisSize.min,
 children: [
 Text(
-'{appState.totalCartItemsCount} منتجات بالسلة',
+'${appState.totalCartItemsCount} منتجات بالسلة',
 style: TextStyle(
 color: appState.isDarkMode
 ? Colors.black
@@ -3566,7 +3567,7 @@ fontSize: 13,
 ),
 ),
 Text(
-'{_formatPrice(appState.totalAmount)} ر.ي',
+'${_formatPrice(appState.totalAmount)} ر.ي',
 style: TextStyle(
 color: appState.isDarkMode
 ? Colors.black87
@@ -3661,7 +3662,7 @@ color: Colors.red, shape: BoxShape.circle),
 constraints: const BoxConstraints(
 minWidth: 16, minHeight: 16),
 child: Text(
-'{appState.totalCartItemsCount}',
+'${appState.totalCartItemsCount}',
 style: const TextStyle(
 color: Colors.white,
 fontSize: 10,
@@ -3685,9 +3686,9 @@ icon: Icon(Icons.person), label: 'حسابي'),
 ),
 );
 }
-​Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
+Widget _buildShopTab(AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
-​if (selectedCategory == 'طلبات أخرى') {
+if (selectedCategory == 'طلبات أخرى') {
 return Padding(
 padding: const EdgeInsets.all(12.0),
 child: ListView(
@@ -3782,19 +3783,19 @@ fontWeight: FontWeight.bold)),
 ),
 );
 }
-​final searchQuery = _searchController.text.trim().toLowerCase();
+final searchQuery = _searchController.text.trim().toLowerCase();
 final bool hasActiveSearch = searchQuery.isNotEmpty;
 final bool isGiftOrPharmacy =
 _isGiftOrPharmacyCategory(selectedCategory) && !hasActiveSearch;
-​List filteredProducts = [];
-​final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
+List filteredProducts = [];
+final bool isCategoryWithShops = selectedCategory == 'المطاعم' ||
 selectedCategory == 'حلويات ومعجنات' ||
 selectedCategory == 'الصيدلية الآمنة' ||
 selectedCategory == 'هدايا واكسسوارات' ||
 selectedCategory == 'البقالات' ||
 selectedCategory == 'مشاريع منزلية' ||
 selectedCategory == 'المشاريع المنزلية';
-​if (isGiftOrPharmacy) {
+if (isGiftOrPharmacy) {
 filteredProducts = const [];
 } else if (isCategoryWithShops && selectedRestaurantName != null) {
 filteredProducts = appState.products.where((p) {
@@ -3830,7 +3831,7 @@ final matchesSearch = _matchesProductSearch(p, searchQuery);
 return matchesCategory && matchesSearch;
 }).toList();
 }
-​return RefreshIndicator(
+return RefreshIndicator(
 color: accent,
 onRefresh: () async {
 await appState.fetchStoreSettings();
@@ -3862,7 +3863,7 @@ builder: (context) {
 final targetCat = selectedCategory.trim().toLowerCase();
 final isHomeProjCat = targetCat == 'مشاريع منزلية' ||
 targetCat == 'المشاريع المنزلية';
-​bool matchesTargetCategory(String rawCat) {
+bool matchesTargetCategory(String rawCat) {
 final c = rawCat.trim().toLowerCase();
 if (isHomeProjCat) {
 return c == 'مشاريع منزلية' ||
@@ -3871,9 +3872,9 @@ c == 'home_projects';
 }
 return c == targetCat;
 }
-​final List<Map<String, dynamic>> dbStores = [];
+final List<Map<String, dynamic>> dbStores = [];
 final Map<String, int> nameToIndex = {};
-​void addOrEnrichStore(Map<String, dynamic> rawStore) {
+void addOrEnrichStore(Map<String, dynamic> rawStore) {
 final isActive = rawStore['is_active'] ?? true;
 if (isActive == false) return;
 final name = (rawStore['name'] ?? '').toString().trim();
@@ -3883,7 +3884,7 @@ final incomingLogo =
 (rawStore['logo_url'] ?? rawStore['image_url'] ?? '')
 .toString()
 .trim();
-​if (!nameToIndex.containsKey(key)) {
+if (!nameToIndex.containsKey(key)) {
 nameToIndex[key] = dbStores.length;
 dbStores.add({
 ...rawStore,
@@ -3899,18 +3900,18 @@ dbStores[idx]['logo_url'] = incomingLogo;
 }
 }
 }
-​for (final r in appState.restaurantsList) {
+for (final r in appState.restaurantsList) {
 final rCat = (r['category'] ?? r['type'] ?? '').toString();
 if (matchesTargetCategory(rCat)) {
 addOrEnrichStore(Map<String, dynamic>.from(r));
 }
 }
-​if (isHomeProjCat) {
+if (isHomeProjCat) {
 for (final hp in appState.homeProjectsList) {
 addOrEnrichStore(Map<String, dynamic>.from(hp));
 }
 }
-​for (final p in appState.products) {
+for (final p in appState.products) {
 if (matchesTargetCategory(p.category) &&
 p.restaurantName.trim().isNotEmpty) {
 addOrEnrichStore({
@@ -3919,8 +3920,8 @@ addOrEnrichStore({
 });
 }
 }
-​final categoryStores = dbStores;
-​if (categoryStores.isEmpty) {
+final categoryStores = dbStores;
+if (categoryStores.isEmpty) {
 return const Padding(
 padding: EdgeInsets.all(18.0),
 child: Center(
@@ -3929,7 +3930,7 @@ style:
 TextStyle(color: Colors.grey, fontSize: 12))),
 );
 }
-​return Column(
+return Column(
 crossAxisAlignment: CrossAxisAlignment.start,
 children: [
 Padding(
@@ -3962,7 +3963,7 @@ store['image_url'] ??
 final double? storeRating = _resolveStoreRating(
 appState, storeName,
 storeMap: store);
-​return GestureDetector(
+return GestureDetector(
 onTap: () {
 HapticFeedback.selectionClick();
 setState(() {
@@ -3991,7 +3992,7 @@ backgroundImage: logoUrl.isNotEmpty
 ? CachedNetworkImageProvider(logoUrl)
 : null,
 onBackgroundImageError: logoUrl.isNotEmpty
-? (, __) {}
+? (_, __) {}
 : null,
 child: logoUrl.isEmpty
 ? Icon(
@@ -4164,7 +4165,7 @@ HapticFeedback.selectionClick();
 setState(() {
 selectedStoreSubCategory = sectionName;
 });
-_scrollHomeToTop(animated: true);
+scrollHomeToTop(animated: true);
 },
 ),
 );
@@ -4198,7 +4199,7 @@ itemCount: filteredProducts.length,
 itemBuilder: (context, index) {
 final ProductModel product = filteredProducts[index];
 if (!product.available) return const SizedBox.shrink();
-​final bool isVariable =
+final bool isVariable =
 product.category == 'الخضار والفواكه';
 final bool isFav = appState.isProductFavorite(product.id);
 final int qtyInCart =
@@ -4206,7 +4207,7 @@ appState.getProductQuantityInCart(product.id);
 final pKey = product.id.trim().toLowerCase();
 final double? pRating = _productAvgRatings[pKey];
 final int pCount = _productRatingCounts[pKey] ?? 0;
-​return Material(
+return Material(
 color: Colors.transparent,
 child: InkWell(
 borderRadius: BorderRadius.circular(14),
@@ -4287,7 +4288,7 @@ ScaffoldMessenger.of(context)
 SnackBar(
 content: Text(!isFav
 ? 'تمت إضافة ${product.name} إلى المفضلة'
-: 'تمت إزالة {product.name} من المفضلة'),
+: 'تمت إزالة ${product.name} من المفضلة'),
 duration: const Duration(
 milliseconds: 800),
 ),
@@ -4344,7 +4345,7 @@ color: appState.isDarkMode
 : Colors.amber.shade700),
 const SizedBox(width: 2),
 Text(
-'{pRating.toStringAsFixed(1)} (pCount)',
+'${pRating.toStringAsFixed(1)} ($pCount)',
 style: TextStyle(
 color: textColor.withOpacity(0.85),
 fontSize: 11,
@@ -4358,7 +4359,7 @@ const SizedBox(height: 4),
 Text(
 isVariable
 ? 'يدوي'
-: '{_formatPrice(product.price)} ر.ي',
+: '${_formatPrice(product.price)} ر.ي',
 style: TextStyle(
 color: accent,
 fontWeight: FontWeight.bold,
@@ -4488,9 +4489,9 @@ const SizedBox(height: 64),
 ),
 );
 }
-​Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
+Widget _buildCartTab(AppState appState, Color cardBg, Color textColor) {
 final accent = _accent(appState);
-​if (appState.userProfile == null) {
+if (appState.userProfile == null) {
 return Center(
 child: Padding(
 padding: const EdgeInsets.all(20.0),
@@ -4540,7 +4541,7 @@ fontSize: 15)),
 ),
 );
 }
-​if (appState.cartItems.isEmpty) {
+if (appState.cartItems.isEmpty) {
 return EmptyStateWidget(
 icon: Icons.shopping_cart_outlined,
 title: 'سلة المشتريات فارغة!',
@@ -4552,7 +4553,7 @@ setState(() => _currentIndex = 0);
 },
 );
 }
-​return Padding(
+return Padding(
 padding: const EdgeInsets.all(16.0),
 child: Column(
 crossAxisAlignment: CrossAxisAlignment.start,
@@ -4587,7 +4588,7 @@ fontWeight: FontWeight.bold,
 fontSize: 14)),
 const SizedBox(height: 4),
 Text(
-'السعر: {_formatPrice(item.price)} ر.ي | الإجمالي: ${_formatPrice(item.price * item.quantity)} ر.ي',
+'السعر: ${_formatPrice(item.price)} ر.ي | الإجمالي: ${_formatPrice(item.price * item.quantity)} ر.ي',
 style: const TextStyle(
 color: Colors.grey, fontSize: 12)),
 ],
@@ -4637,7 +4638,7 @@ children: [
 Text('إجمالي السلة المجمعة:',
 style:
 TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-Text('{_formatPrice(appState.totalAmount)} ر.ي',
+Text('${_formatPrice(appState.totalAmount)} ر.ي',
 style: TextStyle(
 color: accent,
 fontWeight: FontWeight.bold,
@@ -4668,7 +4669,7 @@ fontSize: 15)),
 ),
 );
 }
-​String _getArabicStatus(String status) {
+String _getArabicStatus(String status) {
 switch (status) {
 case 'waitingForPricing':
 return 'بانتظار تحديد السعر من الإدارة';
@@ -4694,10 +4695,10 @@ default:
 return status;
 }
 }
-​Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
+Widget _buildOrdersTab(AppState appState, Color cardBg, Color textColor) {
 final customerOrders = appState.customerOrders;
 final accent = _accent(appState);
-​return Column(
+return Column(
 children: [
 Container(
 margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -4787,39 +4788,39 @@ final status = order['status']?.toString() ?? '';
 final arabicStatus = _getArabicStatus(status);
 final String assignedCourierName =
 order['assigned_courier'] ?? 'المندوب';
-​final restaurantInfo =
+final restaurantInfo =
 _resolveRestaurantOrderInfo(appState, order);
 final bool isRestaurantOrder =
 restaurantInfo['isRestaurant'] as bool;
 final String detectedRestaurantName =
 restaurantInfo['restaurantName'] as String;
-​final formattedAddress =
+final formattedAddress =
 formatLocationAddress(order['address']);
-​final double deliveryFee = double.tryParse(
+final double deliveryFee = double.tryParse(
 order['delivery_fee']?.toString() ?? '0') ??
 0.0;
-​final double? explicitProductsPrice = double.tryParse(
+final double? explicitProductsPrice = double.tryParse(
 (order['products_total'] ??
 order['products_price'] ??
 order['items_price'] ??
 '')
 .toString());
-​final double totalPriceField = double.tryParse(
+final double totalPriceField = double.tryParse(
 order['total_price']?.toString() ?? '0') ??
 0.0;
-​final double finalProductsPrice = explicitProductsPrice ??
+final double finalProductsPrice = explicitProductsPrice ??
 ((deliveryFee > 0 && totalPriceField >= deliveryFee)
 ? (totalPriceField - deliveryFee)
 : totalPriceField);
-​final double dbTotalAmount = double.tryParse(
+final double dbTotalAmount = double.tryParse(
 order['total_amount']?.toString() ??
 order['total']?.toString() ??
 '0') ??
 0.0;
-​final double grandTotal = dbTotalAmount > 0
+final double grandTotal = dbTotalAmount > 0
 ? dbTotalAmount
 : (finalProductsPrice + deliveryFee);
-​return Card(
+return Card(
 color: cardBg,
 margin: const EdgeInsets.symmetric(vertical: 8),
 elevation: 3,
@@ -4855,7 +4856,7 @@ MainAxisAlignment.spaceBetween,
 children: [
 Row(
 children: [
-Text('طلب #{order['id']}',
+Text('طلب #${order['id']}',
 style: TextStyle(
 color: accent,
 fontWeight: FontWeight.bold,
@@ -4876,7 +4877,7 @@ tooltip: 'مشاركة الفاتورة',
 onPressed: () {
 final invoiceText =
 '''فاتورة تطبيق FAST - تعز
-رقم الطلب: #{order['id']}
+رقم الطلب: #${order['id']}
 المنتجات: ${order['items_desc'] ?? order['items_description']}
 العنوان: $formattedAddress
 سعر المنتجات: ${finalProductsPrice.toStringAsFixed(0)} ر.ي
@@ -5139,14 +5140,14 @@ fontWeight: FontWeight.bold)),
 ],
 );
 }
-​Widget _buildProfileTab(AppState appState, Color cardBg, Color textColor) {
+Widget _buildProfileTab(AppState appState, Color cardBg, Color textColor) {
 final profile = appState.userProfile;
 final accent = _accent(appState);
-​final bool isAdmin = appState.isAdminLoggedIn ||
+final bool isAdmin = appState.isAdminLoggedIn ||
 (profile != null && profile['is_admin'] == true);
 final bool isCourier = appState.currentCourier != null ||
 (profile != null && profile['is_courier'] == true);
-​return ListView(
+return ListView(
 physics: const BouncingScrollPhysics(),
 padding: const EdgeInsets.all(16.0),
 children: [
@@ -5270,7 +5271,7 @@ onTap: () => _launchWhatsApp(
 message:
 'مرحباً، بخصوص عنواني المسجل في التطبيق: ${profile['address']}'),
 child: Text(
-'العنوان: {formatLocationAddress(profile['address'])} (اضغط للتواصل)',
+'العنوان: ${formatLocationAddress(profile['address'])} (اضغط للتواصل)',
 style: TextStyle(
 color: accent,
 fontSize: 12,
@@ -5352,7 +5353,7 @@ _checkAndShowPrivacyPolicyDialog(context, appState);
 }),
 _buildProfileItem(
 Icons.dark_mode,
-'مظهر التطبيق ({appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})',
+'مظهر التطبيق (${appState.isDarkMode ? "الوضع الداكن" : "الوضع الفاتح"})',
 cardBg,
 textColor,
 accent, () {
@@ -5398,7 +5399,7 @@ const SizedBox(height: 15),
 ],
 );
 }
-​Widget _buildProfileItem(IconData icon, String title, Color cardBg,
+Widget _buildProfileItem(IconData icon, String title, Color cardBg,
 Color textColor, Color accent, VoidCallback onTap) {
 return Container(
 margin: const EdgeInsets.symmetric(vertical: 6),
