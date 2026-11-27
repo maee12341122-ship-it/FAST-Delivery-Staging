@@ -139,13 +139,13 @@ class AppState extends ChangeNotifier {
   static const Duration _authTimeout = Duration(seconds: 12);
   static const bool _useSandboxOtpProvider = false;
 
-  // حدّث هذا الرقم إلى رقم خدمة العملاء والواتساب الجديد
   static const String _supportLocalPhone = '780000000';
   static const String _supportInternationalPhone = '967780000000';
 
   bool _isCreatingOrder = false;
   bool _isManualAuthInProgress = false;
   String? _activeCourierUsernameHint;
+  dynamic _activeAdminRowId;
 
   Map<String, int> productOrderCounts = {};
   Map<String, int> storeOrderCounts = {};
@@ -330,10 +330,11 @@ class AppState extends ChangeNotifier {
       final phone = _normalizePhone(user.phone ?? '');
       if (phone.isNotEmpty) {
         final formattedPhone = '+967$phone';
+        final zeroPhone = '0$phone';
         final rowByPhone = await supabase
             .from('admins')
             .select('id, username, phone')
-            .or('phone.eq.$phone,phone.eq.$formattedPhone')
+            .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
             .maybeSingle()
             .timeout(_authTimeout);
         if (rowByPhone != null) {
@@ -452,6 +453,7 @@ class AppState extends ChangeNotifier {
 
     final row = verifiedAdminRow ?? await _verifyAdminFromBackendOrSchema(user);
     if (row != null) {
+      _activeAdminRowId = row['id'];
       adminPhone = _normalizePhone(row['phone']?.toString() ?? '');
       if ((row['username']?.toString() ?? '').trim().isNotEmpty) {
         adminName = row['username'].toString().trim();
@@ -480,11 +482,13 @@ class AppState extends ChangeNotifier {
     if (user == null) {
       isAdminLoggedIn = false;
       currentCourier = null;
+      _activeAdminRowId = null;
       return;
     }
 
     if (await _isCourierAccount(user, usernameInput: loginInput)) {
       isAdminLoggedIn = false;
+      _activeAdminRowId = null;
       await _loadCourierSession(usernameInput: loginInput);
       return;
     }
@@ -496,14 +500,16 @@ class AppState extends ChangeNotifier {
     if (adminRow != null) {
       isAdminLoggedIn = true;
       currentCourier = null;
+      _activeAdminRowId = adminRow['id'];
       await _syncAdminProfileFromAuth(
         user,
         verifiedAdminRow: adminRow,
       );
     } else {
       isAdminLoggedIn = false;
+      _activeAdminRowId = null;
       if (currentCourier == null) {
-        currentCourier = null;
+        await _loadCourierSession(usernameInput: loginInput);
       }
     }
   }
@@ -520,6 +526,7 @@ class AppState extends ChangeNotifier {
       } else {
         isAdminLoggedIn = false;
         currentCourier = null;
+        _activeAdminRowId = null;
         if (userProfile == null) {
           await _loadUserSession();
         }
@@ -588,41 +595,39 @@ class AppState extends ChangeNotifier {
 
       final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
       if (phone.isNotEmpty) {
-        final formattedPhone = '+967$phone';
-        final zeroPhone = '0$phone';
-        try {
-          await supabase
-              .from('customers')
-              .update({'fcm_token': cleanToken})
-              .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
-              .timeout(_fastNetworkTimeout);
-        } catch (e) {
-          debugPrint('FCM customer update error: $e');
-        }
-
-        if (isAdminLoggedIn && currentCourier == null) {
-          try {
-            await supabase
-                .from('admins')
-                .update({'fcm_token': cleanToken})
-                .or('phone.eq.$phone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
-                .timeout(_fastNetworkTimeout);
-          } catch (e) {
-            debugPrint('FCM admin update error: $e');
-          }
-        }
+        unawaited(
+          FcmPushService.syncTokenForCurrentUser(
+            role: 'customer',
+            phone: phone,
+            explicitToken: cleanToken,
+          ),
+        );
       }
 
-      if (currentCourier != null && currentCourier!['id'] != null) {
-        try {
-          await supabase
-              .from('couriers')
-              .update({'fcm_token': cleanToken})
-              .eq('id', currentCourier!['id'])
-              .timeout(_fastNetworkTimeout);
-        } catch (e) {
-          debugPrint('FCM courier update error: $e');
-        }
+      if (isAdminLoggedIn && currentCourier == null) {
+        final adminPhone = _normalizePhone(
+          userProfile?['phone']?.toString() ??
+              supabase.auth.currentUser?.phone ??
+              '',
+        );
+        await FcmPushService.syncTokenForCurrentUser(
+          role: 'admin',
+          rowId: _activeAdminRowId,
+          phone: adminPhone.isNotEmpty ? adminPhone : null,
+          explicitToken: cleanToken,
+        );
+      }
+
+      if (currentCourier != null) {
+        final courierId = currentCourier!['id'];
+        final courierPhone =
+            _normalizePhone(currentCourier!['phone']?.toString() ?? '');
+        await FcmPushService.syncTokenForCurrentUser(
+          role: 'courier',
+          rowId: courierId,
+          phone: courierPhone.isNotEmpty ? courierPhone : null,
+          explicitToken: cleanToken,
+        );
       }
     } catch (e) {
       debugPrint('تعذر مزامنة FCM Token: $e');
@@ -764,6 +769,7 @@ class AppState extends ChangeNotifier {
     } else {
       isAdminLoggedIn = false;
       currentCourier = null;
+      _activeAdminRowId = null;
     }
   }
 
@@ -2367,6 +2373,7 @@ class AppState extends ChangeNotifier {
       isAdminLoggedIn = false;
       currentCourier = null;
       _activeCourierUsernameHint = null;
+      _activeAdminRowId = null;
 
       final response = await supabase.auth
           .signInWithPassword(
@@ -2396,6 +2403,7 @@ class AppState extends ChangeNotifier {
 
       isAdminLoggedIn = true;
       currentCourier = null;
+      _activeAdminRowId = verifiedAdmin['id'];
       await _syncAdminProfileFromAuth(
         response.user,
         verifiedAdminRow: verifiedAdmin,
@@ -2418,6 +2426,7 @@ class AppState extends ChangeNotifier {
     try {
       isAdminLoggedIn = false;
       _activeCourierUsernameHint = null;
+      _activeAdminRowId = null;
       await supabase.auth.signOut();
       notifyListeners();
     } finally {
@@ -2770,6 +2779,14 @@ class AppState extends ChangeNotifier {
 
   List<Map<String, dynamic>> couriers = [];
 
+  Future<void> _persistCourierSessionToPrefs(Map<String, dynamic> row) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('loggedCourierId', (row['id'] ?? '').toString());
+      await prefs.setString('courierSessionJson', jsonEncode(row));
+    } catch (_) {}
+  }
+
   Future<JsonMapNullable> _findCourierRecordForUser(
     User user, {
     String? usernameInput,
@@ -2838,6 +2855,7 @@ class AppState extends ChangeNotifier {
           ...Map<String, dynamic>.from(row),
           'is_logged_in': true,
         };
+        unawaited(_persistCourierSessionToPrefs(currentCourier!));
         final courierPhone = row['phone']?.toString() ?? '';
         final courierName = row['name']?.toString() ?? '';
         if (courierPhone.trim().isNotEmpty) {
@@ -3195,12 +3213,13 @@ class AppState extends ChangeNotifier {
         ...Map<String, dynamic>.from(row),
         'is_logged_in': true,
       };
+      unawaited(_persistCourierSessionToPrefs(currentCourier!));
 
       unawaited(() async {
         try {
           await supabase
               .from('couriers')
-              .update({'is_logged_in': true})
+              .update({'is_logged_in': true, 'auth_user_id': auth.user!.id})
               .eq('id', row['id'])
               .timeout(_authTimeout);
         } catch (_) {}
@@ -3217,10 +3236,6 @@ class AppState extends ChangeNotifier {
 
       unawaited(syncFcmTokenForCurrentUsers());
       listenToOrdersRealtime();
-      unawaited(() async {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('loggedCourierId', row['id'].toString());
-      }());
       notifyListeners();
       return true;
     } catch (e) {
@@ -3255,6 +3270,7 @@ class AppState extends ChangeNotifier {
       await supabase.auth.signOut();
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('loggedCourierId');
+      await prefs.remove('courierSessionJson');
       notifyListeners();
     } finally {
       _isManualAuthInProgress = false;
