@@ -9,7 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/app_state.dart';
 import '../models/cart_item_model.dart';
 import '../models/product_model.dart';
-import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 import '../widgets/fast_app_logo.dart';
 import '../widgets/empty_state_widget.dart';
 import 'order_time_helper.dart';
@@ -541,13 +541,111 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Map<String, dynamic> _extractNotificationPayload(
+      Map<String, dynamic> notification) {
+    final Map<String, dynamic> payload = {};
+
+    final nested = notification['data'] ??
+        notification['additionalData'] ??
+        notification['payload'];
+    if (nested is Map) {
+      nested.forEach((k, v) {
+        payload[k.toString()] = v;
+      });
+    }
+
+    for (final key in [
+      'type',
+      'screen',
+      'route',
+      'target',
+      'order_id',
+      'orderId',
+      'related_id',
+      'chat_id',
+      'chatId',
+      'room_id',
+      'roomId',
+      'user_role',
+      'userRole',
+      'target_chat',
+      'targetChat',
+      'sender_id',
+      'senderId',
+      'other_user_id',
+      'otherUserId',
+      'title',
+      'message',
+      'body',
+    ]) {
+      if (notification[key] != null && !payload.containsKey(key)) {
+        payload[key] = notification[key];
+      }
+    }
+
+    return payload;
+  }
+
   void _handleNotificationTap(
       BuildContext context, Map<String, dynamic> notification) {
-    final String? orderId = notification['order_id']?.toString() ??
-        notification['related_id']?.toString() ??
-        notification['additionalData']?['order_id']?.toString() ??
-        _extractOrderIdFromText(
-            '${notification['title'] ?? ''} ${notification['message'] ?? ''}');
+    final payload = _extractNotificationPayload(notification);
+
+    final String notifType = (payload['type'] ??
+            payload['screen'] ??
+            payload['route'] ??
+            payload['target'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    final String? chatId = (payload['chat_id'] ??
+            payload['chatId'] ??
+            payload['room_id'] ??
+            payload['roomId'])
+        ?.toString()
+        .trim();
+
+    final String? orderId = (payload['order_id'] ??
+            payload['orderId'] ??
+            payload['related_id'] ??
+            _extractOrderIdFromText(
+                '${payload['title'] ?? ''} ${payload['message'] ?? ''} ${payload['body'] ?? ''}'))
+        ?.toString()
+        .trim();
+
+    final bool isChatNotification = notifType.contains('chat') ||
+        notifType.contains('message') ||
+        (chatId != null && chatId.isNotEmpty);
+
+    if (isChatNotification &&
+        ((orderId != null && orderId.isNotEmpty) ||
+            (chatId != null && chatId.isNotEmpty))) {
+      final String userRole =
+          (payload['user_role'] ?? payload['userRole'] ?? 'customer')
+              .toString()
+              .trim();
+      final String targetChat = (payload['target_chat'] ??
+              payload['targetChat'] ??
+              'admin_customer')
+          .toString()
+          .trim();
+
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(
+            orderId: (orderId != null && orderId.isNotEmpty) ? orderId : chatId!,
+            userRole: userRole.isNotEmpty ? userRole : 'customer',
+            targetChat: targetChat.isNotEmpty ? targetChat : 'admin_customer',
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+      return;
+    }
 
     if (orderId != null && orderId.isNotEmpty) {
       Navigator.push(
@@ -650,6 +748,8 @@ class _HomeScreenState extends State<HomeScreen>
       unawaited(appState.fetchRestaurantsAndCategories());
       unawaited(appState.fetchProductsFromSupabase());
       unawaited(_fetchCustomerRatingsSummaries());
+      unawaited(FcmPushService.initialize());
+      unawaited(appState.syncFcmTokenForCurrentUsers());
 
       if (appState.userProfile != null) {
         _nameController.text = appState.userProfile?['name'] ?? '';
@@ -776,9 +876,9 @@ class _HomeScreenState extends State<HomeScreen>
                     appState.setPrivacyPolicyAccepted(true);
                     _isPrivacyDialogOpen = false;
                     Navigator.pop(dialogCtx);
-                    // طلب إذن الإشعارات ومزامنة FCM Token بعد الموافقة على سياسة الخصوصية
+                    // طلب إذن إشعارات FCM ومزامنة التوكن بعد الموافقة على سياسة الخصوصية
                     unawaited(() async {
-                      await NotificationService.requestPermissionAndFetchToken();
+                      await FcmPushService.requestPermissionAndFetchToken();
                       await appState.syncFcmTokenForCurrentUsers();
                     }());
                   },
