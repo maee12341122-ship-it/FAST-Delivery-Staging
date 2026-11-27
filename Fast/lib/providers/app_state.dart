@@ -638,12 +638,10 @@ class AppState extends ChangeNotifier {
 
       final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
       if (phone.isNotEmpty) {
-        unawaited(
-          FcmPushService.syncTokenForCurrentUser(
-            role: 'customer',
-            phone: phone,
-            explicitToken: cleanToken,
-          ),
+        await FcmPushService.syncTokenForCurrentUser(
+          role: 'customer',
+          phone: phone,
+          explicitToken: cleanToken,
         );
       }
 
@@ -778,9 +776,7 @@ class AppState extends ChangeNotifier {
 
   int getProductOrderScore(ProductModel product) {
     final nameKey = product.name.trim().toLowerCase();
-    final storeKey = product.restaurantName.trim().toLowerCase();
-    return (productOrderCounts[nameKey] ?? 0) * 10 +
-        (storeOrderCounts[storeKey] ?? 0);
+    return productOrderCounts[nameKey] ?? 0;
   }
 
   int getStoreOrderScore(Map<String, dynamic> store) {
