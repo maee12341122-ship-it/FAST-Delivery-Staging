@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 import '../models/delivery_model.dart';
 import '../models/order_model.dart';
 import '../models/product_model.dart';
 import '../providers/app_state.dart';
-import '../services/notification_service.dart';
+import '../services/fcm_push_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
 import '../widgets/empty_state.dart';
@@ -63,7 +62,7 @@ class AdminOrdersTab extends StatelessWidget {
     final orders = context
         .watch<AppState>()
         .orders
-        .whereType>()
+        .whereType<Map>()
         .map((row) => OrderModel.fromJson(Map<String, dynamic>.from(row)))
         .toList();
 
@@ -90,7 +89,7 @@ class _AdminOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final courier = state.couriers
-        .whereType>()
+        .whereType<Map>()
         .map(
           (row) => DeliveryModel(
             id: row['id']?.toString() ?? '',
@@ -145,7 +144,8 @@ class _AdminOrderCard extends StatelessWidget {
             ),
             const Divider(color: Colors.white12),
             Text(
-              '👤 العميل: ${order.customerName}\n${order.customerPhone}',
+              '👤 العميل: ${order.customerName}
+${order.customerPhone}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -153,7 +153,8 @@ class _AdminOrderCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '📍 العنوان: ${order.address.area}\n${order.address.details}',
+              '📍 العنوان: ${order.address.area}
+${order.address.details}',
               style: const TextStyle(color: Colors.white70),
             ),
             if (order.address.hasCoordinates)
@@ -195,7 +196,8 @@ class _AdminOrderCard extends StatelessWidget {
             if (courier != null) ...[
               const SizedBox(height: 4),
               Text(
-                '🛵 المندوب المسند: ${courier.name}\n${courier.phone}',
+                '🛵 المندوب المسند: ${courier.name}
+${courier.phone}',
                 style: const TextStyle(
                   color: Colors.greenAccent,
                   fontWeight: FontWeight.bold,
@@ -280,7 +282,7 @@ class _AdminOrderCard extends StatelessWidget {
   Future<void> _assignCourier(BuildContext context, String orderId) async {
     final state = context.read<AppState>();
     final available = state.couriers
-        .whereType>()
+        .whereType<Map>()
         .map(
           (row) => DeliveryModel(
             id: row['id']?.toString() ?? '',
@@ -473,8 +475,10 @@ class AdminCouriersTab extends StatelessWidget {
                       ),
                     ),
                     subtitle: Text(
-                      '📞 ${courier.phone}\n'
-                      'الحالة: ${courier.isEnabled ? (courier.isAvailable ? 'متاح 🟢' : 'مشغول 🟡') : 'موقوف 🔴'}\n'
+                      '📞 ${courier.phone}
+'
+                      'الحالة: ${courier.isEnabled ? (courier.isAvailable ? 'متاح 🟢' : 'مشغول 🟡') : 'موقوف 🔴'}
+'
                       '📦 الطلبات المكتملة: $completedCount | عمولة المشرف (20%): ${adminCommission.toStringAsFixed(0)} ر.ي',
                       style: const TextStyle(
                         color: Colors.white70,
@@ -507,19 +511,18 @@ class AdminCouriersTab extends StatelessWidget {
                           await state.removeCourier(courier.id);
                         } else if (value == 'update_token') {
                           try {
-                            final String? playerId =
-                                OneSignal.User.pushSubscription.id;
-                            if (playerId != null && playerId.isNotEmpty) {
-                              await NotificationService.saveUserPlayerId(
-                                courier.id,
-                                'couriers',
-                                identifierValue: courier.phone,
+                            final String? fcmToken =
+                                await FcmPushService.getToken();
+                            if (fcmToken != null && fcmToken.isNotEmpty) {
+                              await FcmPushService.syncTokenForCurrentUser(
+                                role: 'courier',
+                                rowId: courier.id,
                               );
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'تم تحديث OneSignal Player ID للمندوب بنجاح! 🔔',
+                                    'تم تحديث FCM Token للمندوب بنجاح! 🔔',
                                   ),
                                 ),
                               );
@@ -528,7 +531,7 @@ class AdminCouriersTab extends StatelessWidget {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'لم يتم العثور على معرّف OneSignal للجهاز حالياً ❌',
+                                    'لم يتم العثور على FCM Token للجهاز حالياً ❌',
                                   ),
                                 ),
                               );
@@ -570,7 +573,7 @@ class AdminCouriersTab extends StatelessWidget {
                         const PopupMenuItem(
                           value: 'update_token',
                           child: Text(
-                            'ربط OneSignal Player ID 🔔',
+                            'ربط FCM Token 🔔',
                             style: TextStyle(color: Colors.amberAccent),
                           ),
                         ),
@@ -1025,7 +1028,8 @@ class _AdminProductsSettingsTabState extends State<AdminProductsSettingsTab> {
                   ),
                 ),
                 subtitle: Text(
-                  '${product.restaurantName} - ${product.price} ر.ي\n${product.available ? 'متوفر 🟢' : 'غير متوفر 🔴'}',
+                  '${product.restaurantName} - ${product.price} ر.ي
+${product.available ? 'متوفر 🟢' : 'غير متوفر 🔴'}',
                   style: const TextStyle(color: Colors.white70),
                 ),
                 onTap: () => _editProduct(context, product: product),
