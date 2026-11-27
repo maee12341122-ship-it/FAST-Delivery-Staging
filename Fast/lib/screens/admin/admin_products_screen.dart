@@ -105,6 +105,18 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     super.dispose();
   }
 
+  void _showSnack(BuildContext context, String message) {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   List<String> _suggestedSubCategories(
       AppState appState, String category, String storeName) {
     final existingForStore =
@@ -294,7 +306,9 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
 
     for (final r in appState.restaurantsList) {
       final rName = (r['name'] ?? '').toString().trim().toLowerCase();
-      if (rName == cleanName) {
+      final rCat = (r['category'] ?? '').toString().trim().toLowerCase();
+      if (rName == cleanName &&
+          (rCat.isEmpty || rCat == category.trim().toLowerCase())) {
         final logo = (r['logo_url'] ?? r['image_url'] ?? '').toString().trim();
         if (logo.isNotEmpty) return logo;
       }
@@ -358,9 +372,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   }) async {
     final cleanName = storeName.trim();
     final cleanLogo = logoUrl.trim();
+    final cleanCat = category.trim();
     if (cleanName.isEmpty || cleanLogo.isEmpty) return;
 
-    if (category.trim() == 'مشاريع منزلية') {
+    if (cleanCat == 'مشاريع منزلية') {
       try {
         final existingProject = await Supabase.instance.client
             .from('home_projects')
@@ -396,13 +411,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     if (existingStore != null && existingStore['id'] != null) {
       await Supabase.instance.client.from('restaurants').update({
         'image_url': cleanLogo,
-        'category': category.trim(),
+        'category': cleanCat,
         'is_active': true,
       }).eq('id', existingStore['id']);
     } else {
       await Supabase.instance.client.from('restaurants').insert({
         'name': cleanName,
-        'category': category.trim(),
+        'category': cleanCat,
         'image_url': cleanLogo,
         'is_active': true,
       });
@@ -461,480 +476,468 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     bool isVariablePrice = product?.isVariablePrice ?? false;
     String selectedUnit = product?.unit ?? 'كيلو';
 
-    await showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          storesForCategory = _getStoresForCategory(appState, selectedCategory);
-          final activeStoreName = useCustomStore
-              ? customStoreController.text.trim()
-              : (selectedStore == _customStoreOption
-                  ? customStoreController.text.trim()
-                  : selectedStore);
-          final suggestions = _suggestedSubCategories(
-              appState, selectedCategory, activeStoreName);
+    try {
+      await showDialog(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            storesForCategory = _getStoresForCategory(appState, selectedCategory);
+            final activeStoreName = useCustomStore
+                ? customStoreController.text.trim()
+                : (selectedStore == _customStoreOption
+                    ? customStoreController.text.trim()
+                    : selectedStore);
+            final suggestions = _suggestedSubCategories(
+                appState, selectedCategory, activeStoreName);
 
-          final dropdownItems = <DropdownMenuItem<String>>[
-            ...storesForCategory.map(
-              (store) => DropdownMenuItem<String>(
-                value: store,
-                child: Text(store),
+            final dropdownItems = <DropdownMenuItem<String>>[
+              ...storesForCategory.map(
+                (store) => DropdownMenuItem<String>(
+                  value: store,
+                  child: Text(store),
+                ),
               ),
-            ),
-            const DropdownMenuItem<String>(
-              value: _customStoreOption,
-              child: Text(
-                '➕ إضافة اسم متجر / مشروع جديد...',
-                style: TextStyle(color: Colors.amber),
+              const DropdownMenuItem<String>(
+                value: _customStoreOption,
+                child: Text(
+                  '➕ إضافة اسم متجر / مشروع جديد...',
+                  style: TextStyle(color: Colors.amber),
+                ),
               ),
-            ),
-          ];
+            ];
 
-          final validDropdownValue =
-              dropdownItems.any((item) => item.value == selectedStore)
-                  ? selectedStore
-                  : (storesForCategory.isNotEmpty
-                      ? storesForCategory.first
-                      : _customStoreOption);
+            final validDropdownValue =
+                dropdownItems.any((item) => item.value == selectedStore)
+                    ? selectedStore
+                    : (storesForCategory.isNotEmpty
+                        ? storesForCategory.first
+                        : _customStoreOption);
 
-          return Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              backgroundColor: const Color(0xFF1E1E1E),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: Text(
-                isEditing ? 'تعديل المنتج 🛠️' : 'إضافة منتج جديد ➕',
-                style: const TextStyle(
-                    color: Colors.amber, fontWeight: FontWeight.bold),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'اسم المنتج *',
-                        labelStyle: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: selectedCategory,
-                      dropdownColor: const Color(0xFF1E1E1E),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'القسم الرئيسي *',
-                        labelStyle: TextStyle(color: Colors.grey),
-                      ),
-                      items: _mainCategories.map((cat) {
-                        return DropdownMenuItem(value: cat, child: Text(cat));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() {
-                            selectedCategory = val;
-                            final updatedStores =
-                                _getStoresForCategory(appState, val);
-                            if (updatedStores.isNotEmpty) {
-                              selectedStore = updatedStores.first;
-                              useCustomStore = false;
-                              storeLogoController.text = _findExistingStoreLogo(
-                                  appState, val, selectedStore);
-                            } else {
-                              selectedStore = _customStoreOption;
-                              useCustomStore = true;
-                              storeLogoController.text = '';
-                            }
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: validDropdownValue,
-                      dropdownColor: const Color(0xFF1E1E1E),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'اسم المتجر / البقالة / المشروع *',
-                        labelStyle: TextStyle(color: Colors.amber),
-                        border: OutlineInputBorder(),
-                      ),
-                      items: dropdownItems,
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() {
-                            selectedStore = val;
-                            useCustomStore = val == _customStoreOption;
-                            if (!useCustomStore) {
-                              storeLogoController.text = _findExistingStoreLogo(
-                                  appState, selectedCategory, val);
-                            }
-                          });
-                        }
-                      },
-                    ),
-                    if (useCustomStore) ...[
-                      const SizedBox(height: 8),
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                backgroundColor: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                title: Text(
+                  isEditing ? 'تعديل المنتج 🛠️' : 'إضافة منتج جديد ➕',
+                  style: const TextStyle(
+                      color: Colors.amber, fontWeight: FontWeight.bold),
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       TextField(
-                        controller: customStoreController,
+                        controller: nameController,
                         style: const TextStyle(color: Colors.white),
-                        onChanged: (_) => setDialogState(() {}),
                         decoration: const InputDecoration(
-                          labelText: 'اكتب اسم المتجر أو المشروع المنزلي *',
-                          labelStyle: TextStyle(color: Colors.amberAccent),
-                          border: OutlineInputBorder(),
+                          labelText: 'اسم المنتج *',
+                          labelStyle: TextStyle(color: Colors.grey),
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: subCategoryController,
-                      style: const TextStyle(color: Colors.white),
-                      onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(
-                        labelText:
-                            'القسم الداخلي للمتجر / المطعم (مثال: الوافل، الكريب، المشويات)',
-                        labelStyle:
-                            TextStyle(color: Colors.amberAccent, fontSize: 12),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    if (suggestions.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      const Text('أقسام سريعة لهذا النشاط/المتجر:',
-                          style: TextStyle(color: Colors.grey, fontSize: 11)),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: suggestions.map((sec) {
-                          final selected =
-                              subCategoryController.text.trim() == sec;
-                          return ChoiceChip(
-                            label:
-                                Text(sec, style: const TextStyle(fontSize: 11)),
-                            selected: selected,
-                            selectedColor: Colors.amber,
-                            backgroundColor: const Color(0xFF121212),
-                            labelStyle: TextStyle(
-                              color: selected ? Colors.black : Colors.white70,
-                              fontWeight: selected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                            onSelected: (_) {
-                              setDialogState(() {
-                                subCategoryController.text = sec;
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: storeLogoController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'لوجو المتجر / المشروع (URL)',
-                              labelStyle: TextStyle(color: Colors.amberAccent),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _isUploadingLogo
-                            ? const Padding(
-                                padding: EdgeInsets.all(8.0),
-                                child: SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.amber, strokeWidth: 2),
-                                ),
-                              )
-                            : IconButton(
-                                onPressed: () async {
-                                  final XFile? logoFile = await _picker
-                                      .pickImage(source: ImageSource.gallery);
-                                  if (logoFile != null) {
-                                    final uploadedLogoUrl =
-                                        await _uploadImageToSupabase(
-                                      File(logoFile.path),
-                                      setDialogState,
-                                      isLogo: true,
-                                    );
-                                    if (uploadedLogoUrl != null) {
-                                      setDialogState(() {
-                                        storeLogoController.text =
-                                            uploadedLogoUrl;
-                                      });
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text(
-                                                  'تم رفع لوجو الجهة بنجاح ✅')),
-                                        );
-                                      }
-                                    } else if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text('تعذر رفع اللوجو ❌')),
-                                      );
-                                    }
-                                  }
-                                },
-                                icon: const Icon(Icons.storefront,
-                                    color: Colors.amber, size: 28),
-                                tooltip: 'اختيار ورفع لوجو المتجر أو المشروع',
-                              ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: priceController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: isVariablePrice
-                            ? 'السعر التقريبي لكل وحدة (ر.ي) *'
-                            : 'السعر الثابت (ر.ي) *',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descriptionController,
-                      maxLines: 2,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'وصف المنتج أو تفاصيله (اختياري)',
-                        labelStyle: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: imageController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'رابط صورة المنتج (Image URL)',
-                              labelStyle: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _isUploadingImage
-                            ? const Padding(
-                                padding: EdgeInsets.all(8.0),
-                                child: SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.amber, strokeWidth: 2),
-                                ),
-                              )
-                            : IconButton(
-                                onPressed: () async {
-                                  final XFile? image = await _picker.pickImage(
-                                      source: ImageSource.gallery);
-                                  if (image != null) {
-                                    final uploadedUrl =
-                                        await _uploadImageToSupabase(
-                                      File(image.path),
-                                      setDialogState,
-                                      isLogo: false,
-                                    );
-                                    if (uploadedUrl != null) {
-                                      setDialogState(() {
-                                        imageController.text = uploadedUrl;
-                                      });
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text(
-                                                  'تم رفع الصورة بنجاح إلى السحاب ☁️')),
-                                        );
-                                      }
-                                    } else if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text('تعذر رفع الصورة ❌')),
-                                      );
-                                    }
-                                  }
-                                },
-                                icon: const Icon(Icons.add_photo_alternate,
-                                    color: Colors.amber, size: 28),
-                                tooltip: 'اختيار ورفع صورة المنتج من المعرض',
-                              ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      title: const Text('متوفر حالياً؟',
-                          style: TextStyle(color: Colors.white, fontSize: 13)),
-                      value: isAvailable,
-                      activeColor: Colors.amber,
-                      onChanged: (val) =>
-                          setDialogState(() => isAvailable = val),
-                    ),
-                    SwitchListTile(
-                      title: const Text('سعر متغير (بالوزن/العدد)؟',
-                          style: TextStyle(
-                              color: Colors.amberAccent,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold)),
-                      value: isVariablePrice,
-                      activeColor: Colors.amber,
-                      onChanged: (val) =>
-                          setDialogState(() => isVariablePrice = val),
-                    ),
-                    if (isVariablePrice) ...[
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        value: selectedUnit,
+                        initialValue: selectedCategory,
                         dropdownColor: const Color(0xFF1E1E1E),
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          labelText: 'وحدة القياس الإجبارية *',
-                          labelStyle: TextStyle(color: Colors.amber),
+                          labelText: 'القسم الرئيسي *',
+                          labelStyle: TextStyle(color: Colors.grey),
                         ),
-                        items: ['كيلو', 'جرام', 'حبة', 'ربطة', 'لتر', 'باكت']
-                            .map((u) {
-                          return DropdownMenuItem(value: u, child: Text(u));
+                        items: _mainCategories.map((cat) {
+                          return DropdownMenuItem(value: cat, child: Text(cat));
                         }).toList(),
                         onChanged: (val) {
                           if (val != null) {
-                            setDialogState(() => selectedUnit = val);
+                            setDialogState(() {
+                              selectedCategory = val;
+                              final updatedStores =
+                                  _getStoresForCategory(appState, val);
+                              if (updatedStores.isNotEmpty) {
+                                selectedStore = updatedStores.first;
+                                useCustomStore = false;
+                                storeLogoController.text =
+                                    _findExistingStoreLogo(
+                                        appState, val, selectedStore);
+                              } else {
+                                selectedStore = _customStoreOption;
+                                useCustomStore = true;
+                                storeLogoController.text = '';
+                              }
+                            });
                           }
                         },
                       ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: validDropdownValue,
+                        dropdownColor: const Color(0xFF1E1E1E),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'اسم المتجر / البقالة / المشروع *',
+                          labelStyle: TextStyle(color: Colors.amber),
+                          border: OutlineInputBorder(),
+                        ),
+                        items: dropdownItems,
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() {
+                              selectedStore = val;
+                              useCustomStore = val == _customStoreOption;
+                              if (!useCustomStore) {
+                                storeLogoController.text =
+                                    _findExistingStoreLogo(
+                                        appState, selectedCategory, val);
+                              }
+                            });
+                          }
+                        },
+                      ),
+                      if (useCustomStore) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: customStoreController,
+                          style: const TextStyle(color: Colors.white),
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'اكتب اسم المتجر أو المشروع المنزلي *',
+                            labelStyle: TextStyle(color: Colors.amberAccent),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: subCategoryController,
+                        style: const TextStyle(color: Colors.white),
+                        onChanged: (_) => setDialogState(() {}),
+                        decoration: const InputDecoration(
+                          labelText:
+                              'القسم الداخلي للمتجر / المطعم (مثال: الوافل، الكريب، المشويات)',
+                          labelStyle: TextStyle(
+                              color: Colors.amberAccent, fontSize: 12),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      if (suggestions.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        const Text('أقسام سريعة لهذا النشاط/المتجر:',
+                            style:
+                                TextStyle(color: Colors.grey, fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: suggestions.map((sec) {
+                            final selected =
+                                subCategoryController.text.trim() == sec;
+                            return ChoiceChip(
+                              label: Text(sec,
+                                  style: const TextStyle(fontSize: 11)),
+                              selected: selected,
+                              selectedColor: Colors.amber,
+                              backgroundColor: const Color(0xFF121212),
+                              labelStyle: TextStyle(
+                                color: selected ? Colors.black : Colors.white70,
+                                fontWeight: selected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                              onSelected: (_) {
+                                setDialogState(() {
+                                  subCategoryController.text = sec;
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: storeLogoController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'لوجو المتجر / المشروع (URL)',
+                                labelStyle:
+                                    TextStyle(color: Colors.amberAccent),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _isUploadingLogo
+                              ? const Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.amber, strokeWidth: 2),
+                                  ),
+                                )
+                              : IconButton(
+                                  onPressed: () async {
+                                    final XFile? logoFile = await _picker
+                                        .pickImage(source: ImageSource.gallery);
+                                    if (logoFile != null) {
+                                      final uploadedLogoUrl =
+                                          await _uploadImageToSupabase(
+                                        File(logoFile.path),
+                                        setDialogState,
+                                        isLogo: true,
+                                      );
+                                      if (uploadedLogoUrl != null) {
+                                        setDialogState(() {
+                                          storeLogoController.text =
+                                              uploadedLogoUrl;
+                                        });
+                                        if (context.mounted) {
+                                          _showSnack(
+                                              context, 'تم رفع لوجو الجهة بنجاح ✅');
+                                        }
+                                      } else if (context.mounted) {
+                                        _showSnack(context, 'تعذر رفع اللوجو ❌');
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.storefront,
+                                      color: Colors.amber, size: 28),
+                                  tooltip: 'اختيار ورفع لوجو المتجر أو المشروع',
+                                ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: priceController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: isVariablePrice
+                              ? 'السعر التقريبي لكل وحدة (ر.ي) *'
+                              : 'السعر الثابت (ر.ي) *',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: descriptionController,
+                        maxLines: 2,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'وصف المنتج أو تفاصيله (اختياري)',
+                          labelStyle: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: imageController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'رابط صورة المنتج (Image URL)',
+                                labelStyle: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _isUploadingImage
+                              ? const Padding(
+                                  padding: EdgeInsets.all(8.0),
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.amber, strokeWidth: 2),
+                                  ),
+                                )
+                              : IconButton(
+                                  onPressed: () async {
+                                    final XFile? image = await _picker
+                                        .pickImage(source: ImageSource.gallery);
+                                    if (image != null) {
+                                      final uploadedUrl =
+                                          await _uploadImageToSupabase(
+                                        File(image.path),
+                                        setDialogState,
+                                        isLogo: false,
+                                      );
+                                      if (uploadedUrl != null) {
+                                        setDialogState(() {
+                                          imageController.text = uploadedUrl;
+                                        });
+                                        if (context.mounted) {
+                                          _showSnack(context,
+                                              'تم رفع الصورة بنجاح إلى السحاب ☁️');
+                                        }
+                                      } else if (context.mounted) {
+                                        _showSnack(context, 'تعذر رفع الصورة ❌');
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.add_photo_alternate,
+                                      color: Colors.amber, size: 28),
+                                  tooltip: 'اختيار ورفع صورة المنتج من المعرض',
+                                ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        title: const Text('متوفر حالياً؟',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 13)),
+                        value: isAvailable,
+                        activeTrackColor: Colors.amber.withValues(alpha: 0.5),
+                        thumbColor: WidgetStateProperty.resolveWith((states) =>
+                            states.contains(WidgetState.selected)
+                                ? Colors.amber
+                                : Colors.grey),
+                        onChanged: (val) =>
+                            setDialogState(() => isAvailable = val),
+                      ),
+                      SwitchListTile(
+                        title: const Text('سعر متغير (بالوزن/العدد)؟',
+                            style: TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold)),
+                        value: isVariablePrice,
+                        activeTrackColor: Colors.amber.withValues(alpha: 0.5),
+                        thumbColor: WidgetStateProperty.resolveWith((states) =>
+                            states.contains(WidgetState.selected)
+                                ? Colors.amber
+                                : Colors.grey),
+                        onChanged: (val) =>
+                            setDialogState(() => isVariablePrice = val),
+                      ),
+                      if (isVariablePrice) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedUnit,
+                          dropdownColor: const Color(0xFF1E1E1E),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'وحدة القياس الإجبارية *',
+                            labelStyle: TextStyle(color: Colors.amber),
+                          ),
+                          items: ['كيلو', 'جرام', 'حبة', 'ربطة', 'لتر', 'باكت']
+                              .map((u) {
+                            return DropdownMenuItem(value: u, child: Text(u));
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() => selectedUnit = val);
+                            }
+                          },
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child:
-                      const Text('إلغاء', style: TextStyle(color: Colors.grey)),
-                ),
-                ElevatedButton(
-                  style:
-                      ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                  onPressed: () async {
-                    if (nameController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                '⚠️ يرجى إدخال اسم المنتج بشكل إجباري!')),
-                      );
-                      return;
-                    }
-
-                    final double parsedPrice =
-                        double.tryParse(priceController.text.trim()) ?? 0.0;
-                    if (parsedPrice <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                '⚠️ يجب إدخال سعر صحيح أكبر من الصفر بشكل إجباري!')),
-                      );
-                      return;
-                    }
-
-                    final String finalStoreName = useCustomStore
-                        ? customStoreController.text.trim()
-                        : (validDropdownValue == _customStoreOption
-                            ? customStoreController.text.trim()
-                            : validDropdownValue);
-
-                    if (finalStoreName.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                '⚠️ يرجى اختيار أو كتابة اسم المتجر/المشروع!')),
-                      );
-                      return;
-                    }
-
-                    final newProduct = ProductModel(
-                      id: isEditing
-                          ? product.id
-                          : DateTime.now().millisecondsSinceEpoch.toString(),
-                      name: nameController.text.trim(),
-                      restaurantName: finalStoreName,
-                      price: parsedPrice,
-                      category: selectedCategory,
-                      subCategory: subCategoryController.text.trim(),
-                      available: isAvailable,
-                      imageUrl: imageController.text.trim(),
-                      description: descriptionController.text.trim(),
-                      unit: isVariablePrice ? selectedUnit : 'حبة',
-                      isVariablePrice: isVariablePrice,
-                    );
-
-                    try {
-                      if (storeLogoController.text.trim().isNotEmpty) {
-                        await _saveStoreLogoToDatabase(
-                          appState,
-                          storeName: finalStoreName,
-                          category: selectedCategory,
-                          logoUrl: storeLogoController.text.trim(),
-                        );
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('إلغاء',
+                        style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton(
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+                    onPressed: () async {
+                      if (nameController.text.trim().isEmpty) {
+                        _showSnack(
+                            context, '⚠️ يرجى إدخال اسم المنتج بشكل إجباري!');
+                        return;
                       }
-                      await appState.upsertProduct(newProduct);
-                      if (!context.mounted) return;
-                      Navigator.pop(dialogContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content:
-                                Text('تم حفظ المنتج واللوجو بنجاح ✅')),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('خطأ في الحفظ: $e')),
-                      );
-                    }
-                  },
-                  child: const Text('حفظ',
-                      style: TextStyle(
-                          color: Colors.black, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
 
-    nameController.dispose();
-    priceController.dispose();
-    imageController.dispose();
-    descriptionController.dispose();
-    subCategoryController.dispose();
-    customStoreController.dispose();
-    storeLogoController.dispose();
+                      final double parsedPrice =
+                          double.tryParse(priceController.text.trim()) ?? 0.0;
+                      if (parsedPrice <= 0) {
+                        _showSnack(context,
+                            '⚠️ يجب إدخال سعر صحيح أكبر من الصفر بشكل إجباري!');
+                        return;
+                      }
+
+                      final String finalStoreName = useCustomStore
+                          ? customStoreController.text.trim()
+                          : (validDropdownValue == _customStoreOption
+                              ? customStoreController.text.trim()
+                              : validDropdownValue);
+
+                      if (finalStoreName.isEmpty) {
+                        _showSnack(context,
+                            '⚠️ يرجى اختيار أو كتابة اسم المتجر/المشروع!');
+                        return;
+                      }
+
+                      final newProduct = ProductModel(
+                        id: isEditing
+                            ? product.id
+                            : DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: nameController.text.trim(),
+                        restaurantName: finalStoreName,
+                        price: parsedPrice,
+                        category: selectedCategory,
+                        subCategory: subCategoryController.text.trim(),
+                        available: isAvailable,
+                        imageUrl: imageController.text.trim(),
+                        description: descriptionController.text.trim(),
+                        unit: isVariablePrice ? selectedUnit : 'حبة',
+                        isVariablePrice: isVariablePrice,
+                      );
+
+                      try {
+                        if (storeLogoController.text.trim().isNotEmpty) {
+                          await _saveStoreLogoToDatabase(
+                            appState,
+                            storeName: finalStoreName,
+                            category: selectedCategory,
+                            logoUrl: storeLogoController.text.trim(),
+                          );
+                        }
+                        await appState.upsertProduct(newProduct);
+                        if (!context.mounted) return;
+                        Navigator.pop(dialogContext);
+                        _showSnack(context, 'تم حفظ المنتج واللوجو بنجاح ✅');
+                      } catch (e) {
+                        if (context.mounted) {
+                          _showSnack(context, 'خطأ في الحفظ: $e');
+                        }
+                      }
+                    },
+                    child: const Text('حفظ',
+                        style: TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameController.dispose();
+        priceController.dispose();
+        imageController.dispose();
+        descriptionController.dispose();
+        subCategoryController.dispose();
+        customStoreController.dispose();
+        storeLogoController.dispose();
+      });
+    }
   }
 
   void _showDeleteConfirmationDialog(BuildContext context, AppState appState,
       String productId, String productName) {
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (dialogContext) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
@@ -957,7 +960,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
@@ -967,12 +970,16 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                     borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () async {
-                Navigator.pop(context);
-                await appState.removeProduct(productId);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('تم حذف المنتج بنجاح 🗑️')),
-                  );
+                Navigator.pop(dialogContext);
+                try {
+                  await appState.removeProduct(productId);
+                  if (context.mounted) {
+                    _showSnack(context, 'تم حذف المنتج بنجاح 🗑️');
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    _showSnack(context, 'تعذر حذف المنتج: $e');
+                  }
                 }
               },
               child: const Text('نعم، حذف',
@@ -1032,7 +1039,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                   side: BorderSide(
                     color: isSelected
                         ? Colors.amber
-                        : Colors.white.withOpacity(0.15),
+                        : Colors.white.withValues(alpha: 0.15),
                   ),
                   onSelected: (_) => onSelected(item),
                 ),
@@ -1122,13 +1129,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                           horizontal: 12, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            BorderSide(color: Colors.amber.withOpacity(0.3)),
+                        borderSide: BorderSide(
+                            color: Colors.amber.withValues(alpha: 0.3)),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            BorderSide(color: Colors.amber.withOpacity(0.3)),
+                        borderSide: BorderSide(
+                            color: Colors.amber.withValues(alpha: 0.3)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -1229,7 +1236,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                             side: BorderSide(
-                                color: Colors.amber.withOpacity(0.2)),
+                                color: Colors.amber.withValues(alpha: 0.2)),
                           ),
                           child: ListTile(
                             leading: ClipRRect(
