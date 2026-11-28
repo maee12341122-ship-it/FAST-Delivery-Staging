@@ -27,7 +27,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   try {
-    // إذا كانت الرسالة من نوع data-only (بدون notification payload)، نعرض إشعاراً محلياً في الخلفية
     if (message.notification == null && message.data.isNotEmpty) {
       final title = (message.data['title'] ?? '').toString().trim();
       final body = (message.data['body'] ?? message.data['message'] ?? '')
