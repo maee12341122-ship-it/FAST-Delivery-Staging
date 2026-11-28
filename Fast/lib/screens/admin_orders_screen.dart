@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../utils/constants.dart';
 import '../widgets/empty_state.dart';
-import '../services/fcm_push_service.dart';
 
 class AdminOrdersScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -114,7 +113,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                                   border: Border.all(color: AppConstants.gold.withOpacity(0.4)),
                                 ),
                                 child: Text(
-                                  _getStatusText(status),
+                                  appState.getArabicStatus(status),
                                   style: const TextStyle(fontSize: 11, color: AppConstants.gold, fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -350,15 +349,13 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                       inactiveTrackColor: Colors.green,
                       onChanged: (val) async {
                         try {
-                          await appState.supabase
-                              .from('couriers')
-                              .update({'is_busy': val, 'status': val ? 'busy' : 'available'})
-                              .eq('id', courierId);
-                          appState.fetchCouriers();
+                          await appState.setCourierAvailability(courierId, !val);
+                          if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('تم تحديث حالة المندوب $courierName بنجاح!')),
                           );
                         } catch (e) {
+                          if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('تعذر تحديث الحالة: $e')),
                           );
@@ -466,79 +463,28 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
                 return;
               }
 
-              // 1. حفظ التحديثات في قاعدة البيانات
-              appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
-
-              // 2. إرسال إشعار FCM للعميل عبر رقم الهاتف
               try {
-                String customerPhone = order['phone']?.toString() ?? '';
-                if (customerPhone.isNotEmpty) {
-                  final custRes = await appState.supabase
-                      .from('customers')
-                      .select('fcm_token')
-                      .eq('phone', customerPhone)
-                      .maybeSingle();
+                // حفظ التحديثات وإرسال إشعار FCM للعميل عبر AppState بشكل موحد دون تكرار
+                await appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
 
-                  String? customerToken = custRes?['fcm_token']?.toString();
-
-                  if (customerToken != null && customerToken.isNotEmpty) {
-                    await FcmPushService.sendPushToTokens(
-                      tokens: [customerToken],
-                      title: 'تم تسعير طلبك #$orderId 📦',
-                      body: 'رسوم التوصيل: $fee ر.ي. قم بمراجعة السعر وقبول الطلب.',
-                      eventType: 'order_priced',
-                      data: {'order_id': orderId.toString()},
-                    );
-                  }
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
                 }
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('تم إرسال رسوم التوصيل وإسناد المندوب للعميل بنجاح! 🚀')),
+                );
               } catch (e) {
-                debugPrint('⚠️ خطأ في إرسال إشعار للعميل: $e');
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+                );
               }
-
-              // 3. إرسال إشعار FCM للمندوب
-              try {
-                final courierRow = await appState.supabase
-                    .from('couriers')
-                    .select('fcm_token')
-                    .eq('name', selectedCourier!)
-                    .maybeSingle();
-                String? courierToken = courierRow?['fcm_token']?.toString();
-                if (courierToken != null && courierToken.isNotEmpty) {
-                  await FcmPushService.sendPushToTokens(
-                    tokens: [courierToken],
-                    title: 'طلب جديد مسند إليك 🛵',
-                    body: 'تم إسناد الطلب #$orderId إليك للتوصيل.',
-                    eventType: 'order_assigned',
-                    data: {'order_id': orderId.toString()},
-                  );
-                }
-              } catch (e) {
-                debugPrint('⚠️ خطأ في إرسال إشعار للمندوب: $e');
-              }
-
-              Navigator.pop(dialogContext);
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم إرسال رسوم التوصيل وإسناد المندوب للعميل بنجاح! 🚀')),
-              );
             },
             child: const Text('إرسال للعميل', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'waitingForPricing': return 'بانتظار التسعير';
-      case 'pricingSentToCustomer': return 'تم إرسال السعر للعميل';
-      case 'waitingCourierApproval': return 'بانتظار قبول المندوب';
-      case 'onTheWay': return 'المندوب في الطريق';
-      case 'arrived': return 'وصل المندوب';
-      case 'delivered': return 'تم التسليم بنجاح';
-      case 'cancelledByCustomer': return 'ملغي من العميل';
-      default: return status;
-    }
   }
 }
