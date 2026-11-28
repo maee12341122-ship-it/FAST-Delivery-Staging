@@ -1793,6 +1793,7 @@ class AppState extends ChangeNotifier {
           .toSet()
           .toList();
     } catch (e) {
+      debugPrint('خطأ في جلب توكنات المشرفين: $e');
       return [];
     }
   }
@@ -1805,13 +1806,14 @@ class AppState extends ChangeNotifier {
           .from('couriers')
           .select('fcm_token')
           .ilike('name', cleanName)
+          .limit(1)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
 
       final pid = response?['fcm_token']?.toString().trim() ?? '';
       return pid.isNotEmpty ? pid : null;
     } catch (e) {
-      debugPrint('خطأ: $e');
+      debugPrint('خطأ في جلب توكن المندوب ($courierName): $e');
     }
     return null;
   }
@@ -1826,11 +1828,13 @@ class AppState extends ChangeNotifier {
           .from('customers')
           .select('fcm_token')
           .or('phone.eq.$cleanPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone')
+          .limit(1)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
       final pid = cust?['fcm_token']?.toString().trim() ?? '';
       return pid.isNotEmpty ? pid : null;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('خطأ في جلب توكن العميل ($phone): $e');
       return null;
     }
   }
@@ -1846,7 +1850,7 @@ class AppState extends ChangeNotifier {
 
       final orderRow = await supabase
           .from('orders')
-          .select('phone, assigned_courier')
+          .select('phone, assigned_courier, driver_name, courier_id')
           .eq('id', int.tryParse(oid) ?? oid)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
@@ -1857,8 +1861,23 @@ class AppState extends ChangeNotifier {
       }
 
       if (targetChat == 'admin_courier') {
-        final courierName = orderRow?['assigned_courier']?.toString() ?? '';
-        if (courierName.isNotEmpty) {
+        final courierId = orderRow?['courier_id']?.toString().trim() ?? '';
+        if (courierId.isNotEmpty) {
+          final byId = await supabase
+              .from('couriers')
+              .select('fcm_token')
+              .eq('id', courierId)
+              .maybeSingle()
+              .timeout(_fastNetworkTimeout);
+          final tok = byId?['fcm_token']?.toString().trim() ?? '';
+          if (tok.isNotEmpty) return tok;
+        }
+        final courierName = (orderRow?['assigned_courier'] ??
+                orderRow?['driver_name'] ??
+                '')
+            .toString()
+            .trim();
+        if (courierName.isNotEmpty && courierName != 'لم يتم التعيين') {
           return await getCourierFcmTokenByName(courierName);
         }
       } else {
@@ -1888,27 +1907,17 @@ class AppState extends ChangeNotifier {
     if (cleanIds.isEmpty) return;
 
     try {
-      final res = await supabase.functions
-          .invoke(
-            'send-fcm-push',
-            body: {
-              'tokens': cleanIds,
-              'title': title.trim(),
-              'body': body.trim(),
-              if (eventType != null && eventType.trim().isNotEmpty)
-                'event_type': eventType.trim(),
-              'data': {
-                if (orderId != null) 'order_id': orderId.toString(),
-                if (eventType != null && eventType.trim().isNotEmpty)
-                  'event_type': eventType.trim(),
-              },
-            },
-          )
-          .timeout(_fastNetworkTimeout);
-
-      debugPrint(
-        'FCM Function status: ${res.status}, data: ${res.data}',
-      );
+      await FcmPushService.sendPushToTokens(
+        tokens: cleanIds,
+        title: title.trim(),
+        body: body.trim(),
+        eventType: eventType?.trim(),
+        data: {
+          if (orderId != null) 'order_id': orderId.toString(),
+          if (eventType != null && eventType.trim().isNotEmpty)
+            'event_type': eventType.trim(),
+        },
+      ).timeout(_fastNetworkTimeout);
     } catch (e) {
       debugPrint('تعذر إرسال إشعار FCM عبر Edge Function: $e');
     }
@@ -2099,6 +2108,19 @@ class AppState extends ChangeNotifier {
           .insert(newMessage)
           .timeout(_fastNetworkTimeout);
       unawaited(() async {
+        if (senderRole == 'customer') {
+          final adminPids = await getAllAdminFcmTokens();
+          if (adminPids.isNotEmpty) {
+            await _sendExternalPushNotification(
+              playerIds: adminPids,
+              title: 'رسالة جديدة على الطلب #$parsedId',
+              body: cleanText,
+              orderId: parsedId,
+              eventType: 'chat_message',
+            );
+          }
+          return;
+        }
         final receiverPid = await getReceiverFcmTokenForChat(
           orderId: parsedId,
           targetChat: targetChat,
@@ -2133,7 +2155,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     unawaited(Share.share(
-      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل
+https://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     ));
   }
@@ -3427,6 +3450,7 @@ class AppState extends ChangeNotifier {
     }
 
     final cleanStatus = status.trim();
+    JsonMap updated = {};
 
     if (_hasConfiguredBackend) {
       try {
@@ -3436,35 +3460,40 @@ class AppState extends ChangeNotifier {
           cleanStatus,
         ).timeout(_fastNetworkTimeout);
         if (res['order'] is Map) {
-          _upsertOrderInList(res['order']);
+          updated = Map<String, dynamic>.from(res['order']);
+          _upsertOrderInList(updated);
         } else {
           unawaited(fetchOrders());
         }
-        unawaited(fetchPopularStats());
-        unawaited(fetchAdminFinancialReports());
-        _safeNotifyListeners();
-        return;
       } catch (_) {}
     }
 
-    final updated = await supabase
-        .from('orders')
-        .update({
-          'status': cleanStatus,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', intId)
-        .select()
-        .single()
-        .timeout(_fastNetworkTimeout);
+    if (updated.isEmpty) {
+      final row = await supabase
+          .from('orders')
+          .update({
+            'status': cleanStatus,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', intId)
+          .select()
+          .single()
+          .timeout(_fastNetworkTimeout);
+      updated = Map<String, dynamic>.from(row);
+      _upsertOrderInList(updated);
+    }
 
-    _upsertOrderInList(updated);
     unawaited(fetchPopularStats());
     unawaited(fetchAdminFinancialReports());
     _safeNotifyListeners();
 
     unawaited(() async {
-      final custPhone = updated['phone']?.toString() ?? '';
+      final existing = orders.firstWhere(
+        (o) => o['id'].toString() == intId.toString(),
+        orElse: () => <String, dynamic>{},
+      );
+      final custPhone =
+          (updated['phone'] ?? existing['phone'] ?? '').toString();
       final custPid = await getCustomerFcmTokenByPhone(custPhone);
       if (custPid != null && custPid.isNotEmpty) {
         await _sendExternalPushNotification(
@@ -3694,7 +3723,6 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  // FIFO حقيقية (أقدم مفتاح يخرج أولاً، وليس أول عنصر في Set عشوائي)
   void _registerSeenNotificationKey(Map<String, dynamic> notif) {
     final key = _buildNotificationDedupeKey(notif);
     if (key.isEmpty) return;
@@ -3794,21 +3822,31 @@ class AppState extends ChangeNotifier {
         'is_read': item['is_read'] == true,
       };
 
-      final inserted = await supabase
-          .from('notifications')
-          .upsert(payload, onConflict: 'recipient_role,recipient_id,dedupe_key')
-          .select()
-          .maybeSingle()
-          .timeout(_fastNetworkTimeout);
+      Map<String, dynamic>? inserted;
+      try {
+        final res = await supabase
+            .from('notifications')
+            .upsert(payload, onConflict: 'recipient_role,recipient_id,dedupe_key')
+            .select()
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
+        if (res != null) inserted = Map<String, dynamic>.from(res);
+      } catch (_) {
+        final res = await supabase
+            .from('notifications')
+            .insert(payload)
+            .select()
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
+        if (res != null) inserted = Map<String, dynamic>.from(res);
+      }
 
       if (inserted != null) {
         final key = _buildNotificationDedupeKey(item);
         final idx = notifications
             .indexWhere((n) => _buildNotificationDedupeKey(n) == key);
         if (idx != -1) {
-          notifications[idx] = _normalizeNotificationItem(
-            Map<String, dynamic>.from(inserted),
-          );
+          notifications[idx] = _normalizeNotificationItem(inserted);
           await _persistNotificationsForCurrentRole();
           _safeNotifyListeners();
         }
@@ -4486,7 +4524,12 @@ class AppState extends ChangeNotifier {
       _safeNotifyListeners();
 
       unawaited(() async {
-        final custPhone = updatedOrder['phone']?.toString() ?? '';
+        final existing = orders.firstWhere(
+          (o) => o['id'].toString() == intOrderId.toString(),
+          orElse: () => <String, dynamic>{},
+        );
+        final custPhone =
+            (updatedOrder['phone'] ?? existing['phone'] ?? '').toString();
         final custPid = await getCustomerFcmTokenByPhone(custPhone);
         if (custPid != null) {
           await _sendExternalPushNotification(
@@ -4552,7 +4595,14 @@ class AppState extends ChangeNotifier {
     _safeNotifyListeners();
 
     unawaited(() async {
-      final courierName = updatedMap['assigned_courier']?.toString() ?? '';
+      final existing = orders.firstWhere(
+        (o) => o['id'].toString() == intOrderId.toString(),
+        orElse: () => <String, dynamic>{},
+      );
+      final courierName = (updatedMap['assigned_courier'] ??
+              existing['assigned_courier'] ??
+              '')
+          .toString();
       if (action == 'approve' && courierName.isNotEmpty) {
         final cPid = await getCourierFcmTokenByName(courierName);
         if (cPid != null && cPid.isNotEmpty) {
@@ -4669,7 +4719,12 @@ class AppState extends ChangeNotifier {
     _safeNotifyListeners();
 
     unawaited(() async {
-      final custPhone = updatedMap['phone']?.toString() ?? '';
+      final existing = orders.firstWhere(
+        (o) => o['id'].toString() == intOrderId.toString(),
+        orElse: () => <String, dynamic>{},
+      );
+      final custPhone =
+          (updatedMap['phone'] ?? existing['phone'] ?? '').toString();
       final custPid = await getCustomerFcmTokenByPhone(custPhone);
       if (custPid != null) {
         await _sendExternalPushNotification(
