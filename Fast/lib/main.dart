@@ -29,6 +29,17 @@ void main() async {
 
   final appState = AppState();
 
+  void pushRouteSafely(Route<dynamic> route) {
+    final nav = navigatorKey.currentState;
+    if (nav != null) {
+      nav.push(route);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      navigatorKey.currentState?.push(route);
+    });
+  }
+
   void handleNotificationData(
     Map<String, dynamic> data,
     String title,
@@ -40,19 +51,23 @@ void main() async {
 
     if (orderId != null && orderId.isNotEmpty) {
       final String eventType =
-          (data['type'] ?? data['event_type'] ?? '').toString().trim();
+          (data['type'] ?? data['event_type'] ?? '').toString().trim().toLowerCase();
+      final String chatId =
+          (data['chat_id'] ?? data['chatId'] ?? '').toString().trim();
       final bool isChatNotification = eventType == 'chat' ||
           eventType == 'chat_message' ||
+          chatId.isNotEmpty ||
           title.contains('رسالة جديدة');
 
       if (isChatNotification) {
         final String role = appState.isAdminLoggedIn
             ? 'admin'
             : (appState.currentCourier != null ? 'courier' : 'customer');
-        final String targetChat = (data['target_chat']?.toString().trim().isNotEmpty == true)
-            ? data['target_chat'].toString().trim()
-            : (role == 'courier' ? 'admin_courier' : 'unified_order_chat');
-        navigatorKey.currentState?.push(
+        final String targetChat =
+            (data['target_chat']?.toString().trim().isNotEmpty == true)
+                ? data['target_chat'].toString().trim()
+                : (role == 'courier' ? 'admin_courier' : 'unified_order_chat');
+        pushRouteSafely(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
               orderId: orderId,
@@ -62,7 +77,7 @@ void main() async {
           ),
         );
       } else {
-        navigatorKey.currentState?.push(
+        pushRouteSafely(
           MaterialPageRoute(
             builder: (context) => OrderTrackingScreen(orderIdParam: orderId),
           ),
