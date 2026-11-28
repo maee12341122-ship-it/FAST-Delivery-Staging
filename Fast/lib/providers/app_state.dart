@@ -636,15 +636,6 @@ class AppState extends ChangeNotifier {
       }
       final cleanToken = token.trim();
 
-      final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
-      if (phone.isNotEmpty) {
-        await FcmPushService.syncTokenForCurrentUser(
-          role: 'customer',
-          phone: phone,
-          explicitToken: cleanToken,
-        );
-      }
-
       if (isAdminLoggedIn && currentCourier == null) {
         final adminPhone = _normalizePhone(
           userProfile?['phone']?.toString() ??
@@ -657,6 +648,7 @@ class AppState extends ChangeNotifier {
           phone: adminPhone.isNotEmpty ? adminPhone : null,
           explicitToken: cleanToken,
         );
+        return;
       }
 
       if (currentCourier != null) {
@@ -667,6 +659,17 @@ class AppState extends ChangeNotifier {
           role: 'courier',
           rowId: courierId,
           phone: courierPhone.isNotEmpty ? courierPhone : null,
+          explicitToken: cleanToken,
+        );
+        return;
+      }
+
+      final phone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+      if (phone.isNotEmpty) {
+        await FcmPushService.syncTokenForCurrentUser(
+          role: 'customer',
+          rowId: userProfile?['id'],
+          phone: phone,
           explicitToken: cleanToken,
         );
       }
@@ -1810,8 +1813,8 @@ class AppState extends ChangeNotifier {
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
 
-      final pid = response?['fcm_token']?.toString().trim() ?? '';
-      return pid.isNotEmpty ? pid : null;
+      final tok = response?['fcm_token']?.toString().trim() ?? '';
+      return tok.isNotEmpty ? tok : null;
     } catch (e) {
       debugPrint('خطأ في جلب توكن المندوب ($courierName): $e');
     }
@@ -1831,8 +1834,8 @@ class AppState extends ChangeNotifier {
           .limit(1)
           .maybeSingle()
           .timeout(_fastNetworkTimeout);
-      final pid = cust?['fcm_token']?.toString().trim() ?? '';
-      return pid.isNotEmpty ? pid : null;
+      final tok = cust?['fcm_token']?.toString().trim() ?? '';
+      return tok.isNotEmpty ? tok : null;
     } catch (e) {
       debugPrint('خطأ في جلب توكن العميل ($phone): $e');
       return null;
@@ -1892,40 +1895,87 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<void> _sendExternalPushNotification({
-    required List<String> playerIds,
+  Future<void> _dispatchUnifiedPushEvent({
+    required String recipientType,
+    required String recipientId,
     required String title,
     required String body,
+    required String eventType,
     dynamic orderId,
-    String? eventType,
+    String? chatId,
+    Map<String, String>? extraData,
   }) async {
-    final cleanIds = playerIds
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
-    if (cleanIds.isEmpty) return;
+    final cleanRole = recipientType.trim().toLowerCase();
+    final cleanRecipientId = recipientId.trim();
+    final cleanTitle = title.trim();
+    final cleanBody = body.trim();
+    final cleanEvent = eventType.trim();
+
+    if (cleanRole.isEmpty || cleanRecipientId.isEmpty) return;
+    if (cleanTitle.isEmpty && cleanBody.isEmpty) return;
+
+    final dataPayload = <String, String>{
+      'title': cleanTitle,
+      'body': cleanBody,
+      'event_type': cleanEvent,
+      'recipient_type': cleanRole,
+      'recipient_id': cleanRecipientId,
+      if (orderId != null && orderId.toString().trim().isNotEmpty)
+        'order_id': orderId.toString().trim(),
+      if (chatId != null && chatId.trim().isNotEmpty) 'chat_id': chatId.trim(),
+      if (extraData != null) ...extraData,
+    };
 
     try {
-      await FcmPushService.sendPushToTokens(
-        tokens: cleanIds,
-        title: title.trim(),
-        body: body.trim(),
-        eventType: eventType?.trim(),
-        data: {
-          if (orderId != null) 'order_id': orderId.toString(),
-          if (eventType != null && eventType.trim().isNotEmpty)
-            'event_type': eventType.trim(),
-        },
-      ).timeout(_fastNetworkTimeout);
+      final dedupeKey =
+          '$cleanRole|$cleanRecipientId|$cleanEvent|${dataPayload['order_id'] ?? ''}|${DateTime.now().millisecondsSinceEpoch ~/ 3000}';
+      await supabase
+          .from('notifications')
+          .insert({
+            'recipient_role': cleanRole,
+            'recipient_id': cleanRecipientId,
+            'title': cleanTitle,
+            'body': cleanBody,
+            if (dataPayload['order_id'] != null)
+              'order_id': dataPayload['order_id'],
+            if (dataPayload['chat_id'] != null)
+              'chat_id': dataPayload['chat_id'],
+            'event_type': cleanEvent,
+            'dedupe_key': dedupeKey,
+            'additional_data': dataPayload,
+            'is_read': false,
+          })
+          .timeout(_fastNetworkTimeout);
     } catch (e) {
-      debugPrint('تعذر إرسال إشعار FCM عبر Edge Function: $e');
+      debugPrint('تعذر تسجيل الإشعار في جدول notifications: $e');
+    }
+
+    if (!_hasConfiguredBackend) return;
+
+    try {
+      await _postBackend(
+        '/api/notifications/send',
+        {
+          'title': cleanTitle,
+          'body': cleanBody,
+          'event_type': cleanEvent,
+          'recipient_type': cleanRole,
+          'recipient_id': cleanRecipientId,
+          if (dataPayload['order_id'] != null)
+            'order_id': dataPayload['order_id'],
+          if (dataPayload['chat_id'] != null) 'chat_id': dataPayload['chat_id'],
+          'data': dataPayload,
+        },
+        timeout: _fastNetworkTimeout,
+      );
+    } catch (e) {
+      debugPrint('تعذر إرسال إشعار FCM عبر Backend: $e');
     }
   }
 
   Future<void> sendAutoNotification({
-    String? playerId,
-    String? targetPlayerId,
+    String? recipientType,
+    String? recipientId,
     required String title,
     String? message,
     String? body,
@@ -1935,42 +1985,21 @@ class AppState extends ChangeNotifier {
     final content = (body ?? message ?? '').trim();
     if (title.trim().isEmpty && content.isEmpty) return;
 
-    final targets = <String>[
-      if (playerId != null && playerId.trim().isNotEmpty) playerId.trim(),
-      if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
-        targetPlayerId.trim(),
-    ];
+    final resolvedRole = (recipientType ?? '').trim().isNotEmpty
+        ? recipientType!.trim()
+        : 'admin';
+    final resolvedId = (recipientId ?? '').trim().isNotEmpty
+        ? recipientId!.trim()
+        : 'all';
 
-    if (targets.isNotEmpty) {
-      unawaited(_sendExternalPushNotification(
-        playerIds: targets,
-        title: title.trim(),
-        body: content,
-        orderId: orderId,
-        eventType: eventType,
-      ));
-      return;
-    }
-
-    if (!_hasConfiguredBackend) return;
-
-    unawaited(() async {
-      try {
-        await _postBackend(
-          '/api/notifications/send',
-          {
-            'title': title.trim(),
-            'body': content,
-            if (orderId != null) 'order_id': orderId,
-            if (eventType != null && eventType.trim().isNotEmpty)
-              'event_type': eventType.trim(),
-          },
-          timeout: _fastNetworkTimeout,
-        );
-      } catch (e) {
-        debugPrint('تعذر إرسال الإشعار عبر Backend: $e');
-      }
-    }());
+    unawaited(_dispatchUnifiedPushEvent(
+      recipientType: resolvedRole,
+      recipientId: resolvedId,
+      title: title.trim(),
+      body: content,
+      eventType: (eventType ?? 'general').trim(),
+      orderId: orderId,
+    ));
   }
 
   int startHour = 8;
@@ -2108,32 +2137,58 @@ class AppState extends ChangeNotifier {
           .insert(newMessage)
           .timeout(_fastNetworkTimeout);
       unawaited(() async {
+        final orderRow = await supabase
+            .from('orders')
+            .select('phone, assigned_courier, driver_name, courier_id')
+            .eq('id', parsedId)
+            .maybeSingle()
+            .timeout(_fastNetworkTimeout);
+
         if (senderRole == 'customer') {
-          final adminPids = await getAllAdminFcmTokens();
-          if (adminPids.isNotEmpty) {
-            await _sendExternalPushNotification(
-              playerIds: adminPids,
-              title: 'رسالة جديدة على الطلب #$parsedId',
-              body: cleanText,
-              orderId: parsedId,
-              eventType: 'chat_message',
-            );
-          }
-          return;
-        }
-        final receiverPid = await getReceiverFcmTokenForChat(
-          orderId: parsedId,
-          targetChat: targetChat,
-          senderRole: senderRole,
-        );
-        if (receiverPid != null && receiverPid.isNotEmpty) {
-          await _sendExternalPushNotification(
-            playerIds: [receiverPid],
+          await _dispatchUnifiedPushEvent(
+            recipientType: 'admin',
+            recipientId: 'all',
             title: 'رسالة جديدة على الطلب #$parsedId',
             body: cleanText,
-            orderId: parsedId,
             eventType: 'chat_message',
+            orderId: parsedId,
+            chatId: parsedId.toString(),
           );
+          return;
+        }
+
+        if (targetChat == 'admin_courier') {
+          final courierId = (orderRow?['courier_id'] ??
+                  orderRow?['assigned_courier'] ??
+                  orderRow?['driver_name'] ??
+                  '')
+              .toString()
+              .trim();
+          if (courierId.isNotEmpty && courierId != 'لم يتم التعيين') {
+            await _dispatchUnifiedPushEvent(
+              recipientType: 'courier',
+              recipientId: courierId,
+              title: 'رسالة جديدة على الطلب #$parsedId',
+              body: cleanText,
+              eventType: 'chat_message',
+              orderId: parsedId,
+              chatId: parsedId.toString(),
+            );
+          }
+        } else {
+          final custPhone =
+              _normalizePhone(orderRow?['phone']?.toString() ?? '');
+          if (custPhone.isNotEmpty) {
+            await _dispatchUnifiedPushEvent(
+              recipientType: 'customer',
+              recipientId: custPhone,
+              title: 'رسالة جديدة على الطلب #$parsedId',
+              body: cleanText,
+              eventType: 'chat_message',
+              orderId: parsedId,
+              chatId: parsedId.toString(),
+            );
+          }
         }
       }());
     } catch (e) {
@@ -2496,11 +2551,26 @@ class AppState extends ChangeNotifier {
   Future<void> logoutAdmin() async {
     _isManualAuthInProgress = true;
     try {
+      final prevAdminId = _activeAdminRowId;
+      final prevAdminPhone = _normalizePhone(
+        userProfile?['phone']?.toString() ??
+            supabase.auth.currentUser?.phone ??
+            '',
+      );
+      await FcmPushService.clearTokenForCurrentUser(
+        role: 'admin',
+        rowId: prevAdminId,
+        phone: prevAdminPhone.isNotEmpty ? prevAdminPhone : null,
+      );
+
       isAdminLoggedIn = false;
       _activeCourierUsernameHint = null;
       _activeAdminRowId = null;
       await supabase.auth.signOut();
       await _loadSavedNotificationsForCurrentRole();
+      if (userProfile != null) {
+        unawaited(syncFcmTokenForCurrentUsers());
+      }
       _safeNotifyListeners();
     } finally {
       _isManualAuthInProgress = false;
@@ -2538,6 +2608,7 @@ class AppState extends ChangeNotifier {
     String? phone,
     String? address,
   }) {
+    final previousPhone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
     if (profile is Map) {
       userProfile = Map<String, dynamic>.from(profile);
     } else if (name != null || phone != null || address != null) {
@@ -2552,6 +2623,14 @@ class AppState extends ChangeNotifier {
     if (userProfile != null) {
       final cleanPhone =
           _normalizePhone(userProfile!['phone']?.toString() ?? '');
+      if (previousPhone.isNotEmpty &&
+          cleanPhone.isNotEmpty &&
+          previousPhone != cleanPhone) {
+        unawaited(FcmPushService.clearTokenForCurrentUser(
+          role: 'customer',
+          phone: previousPhone,
+        ));
+      }
       if (cleanPhone.isNotEmpty) {
         userProfile = {
           ...userProfile!,
@@ -2735,6 +2814,14 @@ class AppState extends ChangeNotifier {
 
     if (!isValid) return false;
 
+    final previousPhone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+    if (previousPhone.isNotEmpty && previousPhone != cleanPhone) {
+      await FcmPushService.clearTokenForCurrentUser(
+        role: 'customer',
+        phone: previousPhone,
+      );
+    }
+
     JsonMapNullable dbRecord;
     try {
       dbRecord = await fetchCustomerRecordByPhone(cleanPhone);
@@ -2831,6 +2918,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logoutUser() async {
+    final prevPhone = _normalizePhone(userProfile?['phone']?.toString() ?? '');
+    final prevId = userProfile?['id'];
+    if (prevPhone.isNotEmpty || prevId != null) {
+      await FcmPushService.clearTokenForCurrentUser(
+        role: 'customer',
+        rowId: prevId,
+        phone: prevPhone.isNotEmpty ? prevPhone : null,
+      );
+    }
+
     userProfile = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userPhone');
@@ -3354,13 +3451,23 @@ class AppState extends ChangeNotifier {
   Future<void> logoutCourier() async {
     _isManualAuthInProgress = true;
     try {
-      if (currentCourier != null && currentCourier!['id'] != null) {
-        final courierId = currentCourier!['id'];
+      final prevCourierId = currentCourier?['id'];
+      final prevCourierPhone =
+          _normalizePhone(currentCourier?['phone']?.toString() ?? '');
+      if (prevCourierId != null || prevCourierPhone.isNotEmpty) {
+        await FcmPushService.clearTokenForCurrentUser(
+          role: 'courier',
+          rowId: prevCourierId,
+          phone: prevCourierPhone.isNotEmpty ? prevCourierPhone : null,
+        );
+      }
+
+      if (prevCourierId != null) {
         try {
           await supabase
               .from('couriers')
               .update({'is_logged_in': false})
-              .eq('id', courierId)
+              .eq('id', prevCourierId)
               .timeout(_authTimeout);
         } catch (e) {
           debugPrint('خطأ في تحرير جلسة المندوب: $e');
@@ -3375,6 +3482,9 @@ class AppState extends ChangeNotifier {
       await prefs.remove('loggedCourierId');
       await prefs.remove('courierSessionJson');
       await _loadSavedNotificationsForCurrentRole();
+      if (userProfile != null) {
+        unawaited(syncFcmTokenForCurrentUsers());
+      }
       _safeNotifyListeners();
     } finally {
       _isManualAuthInProgress = false;
@@ -3491,16 +3601,17 @@ class AppState extends ChangeNotifier {
         (o) => o['id'].toString() == intId.toString(),
         orElse: () => <String, dynamic>{},
       );
-      final custPhone =
-          (updated['phone'] ?? existing['phone'] ?? '').toString();
-      final custPid = await getCustomerFcmTokenByPhone(custPhone);
-      if (custPid != null && custPid.isNotEmpty) {
-        await _sendExternalPushNotification(
-          playerIds: [custPid],
+      final custPhone = _normalizePhone(
+        (updated['phone'] ?? existing['phone'] ?? '').toString(),
+      );
+      if (custPhone.isNotEmpty) {
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'customer',
+          recipientId: custPhone,
           title: 'تحديث طلبك #$intId',
           body: 'الحالة الجديدة: ${getArabicStatus(cleanStatus)}',
-          orderId: intId,
           eventType: cleanStatus,
+          orderId: intId,
         );
       }
     }());
@@ -3532,14 +3643,18 @@ class AppState extends ChangeNotifier {
       courierName,
     );
 
-    final courierPid = courier['fcm_token']?.toString().trim() ?? '';
-    if (courierPid.isNotEmpty) {
-      unawaited(_sendExternalPushNotification(
-        playerIds: [courierPid],
+    final resolvedCourierId =
+        (courier['id']?.toString().trim().isNotEmpty == true)
+            ? courier['id'].toString().trim()
+            : courierName;
+    if (resolvedCourierId.isNotEmpty) {
+      unawaited(_dispatchUnifiedPushEvent(
+        recipientType: 'courier',
+        recipientId: resolvedCourierId,
         title: 'طلب جديد مخصص لك #$intOrderId',
         body: 'تم إسناد الطلب #$intOrderId إليك، يرجى مراجعته.',
-        orderId: intOrderId,
         eventType: 'courier_assigned',
+        orderId: intOrderId,
       ));
     }
   }
@@ -4431,17 +4546,14 @@ class AppState extends ChangeNotifier {
         await fetchPopularStats();
         await fetchAdminFinancialReports();
 
-        final adminPids = await getAllAdminFcmTokens();
-        if (adminPids.isNotEmpty) {
-          await _sendExternalPushNotification(
-            playerIds: adminPids,
-            title: 'طلب جديد #${orderId ?? ''}',
-            body:
-                'طلب من $customerName ($normalizedPhone) بانتظار التسعير.',
-            orderId: orderId,
-            eventType: 'new_order',
-          );
-        }
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'admin',
+          recipientId: 'all',
+          title: 'طلب جديد #${orderId ?? ''}',
+          body: 'طلب من $customerName ($normalizedPhone) بانتظار التسعير.',
+          eventType: 'new_order',
+          orderId: orderId,
+        );
       }());
     } catch (e) {
       debugPrint('خطأ أثناء إرسال الطلب: $e');
@@ -4527,17 +4639,18 @@ class AppState extends ChangeNotifier {
           (o) => o['id'].toString() == intOrderId.toString(),
           orElse: () => <String, dynamic>{},
         );
-        final custPhone =
-            (updatedOrder['phone'] ?? existing['phone'] ?? '').toString();
-        final custPid = await getCustomerFcmTokenByPhone(custPhone);
-        if (custPid != null) {
-          await _sendExternalPushNotification(
-            playerIds: [custPid],
+        final custPhone = _normalizePhone(
+          (updatedOrder['phone'] ?? existing['phone'] ?? '').toString(),
+        );
+        if (custPhone.isNotEmpty) {
+          await _dispatchUnifiedPushEvent(
+            recipientType: 'customer',
+            recipientId: custPhone,
             title: 'تم تحديد سعر التوصيل للطلب #$intOrderId',
             body:
                 'رسوم التوصيل: $cleanFee ر.ي. يرجى تأكيد الطلب لمتابعة التوصيل.',
-            orderId: intOrderId,
             eventType: 'pricing_sent',
+            orderId: intOrderId,
           );
         }
       }());
@@ -4598,32 +4711,33 @@ class AppState extends ChangeNotifier {
         (o) => o['id'].toString() == intOrderId.toString(),
         orElse: () => <String, dynamic>{},
       );
-      final courierName = (updatedMap['assigned_courier'] ??
+      final courierTarget = (updatedMap['courier_id'] ??
+              existing['courier_id'] ??
+              updatedMap['assigned_courier'] ??
               existing['assigned_courier'] ??
               '')
-          .toString();
-      if (action == 'approve' && courierName.isNotEmpty) {
-        final cPid = await getCourierFcmTokenByName(courierName);
-        if (cPid != null && cPid.isNotEmpty) {
-          await _sendExternalPushNotification(
-            playerIds: [cPid],
-            title: 'وافق العميل على الطلب #$intOrderId',
-            body: 'الطلب #$intOrderId جاهز لقبولك وتوصيله.',
-            orderId: intOrderId,
-            eventType: 'approved_by_customer',
-          );
-        }
+          .toString()
+          .trim();
+      if (action == 'approve' &&
+          courierTarget.isNotEmpty &&
+          courierTarget != 'لم يتم التعيين') {
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'courier',
+          recipientId: courierTarget,
+          title: 'وافق العميل على الطلب #$intOrderId',
+          body: 'الطلب #$intOrderId جاهز لقبولك وتوصيله.',
+          eventType: 'approved_by_customer',
+          orderId: intOrderId,
+        );
       } else if (action != 'approve') {
-        final adminPids = await getAllAdminFcmTokens();
-        if (adminPids.isNotEmpty) {
-          await _sendExternalPushNotification(
-            playerIds: adminPids,
-            title: 'ألغى العميل الطلب #$intOrderId',
-            body: 'قام العميل بإلغاء الطلب #$intOrderId.',
-            orderId: intOrderId,
-            eventType: 'cancelled_by_customer',
-          );
-        }
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'admin',
+          recipientId: 'all',
+          title: 'ألغى العميل الطلب #$intOrderId',
+          body: 'قام العميل بإلغاء الطلب #$intOrderId.',
+          eventType: 'cancelled_by_customer',
+          orderId: intOrderId,
+        );
       }
     }());
   }
@@ -4722,30 +4836,29 @@ class AppState extends ChangeNotifier {
         (o) => o['id'].toString() == intOrderId.toString(),
         orElse: () => <String, dynamic>{},
       );
-      final custPhone =
-          (updatedMap['phone'] ?? existing['phone'] ?? '').toString();
-      final custPid = await getCustomerFcmTokenByPhone(custPhone);
-      if (custPid != null) {
-        await _sendExternalPushNotification(
-          playerIds: [custPid],
+      final custPhone = _normalizePhone(
+        (updatedMap['phone'] ?? existing['phone'] ?? '').toString(),
+      );
+      if (custPhone.isNotEmpty) {
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'customer',
+          recipientId: custPhone,
           title: 'تحديث طلبك #$intOrderId',
           body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
-          orderId: intOrderId,
           eventType: newStatus,
+          orderId: intOrderId,
         );
       }
 
       if (newStatus == 'rejectedByCourier' || newStatus == 'delivered') {
-        final adminPids = await getAllAdminFcmTokens();
-        if (adminPids.isNotEmpty) {
-          await _sendExternalPushNotification(
-            playerIds: adminPids,
-            title: 'تحديث من المندوب على الطلب #$intOrderId',
-            body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
-            orderId: intOrderId,
-            eventType: newStatus,
-          );
-        }
+        await _dispatchUnifiedPushEvent(
+          recipientType: 'admin',
+          recipientId: 'all',
+          title: 'تحديث من المندوب على الطلب #$intOrderId',
+          body: 'الحالة الجديدة: ${getArabicStatus(newStatus)}',
+          eventType: newStatus,
+          orderId: intOrderId,
+        );
       }
     }());
   }
