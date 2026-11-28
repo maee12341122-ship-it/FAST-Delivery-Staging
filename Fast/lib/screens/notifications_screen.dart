@@ -99,8 +99,13 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       final String role = appState.isAdminLoggedIn
           ? 'admin'
           : (appState.currentCourier != null ? 'courier' : 'customer');
-      final String targetChat =
-          role == 'courier' ? 'admin_courier' : 'admin_customer';
+      final additional = notif['additionalData'] ?? notif['additional_data'];
+      final String payloadTarget = additional is Map
+          ? (additional['target_chat'] ?? '').toString().trim()
+          : '';
+      final String targetChat = payloadTarget.isNotEmpty
+          ? payloadTarget
+          : (role == 'courier' ? 'admin_courier' : 'unified_order_chat');
       Navigator.push(
         context,
         MaterialPageRoute(
