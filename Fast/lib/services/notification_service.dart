@@ -9,18 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/order_tracking_screen.dart';
 import '../screens/chat_screen.dart';
-
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
-    }
-  } catch (e) {
-    debugPrint('📩 [FCM Background Init Error]: $e');
-  }
-  debugPrint('📩 [FCM Background Message]: ${message.messageId}');
-}
+import 'fcm_push_service.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
@@ -120,13 +109,14 @@ class NotificationService {
     try {
       final cleanId = (userId ?? '').trim();
       if (cleanId.isNotEmpty) {
-        await getFcmTokenSafe();
+        await FcmPushService.getTokenSafe();
       }
     } catch (e) {
       debugPrint('⚠️ تعذر تحديث جلسة FCM loginUser: $e');
     }
   }
 
+  /// تهيئة الإشعارات المحلية فقط دون تسجيل مستمعات FCM مكررة (تتولاها FcmPushService)
   static Future<void> initialize({
     void Function(String playerId)? onPlayerIdChanged,
     void Function(Map<String, dynamic> notificationItem)? onExternalNotification,
@@ -141,7 +131,6 @@ class NotificationService {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp();
       }
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -174,91 +163,10 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.createNotificationChannel(_highImportanceChannel);
 
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        final additionalMap = Map<String, dynamic>.from(message.data);
-        final title =
-            message.notification?.title ?? additionalMap['title']?.toString();
-        final body =
-            message.notification?.body ?? additionalMap['body']?.toString();
-
-        _recordExternalNotification(
-          title: title,
-          body: body,
-          messageId: message.messageId,
-          additionalData: additionalMap,
-        );
-
-        final orderId = _extractOrderIdFromMap(
-          additionalMap,
-          '${title ?? ''} ${body ?? ''}',
-        );
-
-        final payloadJson = jsonEncode({
-          ...additionalMap,
-          if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
-        });
-
-        unawaited(
-          showLocalNotification(
-            (title != null && title.trim().isNotEmpty) ? title : 'إشعار جديد 🔔',
-            body ?? '',
-            payload: payloadJson,
-            dedupeKey: message.messageId,
-          ),
-        );
-      });
-
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        final additionalMap = Map<String, dynamic>.from(message.data);
-        final title =
-            message.notification?.title ?? additionalMap['title']?.toString();
-        final body =
-            message.notification?.body ?? additionalMap['body']?.toString();
-
-        _recordExternalNotification(
-          title: title,
-          body: body,
-          messageId: message.messageId,
-          additionalData: additionalMap,
-        );
-
-        handleNotificationNavigationFromMap(additionalMap,
-            fallbackText: '${title ?? ''} ${body ?? ''}');
-      });
-
-      final initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
-      if (initialMessage != null) {
-        final additionalMap = Map<String, dynamic>.from(initialMessage.data);
-        final title = initialMessage.notification?.title ??
-            additionalMap['title']?.toString();
-        final body = initialMessage.notification?.body ??
-            additionalMap['body']?.toString();
-
-        _recordExternalNotification(
-          title: title,
-          body: body,
-          messageId: initialMessage.messageId,
-          additionalData: additionalMap,
-        );
-
-        Future.delayed(const Duration(milliseconds: 600), () {
-          handleNotificationNavigationFromMap(additionalMap,
-              fallbackText: '${title ?? ''} ${body ?? ''}');
-        });
-      }
-
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-        final clean = newToken.trim();
-        if (clean.isNotEmpty && onPlayerIdChanged != null) {
-          onPlayerIdChanged(clean);
-        }
-      });
-
-      debugPrint('🟢 تم تهيئة نظام الإشعارات الموحد بنجاح');
+      debugPrint('🟢 تم تهيئة الإشعارات المحلية بنجاح دون تضارب مستمعات');
     } catch (e) {
       _isInitialized = false;
-      debugPrint('⚠️ خطأ في تهيئة الإشعارات: $e');
+      debugPrint('⚠️ خطأ في تهيئة الإشعارات المحلية: $e');
     }
   }
 
@@ -293,7 +201,7 @@ class NotificationService {
             builder: (_) => ChatScreen(
               orderId: (orderId != null && orderId.isNotEmpty) ? orderId : chatId!,
               userRole: (data['user_role'] ?? 'customer').toString(),
-              targetChat: (data['target_chat'] ?? 'admin_customer').toString(),
+              targetChat: (data['target_chat'] ?? 'unified_order_chat').toString(),
             ),
           ),
         );
@@ -307,34 +215,11 @@ class NotificationService {
   }
 
   static Future<String?> requestPermissionAndFetchToken() async {
-    try {
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      return await getFcmTokenSafe();
-    } catch (e) {
-      debugPrint('⚠️ خطأ في طلب إذن FCM: $e');
-      return null;
-    }
+    return await FcmPushService.getTokenSafe();
   }
 
   static Future<String?> getFcmTokenSafe({int retries = 3}) async {
-    for (int attempt = 1; attempt <= retries; attempt++) {
-      try {
-        final token = await FirebaseMessaging.instance.getToken();
-        if (token != null && token.trim().isNotEmpty) {
-          return token.trim();
-        }
-      } catch (e) {
-        debugPrint('⚠️ محاولة $attempt لجلب FCM Token فشلت: $e');
-      }
-      if (attempt < retries) {
-        await Future.delayed(Duration(seconds: attempt * 2));
-      }
-    }
-    return null;
+    return await FcmPushService.getTokenSafe(retries: retries);
   }
 
   static void navigateToOrderTracking(String orderId) {
@@ -362,7 +247,7 @@ class NotificationService {
     String? identifierValue,
   }) async {
     try {
-      final String? fcmToken = await getFcmTokenSafe();
+      final String? fcmToken = await FcmPushService.getTokenSafe();
       if (fcmToken == null || fcmToken.isEmpty) return;
 
       final client = Supabase.instance.client;
@@ -442,22 +327,15 @@ class NotificationService {
           'event_type': eventType.trim(),
       };
 
-      final payload = <String, dynamic>{
-        'tokens': ids,
-        'token': ids.first,
-        'title': title.trim(),
-        'body': body.trim(),
-        if (orderId != null) 'order_id': orderId.toString(),
-        if (eventType != null && eventType.trim().isNotEmpty)
-          'event_type': eventType.trim(),
-        'data': dataMap,
-      };
-
-      await Supabase.instance.client.functions
-          .invoke('send-fcm-push', body: payload)
-          .timeout(const Duration(seconds: 12));
+      await FcmPushService.sendPushToTokens(
+        tokens: ids,
+        title: title.trim(),
+        body: body.trim(),
+        eventType: eventType?.trim(),
+        data: dataMap,
+      );
     } catch (e) {
-      debugPrint('❌ خطأ في إرسال الإشعار عبر Supabase Edge Function: $e');
+      debugPrint('❌ خطأ في إرسال الإشعار عبر FcmPushService: $e');
     }
   }
 
