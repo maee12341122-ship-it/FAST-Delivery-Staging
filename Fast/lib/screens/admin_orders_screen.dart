@@ -464,7 +464,6 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> with SingleTicker
               }
 
               try {
-                // حفظ التحديثات وإرسال إشعار FCM للعميل عبر AppState بشكل موحد دون تكرار
                 await appState.setOrderDeliveryFee(orderId, fee, selectedCourier!);
 
                 if (dialogContext.mounted) {
