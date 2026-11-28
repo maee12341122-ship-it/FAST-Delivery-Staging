@@ -1895,6 +1895,49 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<List<String>> _resolvePushTokensForRecipient({
+    required String recipientRole,
+    required String recipientId,
+  }) async {
+    final tokens = <String>{};
+
+    try {
+      if (recipientRole == 'admin') {
+        final adminTokens = await getAllAdminFcmTokens();
+        tokens.addAll(adminTokens);
+      } else if (recipientRole == 'courier') {
+        if (recipientId.isNotEmpty && recipientId != 'all') {
+          final byId = await supabase
+              .from('couriers')
+              .select('fcm_token')
+              .eq('id', recipientId)
+              .maybeSingle()
+              .timeout(_fastNetworkTimeout);
+          final tokById = byId?['fcm_token']?.toString().trim() ?? '';
+          if (tokById.isNotEmpty) tokens.add(tokById);
+
+          if (tokens.isEmpty) {
+            final tokByName = await getCourierFcmTokenByName(recipientId);
+            if (tokByName != null && tokByName.isNotEmpty) {
+              tokens.add(tokByName);
+            }
+          }
+        }
+      } else if (recipientRole == 'customer') {
+        if (recipientId.isNotEmpty && recipientId != 'all') {
+          final custTok = await getCustomerFcmTokenByPhone(recipientId);
+          if (custTok != null && custTok.isNotEmpty) {
+            tokens.add(custTok);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('تعذر جلب توكنات المستلم ($recipientRole): $e');
+    }
+
+    return tokens.where((t) => t.isNotEmpty).toList();
+  }
+
   Future<void> _dispatchUnifiedPushEvent({
     required String recipientType,
     required String recipientId,
@@ -1950,26 +1993,51 @@ class AppState extends ChangeNotifier {
       debugPrint('تعذر تسجيل الإشعار في جدول notifications: $e');
     }
 
-    if (!_hasConfiguredBackend) return;
+    bool sentViaBackend = false;
+    if (_hasConfiguredBackend) {
+      try {
+        await _postBackend(
+          '/api/notifications/send',
+          {
+            'title': cleanTitle,
+            'body': cleanBody,
+            'event_type': cleanEvent,
+            'recipient_type': cleanRole,
+            'recipient_id': cleanRecipientId,
+            if (dataPayload['order_id'] != null)
+              'order_id': dataPayload['order_id'],
+            if (dataPayload['chat_id'] != null)
+              'chat_id': dataPayload['chat_id'],
+            'data': dataPayload,
+          },
+          timeout: _fastNetworkTimeout,
+        );
+        sentViaBackend = true;
+      } catch (e) {
+        debugPrint('تعذر إرسال إشعار FCM عبر Backend، سيتم الإرسال عبر Supabase Edge Function: $e');
+      }
+    }
 
-    try {
-      await _postBackend(
-        '/api/notifications/send',
-        {
-          'title': cleanTitle,
-          'body': cleanBody,
-          'event_type': cleanEvent,
-          'recipient_type': cleanRole,
-          'recipient_id': cleanRecipientId,
-          if (dataPayload['order_id'] != null)
-            'order_id': dataPayload['order_id'],
-          if (dataPayload['chat_id'] != null) 'chat_id': dataPayload['chat_id'],
-          'data': dataPayload,
-        },
-        timeout: _fastNetworkTimeout,
-      );
-    } catch (e) {
-      debugPrint('تعذر إرسال إشعار FCM عبر Backend: $e');
+    if (!sentViaBackend) {
+      try {
+        final targetTokens = await _resolvePushTokensForRecipient(
+          recipientRole: cleanRole,
+          recipientId: cleanRecipientId,
+        );
+        if (targetTokens.isNotEmpty) {
+          await FcmPushService.sendPushToTokens(
+            tokens: targetTokens,
+            title: cleanTitle,
+            body: cleanBody,
+            eventType: cleanEvent,
+            data: dataPayload,
+          );
+        } else {
+          debugPrint('لا يوجد fcm_token مسجل للمستلم ($cleanRole:$cleanRecipientId)');
+        }
+      } catch (e) {
+        debugPrint('تعذر إرسال إشعار FCM عبر send-fcm-push: $e');
+      }
     }
   }
 
@@ -2210,7 +2278,8 @@ class AppState extends ChangeNotifier {
 
   void shareApp() {
     unawaited(Share.share(
-      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل\nhttps://play.google.com/store/apps/details?id=com.example.taiz_express',
+      'حمل تطبيق Fast Delivery App - أسرع خدمة توصيل
+https://play.google.com/store/apps/details?id=com.example.taiz_express',
       subject: 'تطبيق Fast Delivery App',
     ));
   }
