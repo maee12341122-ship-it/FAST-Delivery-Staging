@@ -49,12 +49,15 @@ void main() async {
         final String role = appState.isAdminLoggedIn
             ? 'admin'
             : (appState.currentCourier != null ? 'courier' : 'customer');
+        final String targetChat = (data['target_chat']?.toString().trim().isNotEmpty == true)
+            ? data['target_chat'].toString().trim()
+            : (role == 'courier' ? 'admin_courier' : 'unified_order_chat');
         navigatorKey.currentState?.push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
               orderId: orderId,
               userRole: role,
-              targetChat: 'unified_order_chat',
+              targetChat: targetChat,
             ),
           ),
         );
