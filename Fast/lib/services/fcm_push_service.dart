@@ -6,6 +6,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+const AndroidNotificationChannel _bgHighImportanceChannel =
+    AndroidNotificationChannel(
+  'high_importance_channel',
+  'إشعارات التطبيق المهمة',
+  description: 'قناة إشعارات الطلبات والتنبيهات الفورية',
+  importance: Importance.max,
+  playSound: true,
+  enableVibration: true,
+);
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -15,21 +25,57 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (e) {
     debugPrint('FCM Background init error: $e');
   }
-  debugPrint('FCM Background message: ${message.messageId}');
+
+  try {
+    // إذا كانت الرسالة من نوع data-only (بدون notification payload)، نعرض إشعاراً محلياً في الخلفية
+    if (message.notification == null && message.data.isNotEmpty) {
+      final title = (message.data['title'] ?? '').toString().trim();
+      final body = (message.data['body'] ?? message.data['message'] ?? '')
+          .toString()
+          .trim();
+
+      if (title.isNotEmpty || body.isNotEmpty) {
+        final plugin = FlutterLocalNotificationsPlugin();
+        const androidInit =
+            AndroidInitializationSettings('@mipmap/ic_launcher');
+        await plugin.initialize(
+          const InitializationSettings(android: androidInit),
+        );
+        final androidPlugin = plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.createNotificationChannel(_bgHighImportanceChannel);
+
+        await plugin.show(
+          DateTime.now().microsecondsSinceEpoch % 2147483647,
+          title.isNotEmpty ? title : 'إشعار جديد 🔔',
+          body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              _bgHighImportanceChannel.id,
+              _bgHighImportanceChannel.name,
+              channelDescription: _bgHighImportanceChannel.description,
+              importance: Importance.max,
+              priority: Priority.high,
+              playSound: true,
+              enableVibration: true,
+            ),
+          ),
+          payload: jsonEncode(message.data),
+        );
+      }
+    }
+  } catch (e) {
+    debugPrint('FCM Background local notification display error: $e');
+  }
+
+  debugPrint('FCM Background message handled: ${message.messageId}');
 }
 
 class FcmPushService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
-    'high_importance_channel',
-    'إشعارات التطبيق المهمة',
-    description: 'قناة إشعارات الطلبات والتنبيهات الفورية',
-    importance: Importance.max,
-    playSound: true,
-    enableVibration: true,
-  );
+  static const AndroidNotificationChannel _channel = _bgHighImportanceChannel;
 
   static String? _lastRole;
   static dynamic _lastRowId;
@@ -38,14 +84,27 @@ class FcmPushService {
   static bool _firebaseReady = false;
   static bool _listenersInitialized = false;
   static bool _openedListenersAttached = false;
+  static bool _refreshListenerAttached = false;
   static Future<void>? _initFuture;
   static void Function(Map<String, dynamic> payload)? _onTapCallback;
   static void Function(Map<String, dynamic> messageData)? _onForegroundMessage;
+  static final Set<String> _handledMessageIds = <String>{};
 
   static void setForegroundMessageHandler(
     void Function(Map<String, dynamic> messageData)? handler,
   ) {
     _onForegroundMessage = handler;
+  }
+
+  static bool _markMessageHandled(String? idOrKey) {
+    final key = (idOrKey ?? '').trim();
+    if (key.isEmpty) return false;
+    if (_handledMessageIds.contains(key)) return true;
+    _handledMessageIds.add(key);
+    if (_handledMessageIds.length > 200) {
+      _handledMessageIds.remove(_handledMessageIds.first);
+    }
+    return false;
   }
 
   static Future<void> _ensureFirebaseInitialized() async {
@@ -92,6 +151,17 @@ class FcmPushService {
       }
 
       try {
+        await FirebaseMessaging.instance
+            .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      } catch (e) {
+        debugPrint('FCM foreground options error: $e');
+      }
+
+      try {
         const androidInit =
             AndroidInitializationSettings('@mipmap/ic_launcher');
         const initSettings = InitializationSettings(android: androidInit);
@@ -121,12 +191,17 @@ class FcmPushService {
       }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        final msgKey = message.messageId ??
+            '${message.notification?.title ?? message.data['title'] ?? ''}_${message.data['order_id'] ?? ''}';
+        if (_markMessageHandled(msgKey)) return;
+
         final combined = <String, dynamic>{
           ...message.data,
           if (message.notification?.title != null)
             'title': message.notification!.title,
           if (message.notification?.body != null)
             'body': message.notification!.body,
+          if (message.messageId != null) 'message_id': message.messageId,
         };
 
         final title = combined['title']?.toString() ?? 'إشعار جديد';
@@ -143,7 +218,7 @@ class FcmPushService {
         if (title.isNotEmpty || body.isNotEmpty) {
           try {
             await _localNotifications.show(
-              DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              DateTime.now().microsecondsSinceEpoch % 2147483647,
               title,
               body,
               NotificationDetails(
@@ -196,6 +271,8 @@ class FcmPushService {
   }
 
   static void messagingTokenRefreshListener() {
+    if (_refreshListenerAttached) return;
+    _refreshListenerAttached = true;
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       final clean = newToken.trim();
       if (clean.isNotEmpty) {
@@ -402,14 +479,21 @@ class FcmPushService {
         .toList();
     if (cleanTokens.isEmpty) return;
 
+    final payloadData = <String, dynamic>{
+      if (data != null) ...data,
+      if (eventType != null && eventType.trim().isNotEmpty)
+        'event_type': eventType.trim(),
+    };
+
     await Supabase.instance.client.functions.invoke(
       'send-fcm-push',
       body: {
         'tokens': cleanTokens,
-        'title': title,
-        'body': body,
-        if (eventType != null) 'event_type': eventType,
-        'data': data ?? {},
+        'title': title.trim(),
+        'body': body.trim(),
+        if (eventType != null && eventType.trim().isNotEmpty)
+          'event_type': eventType.trim(),
+        'data': payloadData,
       },
     );
   }
