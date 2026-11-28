@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -36,10 +35,9 @@ class NotificationService {
   }
 
   static String _normalizePhone(String phone) {
-    var clean = phone.trim().replaceAll(' ', '');
-    if (clean.startsWith('+967')) clean = clean.substring(4);
-    if (clean.startsWith('0')) clean = clean.substring(1);
-    if (clean.startsWith('967')) clean = clean.substring(3);
+    var clean = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    if (clean.startsWith('967') && clean.length > 9) clean = clean.substring(3);
+    if (clean.startsWith('0') && clean.length > 9) clean = clean.substring(1);
     return clean;
   }
 
@@ -66,7 +64,7 @@ class NotificationService {
     return false;
   }
 
-  static void _recordExternalNotification({
+  static void recordExternalNotification({
     required String? title,
     required String? body,
     String? messageId,
@@ -86,7 +84,7 @@ class NotificationService {
         : '${cleanTitle}_${cleanBody}_${orderId ?? ''}';
 
     final item = <String, dynamic>{
-      'title': cleanTitle.isNotEmpty ? cleanTitle : 'إشعار جديد 🔔',
+      'title': cleanTitle.isNotEmpty ? cleanTitle : 'إشعار جديد',
       'body': cleanBody,
       'time': DateTime.now().toIso8601String(),
       'is_read': false,
@@ -193,14 +191,21 @@ class NotificationService {
     final chatId =
         (data['chat_id'] ?? data['chatId'] ?? data['room_id'])?.toString().trim();
 
-    if ((type.contains('chat') || type.contains('message') || (chatId != null && chatId.isNotEmpty)) &&
-        ((orderId != null && orderId.isNotEmpty) || (chatId != null && chatId.isNotEmpty))) {
+    if ((type.contains('chat') ||
+            type.contains('message') ||
+            (chatId != null && chatId.isNotEmpty)) &&
+        ((orderId != null && orderId.isNotEmpty) ||
+            (chatId != null && chatId.isNotEmpty))) {
       if (navigatorKey.currentState != null) {
         navigatorKey.currentState!.push(
           MaterialPageRoute(
             builder: (_) => ChatScreen(
               orderId: (orderId != null && orderId.isNotEmpty) ? orderId : chatId!,
-              userRole: (data['user_role'] ?? 'customer').toString(),
+              userRole: (data['recipient_type'] ??
+                      data['recipient_role'] ??
+                      data['user_role'] ??
+                      'customer')
+                  .toString(),
               targetChat: (data['target_chat'] ?? 'unified_order_chat').toString(),
             ),
           ),
@@ -257,30 +262,77 @@ class NotificationService {
       if (cleanTable == 'admins') {
         final intAdminId = int.tryParse(cleanId);
         if (intAdminId != null) {
-          await client.from('admins').update({'fcm_token': fcmToken}).eq('id', intAdminId);
-        } else if (identifierValue != null && identifierValue.trim().isNotEmpty) {
+          await client
+              .from('admins')
+              .update({'fcm_token': fcmToken}).eq('id', intAdminId);
+          await FcmPushService.syncTokenForCurrentUser(
+            role: 'admin',
+            rowId: intAdminId,
+            explicitToken: fcmToken,
+          );
+        } else if (identifierValue != null &&
+            identifierValue.trim().isNotEmpty) {
           final idVal = identifierValue.trim().toLowerCase();
-          final usernameVal = idVal.contains('@') ? idVal.split('@').first : idVal;
-          await client.from('admins').update({'fcm_token': fcmToken}).eq('username', usernameVal);
+          final usernameVal =
+              idVal.contains('@') ? idVal.split('@').first : idVal;
+          final rows = await client
+              .from('admins')
+              .update({'fcm_token': fcmToken})
+              .eq('username', usernameVal)
+              .select('id');
+          if (rows.isNotEmpty) {
+            await FcmPushService.syncTokenForCurrentUser(
+              role: 'admin',
+              rowId: rows.first['id'],
+              explicitToken: fcmToken,
+            );
+          }
         } else {
           final authUser = client.auth.currentUser;
           final email = (authUser?.email ?? '').trim().toLowerCase();
           if (email.isNotEmpty) {
-            final usernameVal = email.contains('@') ? email.split('@').first : email;
-            await client.from('admins').update({'fcm_token': fcmToken}).eq('username', usernameVal);
+            final usernameVal =
+                email.contains('@') ? email.split('@').first : email;
+            final rows = await client
+                .from('admins')
+                .update({'fcm_token': fcmToken})
+                .eq('username', usernameVal)
+                .select('id');
+            if (rows.isNotEmpty) {
+              await FcmPushService.syncTokenForCurrentUser(
+                role: 'admin',
+                rowId: rows.first['id'],
+                explicitToken: fcmToken,
+              );
+            }
           }
         }
       } else if (cleanTable == 'couriers') {
         final authUser = client.auth.currentUser;
         if (authUser != null && cleanId == authUser.id) {
-          await client.from('couriers').update({'fcm_token': fcmToken}).eq('auth_user_id', authUser.id);
+          final rows = await client
+              .from('couriers')
+              .update({'fcm_token': fcmToken})
+              .eq('auth_user_id', authUser.id)
+              .select('id');
+          if (rows.isNotEmpty) {
+            await FcmPushService.syncTokenForCurrentUser(
+              role: 'courier',
+              rowId: rows.first['id'],
+              explicitToken: fcmToken,
+            );
+          }
         } else {
           final intCourierId = int.tryParse(cleanId);
-          if (intCourierId != null) {
-            await client.from('couriers').update({'fcm_token': fcmToken}).eq('id', intCourierId);
-          } else {
-            await client.from('couriers').update({'fcm_token': fcmToken}).eq('id', cleanId);
-          }
+          final filterId = intCourierId ?? cleanId;
+          await client
+              .from('couriers')
+              .update({'fcm_token': fcmToken}).eq('id', filterId);
+          await FcmPushService.syncTokenForCurrentUser(
+            role: 'courier',
+            rowId: filterId,
+            explicitToken: fcmToken,
+          );
         }
       } else if (cleanTable == 'customers') {
         final normalizedPhone = _normalizePhone(cleanId);
@@ -291,17 +343,45 @@ class NotificationService {
               .from('customers')
               .update({'fcm_token': fcmToken})
               .or('phone.eq.$normalizedPhone,phone.eq.$formattedPhone,phone.eq.$zeroPhone');
+          await FcmPushService.syncTokenForCurrentUser(
+            role: 'customer',
+            phone: normalizedPhone,
+            explicitToken: fcmToken,
+          );
         } else {
-          await client.from('customers').update({'fcm_token': fcmToken}).eq('id', cleanId);
+          await client
+              .from('customers')
+              .update({'fcm_token': fcmToken}).eq('id', cleanId);
+          await FcmPushService.syncTokenForCurrentUser(
+            role: 'customer',
+            rowId: cleanId,
+            explicitToken: fcmToken,
+          );
         }
       } else {
-        await client.from(cleanTable).update({'fcm_token': fcmToken}).eq('id', cleanId);
+        await client
+            .from(cleanTable)
+            .update({'fcm_token': fcmToken}).eq('id', cleanId);
       }
     } catch (e) {
       debugPrint('⚠️ خطأ في حفظ FCM Token في Supabase: $e');
     }
   }
 
+  static Future<void> clearUserFcmToken({
+    String? role,
+    dynamic rowId,
+    String? phone,
+  }) async {
+    await FcmPushService.clearTokenForCurrentUser(
+      role: role,
+      rowId: rowId,
+      phone: phone,
+    );
+  }
+
+  /// تم إيقاف الإرسال المباشر من العميل إلى توكنات عشوائية لأسباب أمنية؛
+  /// الإشعارات تُرسل عبر الخادم الموثوق عند وقوع الأحداث الفعلية.
   static Future<void> sendNotificationToUser({
     List<String>? playerIds,
     String? targetPlayerId,
@@ -311,32 +391,9 @@ class NotificationService {
     String? eventType,
     Map<String, dynamic>? additionalData,
   }) async {
-    final ids = <String>{
-      ...?playerIds?.map((e) => e.trim()).where((e) => e.isNotEmpty),
-      if (targetPlayerId != null && targetPlayerId.trim().isNotEmpty)
-        targetPlayerId.trim(),
-    }.toList();
-
-    if (ids.isEmpty) return;
-
-    try {
-      final dataMap = <String, dynamic>{
-        if (additionalData != null) ...additionalData,
-        if (orderId != null) 'order_id': orderId.toString(),
-        if (eventType != null && eventType.trim().isNotEmpty)
-          'event_type': eventType.trim(),
-      };
-
-      await FcmPushService.sendPushToTokens(
-        tokens: ids,
-        title: title.trim(),
-        body: body.trim(),
-        eventType: eventType?.trim(),
-        data: dataMap,
-      );
-    } catch (e) {
-      debugPrint('❌ خطأ في إرسال الإشعار عبر FcmPushService: $e');
-    }
+    debugPrint(
+      'ℹ️ تم تجاوز الإرسال المباشر من العميل (event_type=${eventType ?? 'general'})؛ الإرسال يتم من الخادم الموثوق.',
+    );
   }
 
   static Future<void> showLocalNotification(
@@ -396,22 +453,8 @@ class NotificationService {
     required String messageBody,
     String? orderId,
   }) async {
-    if (targetPlayerId.isNotEmpty) {
-      await sendNotificationToUser(
-        targetPlayerId: targetPlayerId,
-        title: orderId != null && orderId.isNotEmpty
-            ? 'رسالة جديدة في الطلب #$orderId 💬'
-            : 'رسالة جديدة من $senderName 💬',
-        body: orderId != null && orderId.isNotEmpty
-            ? '$senderName: $messageBody'
-            : messageBody,
-        orderId: orderId,
-        eventType: 'chat_message',
-        additionalData: {
-          'type': 'chat',
-          if (orderId != null && orderId.isNotEmpty) 'order_id': orderId,
-        },
-      );
-    }
+    debugPrint(
+      'ℹ️ تم تجاوز إرسال إشعار المحادثة المباشر من العميل (orderId=${orderId ?? ''})؛ الإرسال يتم من الخادم الموثوق.',
+    );
   }
 }
