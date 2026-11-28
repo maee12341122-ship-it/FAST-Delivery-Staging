@@ -46,7 +46,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
         await plugin.show(
           DateTime.now().microsecondsSinceEpoch % 2147483647,
-          title.isNotEmpty ? title : 'إشعار جديد 🔔',
+          title.isNotEmpty ? title : 'إشعار جديد',
           body,
           NotificationDetails(
             android: AndroidNotificationDetails(
@@ -59,7 +59,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
               enableVibration: true,
             ),
           ),
-          payload: jsonEncode(message.data),
+          payload: jsonEncode(_normalizePayloadMap(message.data)),
         );
       }
     }
@@ -68,6 +68,16 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   debugPrint('FCM Background message handled: ${message.messageId}');
+}
+
+Map<String, String> _normalizePayloadMap(Map<String, dynamic> raw) {
+  final normalized = <String, String>{};
+  raw.forEach((key, value) {
+    if (value != null) {
+      normalized[key.toString()] = value.toString();
+    }
+  });
+  return normalized;
 }
 
 class FcmPushService {
@@ -88,6 +98,11 @@ class FcmPushService {
   static void Function(Map<String, dynamic> payload)? _onTapCallback;
   static void Function(Map<String, dynamic> messageData)? _onForegroundMessage;
   static final Set<String> _handledMessageIds = <String>{};
+
+  static String _maskToken(String token) {
+    if (token.length <= 10) return '***';
+    return '${token.substring(0, 6)}...${token.substring(token.length - 4)}';
+  }
 
   static void setForegroundMessageHandler(
     void Function(Map<String, dynamic> messageData)? handler,
@@ -191,16 +206,16 @@ class FcmPushService {
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         final msgKey = message.messageId ??
-            '${message.notification?.title ?? message.data['title'] ?? ''}_${message.data['order_id'] ?? ''}';
+            '${message.notification?.title ?? message.data['title'] ?? ''}_${message.data['event_type'] ?? ''}_${message.data['order_id'] ?? ''}';
         if (_markMessageHandled(msgKey)) return;
 
         final combined = <String, dynamic>{
-          ...message.data,
+          ..._normalizePayloadMap(message.data),
           if (message.notification?.title != null)
-            'title': message.notification!.title,
+            'title': message.notification!.title!,
           if (message.notification?.body != null)
-            'body': message.notification!.body,
-          if (message.messageId != null) 'message_id': message.messageId,
+            'body': message.notification!.body!,
+          if (message.messageId != null) 'message_id': message.messageId!,
         };
 
         final title = combined['title']?.toString() ?? 'إشعار جديد';
@@ -246,11 +261,11 @@ class FcmPushService {
       _openedListenersAttached = true;
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         final combined = <String, dynamic>{
-          ...message.data,
+          ..._normalizePayloadMap(message.data),
           if (message.notification?.title != null)
-            'title': message.notification!.title,
+            'title': message.notification!.title!,
           if (message.notification?.body != null)
-            'body': message.notification!.body,
+            'body': message.notification!.body!,
         };
         _onTapCallback?.call(combined);
       });
@@ -258,11 +273,11 @@ class FcmPushService {
       final initialMsg = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMsg != null) {
         final combined = <String, dynamic>{
-          ...initialMsg.data,
+          ..._normalizePayloadMap(initialMsg.data),
           if (initialMsg.notification?.title != null)
-            'title': initialMsg.notification!.title,
+            'title': initialMsg.notification!.title!,
           if (initialMsg.notification?.body != null)
-            'body': initialMsg.notification!.body,
+            'body': initialMsg.notification!.body!,
         };
         _onTapCallback?.call(combined);
       }
@@ -276,7 +291,7 @@ class FcmPushService {
       final clean = newToken.trim();
       if (clean.isNotEmpty) {
         _cachedToken = clean;
-        debugPrint('FCM Token refreshed: $clean');
+        debugPrint('FCM Token refreshed: ${_maskToken(clean)}');
         if (_lastRole != null || _lastRowId != null || _lastPhone != null) {
           unawaited(
             syncTokenForCurrentUser(
@@ -329,7 +344,8 @@ class FcmPushService {
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null && token.trim().isNotEmpty) {
           _cachedToken = token.trim();
-          debugPrint('FCM Token obtained (attempt $attempt): $_cachedToken');
+          debugPrint(
+              'FCM Token obtained (attempt $attempt): ${_maskToken(_cachedToken!)}');
           return _cachedToken;
         }
         debugPrint('FCM getToken returned null/empty on attempt $attempt');
@@ -356,6 +372,14 @@ class FcmPushService {
       digitsOnly = digitsOnly.substring(1);
     }
     return digitsOnly.trim();
+  }
+
+  static String? _tableForRole(String? role) {
+    final normalized = role?.trim().toLowerCase();
+    if (normalized == 'courier') return 'couriers';
+    if (normalized == 'admin') return 'admins';
+    if (normalized == 'customer') return 'customers';
+    return null;
   }
 
   static Future<bool> syncTokenForCurrentUser({
@@ -392,7 +416,8 @@ class FcmPushService {
     final hasValidPhone =
         effectivePhone != null && effectivePhone.trim().isNotEmpty;
 
-    if (effectiveRole == null || (!hasValidId && !hasValidPhone)) {
+    final table = _tableForRole(effectiveRole);
+    if (table == null || (!hasValidId && !hasValidPhone)) {
       debugPrint(
         'FCM syncTokenForCurrentUser aborted: missing role/id/phone (role=$effectiveRole, id=$effectiveId, phone=$effectivePhone)',
       );
@@ -401,18 +426,6 @@ class FcmPushService {
 
     final supabase = Supabase.instance.client;
     try {
-      String table;
-      if (effectiveRole == 'courier') {
-        table = 'couriers';
-      } else if (effectiveRole == 'admin') {
-        table = 'admins';
-      } else if (effectiveRole == 'customer') {
-        table = 'customers';
-      } else {
-        debugPrint('FCM syncTokenForCurrentUser unknown role: $effectiveRole');
-        return false;
-      }
-
       if (hasValidId) {
         final idVal = effectiveId.toString().trim();
         final parsedIntId = int.tryParse(idVal);
@@ -464,36 +477,56 @@ class FcmPushService {
     }
   }
 
-  static Future<void> sendPushToTokens({
-    required List<String> tokens,
-    required String title,
-    required String body,
-    Map<String, dynamic>? data,
-    String? eventType,
+  static Future<void> clearTokenForCurrentUser({
+    String? role,
+    dynamic rowId,
+    String? phone,
   }) async {
-    final cleanTokens = tokens
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
-    if (cleanTokens.isEmpty) return;
+    final targetRole = (role?.trim().isNotEmpty == true)
+        ? role!.trim().toLowerCase()
+        : _lastRole;
+    final targetId =
+        (rowId != null && rowId.toString().trim().isNotEmpty) ? rowId : _lastRowId;
+    final targetPhone = (phone?.trim().isNotEmpty == true)
+        ? phone!.trim()
+        : _lastPhone;
 
-    final payloadData = <String, dynamic>{
-      if (data != null) ...data,
-      if (eventType != null && eventType.trim().isNotEmpty)
-        'event_type': eventType.trim(),
-    };
+    final table = _tableForRole(targetRole);
+    final supabase = Supabase.instance.client;
 
-    await Supabase.instance.client.functions.invoke(
-      'send-fcm-push',
-      body: {
-        'tokens': cleanTokens,
-        'title': title.trim(),
-        'body': body.trim(),
-        if (eventType != null && eventType.trim().isNotEmpty)
-          'event_type': eventType.trim(),
-        'data': payloadData,
-      },
-    );
+    try {
+      if (table != null) {
+        if (targetId != null && targetId.toString().trim().isNotEmpty) {
+          final idVal = targetId.toString().trim();
+          final filterId = int.tryParse(idVal) ?? idVal;
+          await supabase
+              .from(table)
+              .update({'fcm_token': null})
+              .eq('id', filterId);
+        } else if (targetPhone != null && targetPhone.trim().isNotEmpty) {
+          final norm = _normalizePhoneDigits(targetPhone);
+          final candidates = <String>{
+            targetPhone.trim(),
+            if (norm.isNotEmpty) norm,
+            if (norm.isNotEmpty) '+967$norm',
+            if (norm.isNotEmpty) '967$norm',
+            if (norm.isNotEmpty) '0$norm',
+          }.where((s) => s.isNotEmpty).toList();
+          if (candidates.isNotEmpty) {
+            final orFilter = candidates.map((c) => 'phone.eq.$c').join(',');
+            await supabase
+                .from(table)
+                .update({'fcm_token': null})
+                .or(orFilter);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error clearing FCM token in Supabase ($targetRole): $e');
+    } finally {
+      _lastRole = null;
+      _lastRowId = null;
+      _lastPhone = null;
+    }
   }
 }
