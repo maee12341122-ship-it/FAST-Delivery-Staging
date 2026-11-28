@@ -53,6 +53,7 @@ const ALLOWED_TRANSITIONS = {
 
 const recentOrderSubmissions = new Map();
 const otpStore = new Map();
+const recentPushDedupe = new Map();
 
 function fail(status, message) {
   const error = new Error(message);
@@ -255,48 +256,241 @@ async function consumeCouponUsage(coupon) {
   }
 }
 
-async function sendOneSignalNotification({ targetPlayerIds, title, body, dataPayload }) {
-  const uniqueIds = Array.from(
-    new Set((targetPlayerIds || []).map((id) => String(id || '').trim()).filter(Boolean))
+function getArabicOrderStatusLabel(status) {
+  switch (String(status || '').trim()) {
+    case 'waitingForPricing':
+      return 'بانتظار تحديد السعر من الإدارة';
+    case 'pricingSentToCustomer':
+      return 'تم تحديد السعر، بانتظار موافقة العميل';
+    case 'approvedByCustomer':
+    case 'waitingCourierApproval':
+      return 'بانتظار موافقة المندوب';
+    case 'acceptedByCourier':
+    case 'assigned':
+      return 'تم قبول الطلب وتعيين المندوب';
+    case 'onTheWay':
+      return 'المندوب في الطريق إليك';
+    case 'rejectedByCourier':
+      return 'رفض المندوب الطلب';
+    case 'arrivedToCustomer':
+      return 'وصل المندوب إلى موقع العميل';
+    case 'delivered':
+      return 'تم تسليم الطلب بنجاح';
+    case 'cancelled':
+    case 'cancelledByCustomer':
+      return 'تم إلغاء الطلب';
+    default:
+      return String(status || 'قيد المعالجة');
+  }
+}
+
+function stringifyPushData(rawData) {
+  const result = {};
+  if (!rawData || typeof rawData !== 'object') return result;
+  for (const [k, v] of Object.entries(rawData)) {
+    if (v === undefined || v === null) continue;
+    result[String(k)] = typeof v === 'string' ? v : String(v);
+  }
+  return result;
+}
+
+async function resolveFcmTokensForRecipient({ recipientType, recipientId, explicitTokens }) {
+  const tokens = new Set(
+    (explicitTokens || []).map((t) => String(t || '').trim()).filter(Boolean)
   );
-  if (uniqueIds.length === 0) return { sent: false, skipped: true };
+  const role = String(recipientType || '').trim().toLowerCase();
+  const targetId = String(recipientId || '').trim();
 
-  const appId =
-    config.oneSignalAppId ||
-    process.env.ONESIGNAL_APP_ID ||
-    '60850bed-4af8-4df1-a2f5-77411630f447';
-  const restApiKey =
-    config.oneSignalRestApiKey || process.env.ONESIGNAL_REST_API_KEY;
-
-  if (!restApiKey) {
-    return { sent: false, error: 'مفتاح OneSignal السري غير مضبوط على الخادم.' };
+  if (role === 'admin') {
+    let query = supabase.from('admins').select('fcm_token').not('fcm_token', 'is', null);
+    if (targetId && targetId !== 'all') {
+      query = query.eq('id', targetId);
+    }
+    const { data } = await query;
+    for (const row of data || []) {
+      const tok = String(row?.fcm_token || '').trim();
+      if (tok) tokens.add(tok);
+    }
+  } else if (role === 'courier' && targetId) {
+    const { data: byId } = await supabase
+      .from('couriers')
+      .select('fcm_token')
+      .eq('id', targetId)
+      .maybeSingle();
+    if (byId?.fcm_token) {
+      tokens.add(String(byId.fcm_token).trim());
+    }
+    if (tokens.size === 0) {
+      const { data: byName } = await supabase
+        .from('couriers')
+        .select('fcm_token')
+        .ilike('name', targetId)
+        .limit(1)
+        .maybeSingle();
+      if (byName?.fcm_token) {
+        tokens.add(String(byName.fcm_token).trim());
+      }
+    }
+  } else if (role === 'customer' && targetId) {
+    const cleanPhone = normalizePhone(targetId);
+    if (cleanPhone) {
+      const formattedPhone = `+967${cleanPhone}`;
+      const zeroPhone = `0${cleanPhone}`;
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('fcm_token')
+        .or(`phone.eq.${cleanPhone},phone.eq.${formattedPhone},phone.eq.${zeroPhone}`)
+        .limit(1)
+        .maybeSingle();
+      if (cust?.fcm_token) {
+        tokens.add(String(cust.fcm_token).trim());
+      }
+    }
   }
 
-  const response = await fetch('https://api.onesignal.com/notifications', {
-    method: 'POST',
-    headers: {
+  return Array.from(tokens).filter(Boolean);
+}
+
+async function sendFcmPushNotification({
+  recipientType,
+  recipientId,
+  targetTokens,
+  title,
+  body,
+  eventType = 'general',
+  orderId,
+  chatId,
+  dataPayload,
+  persistNotification = true,
+}) {
+  try {
+    const cleanRole = String(recipientType || 'general').trim().toLowerCase();
+    const cleanRecipientId = String(recipientId || 'all').trim();
+    const cleanTitle = String(title || '').trim();
+    const cleanBody = String(body || '').trim();
+    const cleanEvent = String(eventType || 'general').trim();
+    const cleanOrderId =
+      orderId !== undefined && orderId !== null && String(orderId).trim() !== ''
+        ? String(orderId).trim()
+        : '';
+    const cleanChatId =
+      chatId !== undefined && chatId !== null && String(chatId).trim() !== ''
+        ? String(chatId).trim()
+        : '';
+
+    if (!cleanTitle && !cleanBody) {
+      return { sent: false, skipped: true };
+    }
+
+    const dedupeBase = `${cleanRole}|${cleanRecipientId}|${cleanEvent}|${cleanOrderId}|${cleanChatId}|${cleanTitle}|${cleanBody}`;
+    const now = Date.now();
+    for (const [k, ts] of recentPushDedupe.entries()) {
+      if (now - ts > 8000) recentPushDedupe.delete(k);
+    }
+    const lastSentAt = recentPushDedupe.get(dedupeBase);
+    if (lastSentAt && now - lastSentAt < 5000) {
+      return { sent: true, deduplicated: true };
+    }
+    recentPushDedupe.set(dedupeBase, now);
+
+    const unifiedData = stringifyPushData({
+      ...(dataPayload || {}),
+      title: cleanTitle,
+      body: cleanBody,
+      event_type: cleanEvent,
+      recipient_type: cleanRole,
+      recipient_id: cleanRecipientId,
+      ...(cleanOrderId ? { order_id: cleanOrderId } : {}),
+      ...(cleanChatId ? { chat_id: cleanChatId } : {}),
+    });
+
+    if (persistNotification && cleanRole && cleanRole !== 'general') {
+      const dedupeKey = `${cleanRole}|${cleanRecipientId}|${cleanEvent}|${cleanOrderId}|${Math.floor(now / 5000)}`;
+      await supabase
+        .from('notifications')
+        .upsert(
+          {
+            recipient_role: cleanRole,
+            recipient_id: cleanRecipientId || 'all',
+            title: cleanTitle,
+            body: cleanBody,
+            ...(cleanOrderId ? { order_id: cleanOrderId } : {}),
+            ...(cleanChatId ? { chat_id: cleanChatId } : {}),
+            event_type: cleanEvent,
+            dedupe_key: dedupeKey,
+            additional_data: unifiedData,
+            is_read: false,
+          },
+          { onConflict: 'recipient_role,recipient_id,dedupe_key' }
+        )
+        .catch(() => {});
+    }
+
+    const tokens = await resolveFcmTokensForRecipient({
+      recipientType: cleanRole,
+      recipientId: cleanRecipientId,
+      explicitTokens: targetTokens,
+    });
+
+    if (tokens.length === 0) {
+      return { sent: false, skipped: true, reason: 'no_fcm_tokens' };
+    }
+
+    const supabaseUrl = (
+      config.supabaseUrl ||
+      process.env.SUPABASE_URL ||
+      ''
+    ).replace(/\/+$/, '');
+    const serviceRoleKey =
+      config.supabaseServiceRoleKey ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      '';
+    const pushSecret =
+      config.fcmPushSharedSecret ||
+      process.env.FCM_PUSH_SHARED_SECRET ||
+      '';
+
+    if (!supabaseUrl) {
+      return { sent: false, error: 'SUPABASE_URL غير مضبوط على الخادم.' };
+    }
+
+    const headers = {
       'Content-Type': 'application/json',
-      Authorization: `Key ${restApiKey}`,
-    },
-    body: JSON.stringify({
-      app_id: appId,
-      include_subscription_ids: uniqueIds,
-      headings: { en: title, ar: title },
-      contents: { en: body, ar: body },
-      ...(dataPayload ? { data: dataPayload } : {}),
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return {
-      sent: false,
-      status: response.status,
-      error: data?.errors?.[0] || 'تعذر إرسال الإشعار عبر OneSignal.',
+      ...(serviceRoleKey ? { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey } : {}),
+      ...(pushSecret ? { 'x-fcm-secret': pushSecret } : {}),
     };
-  }
 
-  return { sent: true, notification: data };
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-fcm-push`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        tokens,
+        title: cleanTitle,
+        body: cleanBody,
+        event_type: cleanEvent,
+        recipient_type: cleanRole,
+        recipient_id: cleanRecipientId,
+        ...(cleanOrderId ? { order_id: cleanOrderId } : {}),
+        ...(cleanChatId ? { chat_id: cleanChatId } : {}),
+        data: unifiedData,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        sent: false,
+        status: response.status,
+        error: data?.error || 'تعذر إرسال الإشعار عبر FCM.',
+      };
+    }
+
+    return { sent: true, result: data };
+  } catch (err) {
+    console.error('FCM notification error:', err);
+    return { sent: false, error: err?.message || 'FCM dispatch failed' };
+  }
 }
 
 function isOrderAssignedToCourier(order, userProfile) {
@@ -324,7 +518,7 @@ api.get('/health', async (_req, res) => {
   res.json({ status: 'ok', service: 'fast-delivery-api' });
 });
 
-// 🔐 طلب رمز تحقق OTP لرقم العميل (تجريبي في otp_codes لحين ربط WhatsApp الرسمي)
+// 🔐 طلب رمز تحقق OTP لرقم العميل
 api.post('/auth/otp/request', async (req, res) => {
   const body = z.object({ phone: z.string().trim().min(6).max(25) }).parse(req.body);
   const cleanPhone = normalizePhone(body.phone);
@@ -446,39 +640,51 @@ api.post('/auth/otp/verify', async (req, res) => {
   });
 });
 
-// 🔔 إرسال إشعار OneSignal (للمشرف فقط عند الإرسال المباشر إلى Player IDs محددة، أو عبر أحداث النظام من الخادم)
-api.post('/notifications/send', ...adminGuard, async (req, res) => {
+// 🔔 إرسال إشعار FCM موحد عبر الخادم
+api.post('/notifications/send', ...authGuard, async (req, res) => {
   const body = z
     .object({
-      target_player_id: z.string().trim().min(1).max(200).optional(),
-      target_player_ids: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+      target_token: z.string().trim().min(1).max(400).optional(),
+      target_tokens: z.array(z.string().trim().min(1).max(400)).max(200).optional(),
+      recipient_type: z.enum(['admin', 'courier', 'customer']).optional(),
+      recipient_id: z.string().trim().min(1).max(200).optional(),
+      event_type: z.string().trim().min(1).max(100).optional(),
+      order_id: z.union([z.string(), z.number()]).optional(),
+      chat_id: z.union([z.string(), z.number()]).optional(),
       title: z.string().trim().min(1).max(200),
       body: z.string().trim().min(1).max(1000),
+      data: z.record(z.any()).optional(),
       additional_data: z.record(z.any()).optional(),
     })
     .parse(req.body);
 
-  const targets = [
-    ...(body.target_player_id ? [body.target_player_id] : []),
-    ...(body.target_player_ids || []),
+  const explicitTokens = [
+    ...(body.target_token ? [body.target_token] : []),
+    ...(body.target_tokens || []),
   ];
 
-  if (targets.length === 0) {
-    fail(400, 'يجب تحديد مستلم واحد على الأقل.');
+  if (explicitTokens.length > 0 && req.userRole !== 'admin') {
+    fail(403, 'الإرسال المباشر لتوكنات محددة مقتصر على المشرف.');
   }
 
-  const result = await sendOneSignalNotification({
-    targetPlayerIds: targets,
+  const result = await sendFcmPushNotification({
+    recipientType: body.recipient_type || 'general',
+    recipientId: body.recipient_id || 'all',
+    targetTokens: explicitTokens,
     title: body.title,
     body: body.body,
-    dataPayload: body.additional_data,
+    eventType: body.event_type || 'general',
+    orderId: body.order_id,
+    chatId: body.chat_id,
+    dataPayload: body.data || body.additional_data,
+    persistNotification: false,
   });
 
-  if (!result.sent) {
-    fail(result.status || 502, result.error || 'تعذر إرسال الإشعار عبر OneSignal.');
-  }
-
-  res.json({ sent: true, notification: result.notification });
+  res.json({
+    sent: Boolean(result.sent),
+    skipped: Boolean(result.skipped),
+    ...(result.error ? { error: result.error } : {}),
+  });
 });
 
 // 🌐 الكتالوج العام (المطاعم والمنتجات المتاحة)
@@ -752,20 +958,16 @@ api.post('/orders', ...customerGuard, async (req, res) => {
     changedBy: req.user?.id || phone,
   });
 
-  // إشعار المشرفين عبر OneSignal عند إنشاء طلب جديد
-  const { data: adminRows } = await supabase
-    .from('admins')
-    .select('onesignal_player_id')
-    .not('onesignal_player_id', 'is', null);
-  const adminPlayerIds = (adminRows || []).map((a) => a.onesignal_player_id);
-  if (adminPlayerIds.length > 0) {
-    await sendOneSignalNotification({
-      targetPlayerIds: adminPlayerIds,
-      title: 'طلب جديد في النظام 🛒',
-      body: `تم استلام طلب جديد رقم #${orderData.id} (${hasCustomOrVariablePrice ? 'يتطلب مراجعة التسعير' : `${totalPrice} ر.ي`})`,
-      dataPayload: { order_id: orderData.id, status: 'waitingForPricing' },
-    });
-  }
+  // إشعار المشرفين عبر FCM عند إنشاء طلب جديد
+  await sendFcmPushNotification({
+    recipientType: 'admin',
+    recipientId: 'all',
+    title: 'طلب جديد في النظام 🛒',
+    body: `تم استلام طلب جديد رقم #${orderData.id} من ${customerName} (${hasCustomOrVariablePrice ? 'يتطلب مراجعة التسعير' : `${totalPrice} ر.ي`})`,
+    eventType: 'new_order',
+    orderId: orderData.id,
+    dataPayload: { status: 'waitingForPricing' },
+  });
 
   recentOrderSubmissions.set(dedupSignature, {
     createdAt: now,
@@ -883,7 +1085,7 @@ async function handlePricingOrder(req, res) {
   if (body.courier_id) {
     const { data: cById, error: cErr } = await supabase
       .from('couriers')
-      .select('id, name, onesignal_player_id')
+      .select('id, name, fcm_token')
       .eq('id', body.courier_id)
       .maybeSingle();
     if (cErr) throw cErr;
@@ -894,7 +1096,7 @@ async function handlePricingOrder(req, res) {
   if (!courierRecord && courierNameInput) {
     const { data: cByName, error: cNameErr } = await supabase
       .from('couriers')
-      .select('id, name, onesignal_player_id')
+      .select('id, name, fcm_token')
       .eq('name', courierNameInput)
       .maybeSingle();
     if (cNameErr) throw cNameErr;
@@ -949,21 +1151,18 @@ async function handlePricingOrder(req, res) {
     changedBy: req.user?.id || 'admin',
   });
 
-  // إشعار العميل بتوفر التسعير
-  if (order.phone) {
-    const { data: cust } = await supabase
-      .from('customers')
-      .select('onesignal_player_id')
-      .eq('phone', normalizePhone(order.phone))
-      .maybeSingle();
-    if (cust?.onesignal_player_id) {
-      await sendOneSignalNotification({
-        targetPlayerIds: [cust.onesignal_player_id],
-        title: 'تم تسعير طلبك 💰',
-        body: `إجمالي الطلب #${orderId} أصبح ${totalPrice} ر.ي (شامل التوصيل). يرجى تأكيد الموافقة.`,
-        dataPayload: { order_id: orderId, status: nextStatus },
-      });
-    }
+  // إشعار العميل بتوفر التسعير عبر FCM
+  const cleanCustomerPhone = normalizePhone(order.phone || '');
+  if (cleanCustomerPhone) {
+    await sendFcmPushNotification({
+      recipientType: 'customer',
+      recipientId: cleanCustomerPhone,
+      title: 'تم تسعير طلبك 💰',
+      body: `إجمالي الطلب #${orderId} أصبح ${totalPrice} ر.ي (شامل التوصيل ${fee} ر.ي). يرجى تأكيد الموافقة.`,
+      eventType: 'pricing_sent',
+      orderId,
+      dataPayload: { status: nextStatus },
+    });
   }
 
   res.json({ order: data, message: 'تم تحديث السعر بنجاح' });
@@ -1012,20 +1211,17 @@ async function handleAdminUpdateStatus(req, res) {
     changedBy: req.user?.id || 'admin',
   });
 
-  if (existing.phone) {
-    const { data: cust } = await supabase
-      .from('customers')
-      .select('onesignal_player_id')
-      .eq('phone', normalizePhone(existing.phone))
-      .maybeSingle();
-    if (cust?.onesignal_player_id) {
-      await sendOneSignalNotification({
-        targetPlayerIds: [cust.onesignal_player_id],
-        title: 'تحديث حالة الطلب 📦',
-        body: `تم تحديث حالة الطلب #${orderId} إلى: ${body.status}`,
-        dataPayload: { order_id: orderId, status: body.status },
-      });
-    }
+  const cleanCustomerPhone = normalizePhone(existing.phone || '');
+  if (cleanCustomerPhone) {
+    await sendFcmPushNotification({
+      recipientType: 'customer',
+      recipientId: cleanCustomerPhone,
+      title: 'تحديث حالة الطلب 📦',
+      body: `تم تحديث حالة الطلب #${orderId} إلى: ${getArabicOrderStatusLabel(body.status)}`,
+      eventType: body.status,
+      orderId,
+      dataPayload: { status: body.status },
+    });
   }
 
   res.json({ order: data, message: 'تم تحديث الحالة بنجاح' });
@@ -1101,20 +1297,40 @@ api.post('/orders/:id/customer-action', ...customerGuard, async (req, res) => {
     changedBy: req.user?.id || requesterPhone || 'customer',
   });
 
-  if (body.action === 'approve' && existing.courier_id) {
-    const { data: courierRow } = await supabase
-      .from('couriers')
-      .select('onesignal_player_id')
-      .eq('id', existing.courier_id)
-      .maybeSingle();
-    if (courierRow?.onesignal_player_id) {
-      await sendOneSignalNotification({
-        targetPlayerIds: [courierRow.onesignal_player_id],
+  if (body.action === 'approve') {
+    const courierTarget = String(
+      existing.courier_id || existing.assigned_courier || ''
+    ).trim();
+    if (courierTarget && courierTarget !== 'لم يتم التعيين') {
+      await sendFcmPushNotification({
+        recipientType: 'courier',
+        recipientId: courierTarget,
         title: 'طلب بانتظار موافقتك 🛵',
-        body: `وافق العميل على الطلب #${orderId}، يرجى مراجعة الطلب.`,
-        dataPayload: { order_id: orderId, status: nextStatus },
+        body: `وافق العميل على الطلب #${orderId}، يرجى مراجعة الطلب وقبوله.`,
+        eventType: 'approved_by_customer',
+        orderId,
+        dataPayload: { status: nextStatus },
       });
     }
+    await sendFcmPushNotification({
+      recipientType: 'admin',
+      recipientId: 'all',
+      title: `وافق العميل على الطلب #${orderId}`,
+      body: `تم تأكيد السعر للطلب #${orderId} وتحويله للمندوب.`,
+      eventType: 'approved_by_customer',
+      orderId,
+      dataPayload: { status: nextStatus },
+    });
+  } else {
+    await sendFcmPushNotification({
+      recipientType: 'admin',
+      recipientId: 'all',
+      title: `ألغى العميل الطلب #${orderId}`,
+      body: `قام العميل بإلغاء الطلب #${orderId}.`,
+      eventType: 'cancelled_by_customer',
+      orderId,
+      dataPayload: { status: nextStatus },
+    });
   }
 
   res.json({ order: data });
@@ -1212,20 +1428,29 @@ async function handleCourierUpdateStatus(req, res) {
     changedBy: req.user?.id || String(req.userProfile?.id || 'courier'),
   });
 
-  if (existing.phone) {
-    const { data: cust } = await supabase
-      .from('customers')
-      .select('onesignal_player_id')
-      .eq('phone', normalizePhone(existing.phone))
-      .maybeSingle();
-    if (cust?.onesignal_player_id) {
-      await sendOneSignalNotification({
-        targetPlayerIds: [cust.onesignal_player_id],
-        title: 'تحديث حالة التوصيل 🛵',
-        body: `حالة الطلب #${orderId} الآن: ${body.status}`,
-        dataPayload: { order_id: orderId, status: body.status },
-      });
-    }
+  const cleanCustomerPhone = normalizePhone(existing.phone || '');
+  if (cleanCustomerPhone) {
+    await sendFcmPushNotification({
+      recipientType: 'customer',
+      recipientId: cleanCustomerPhone,
+      title: 'تحديث حالة التوصيل 🛵',
+      body: `حالة الطلب #${orderId} الآن: ${getArabicOrderStatusLabel(body.status)}`,
+      eventType: body.status,
+      orderId,
+      dataPayload: { status: body.status },
+    });
+  }
+
+  if (body.status === 'rejectedByCourier' || body.status === 'delivered') {
+    await sendFcmPushNotification({
+      recipientType: 'admin',
+      recipientId: 'all',
+      title: `تحديث من المندوب على الطلب #${orderId}`,
+      body: `الحالة الجديدة: ${getArabicOrderStatusLabel(body.status)}`,
+      eventType: body.status,
+      orderId,
+      dataPayload: { status: body.status },
+    });
   }
 
   res.json({ order: data, message: 'تم تحديث الحالة بنجاح' });
