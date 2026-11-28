@@ -10,18 +10,40 @@ class OrderController extends GetxController {
   var ordersList = <OrderModel>[].obs;
   var currentOrder = Rxn<OrderModel>();
 
-  @override
-  void onInit() {
-    super.onInit();
+  String _normalizePhone(String phone) {
+    var clean = phone.trim().replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    if (clean.startsWith('+967')) {
+      clean = clean.substring(4);
+    } else if (clean.startsWith('00967')) {
+      clean = clean.substring(5);
+    } else if (clean.startsWith('967') && clean.length > 9) {
+      clean = clean.substring(3);
+    }
+    if (clean.startsWith('0') && clean.length > 9) {
+      clean = clean.substring(1);
+    }
+    return clean;
+  }
+
+  List<String> _phoneVariants(String phone) {
+    final clean = _normalizePhone(phone);
+    if (clean.isEmpty) return const [];
+    return <String>{
+      clean,
+      '0$clean',
+      '967$clean',
+      '+967$clean',
+    }.toList();
   }
 
   Future<bool> createNewOrder(OrderModel newOrder) async {
     try {
       isLoading.value = true;
 
+      final cleanPhone = _normalizePhone(newOrder.customerPhone);
       final Map<String, dynamic> orderData = {
         'customer_name': newOrder.customerName,
-        'phone': newOrder.customerPhone,
+        'phone': cleanPhone.isNotEmpty ? cleanPhone : newOrder.customerPhone,
         'address':
             '${newOrder.address.area} - ${newOrder.address.details} (${newOrder.address.title})',
         'items_description': newOrder.itemsDescription,
@@ -69,15 +91,18 @@ class OrderController extends GetxController {
   }
 
   Future<void> fetchCustomerOrders(String phone) async {
+    final variants = _phoneVariants(phone);
+    if (variants.isEmpty) return;
+
     try {
       isLoading.value = true;
       final response = await _supabase
           .from('orders')
           .select('*, order_items(*)')
-          .eq('phone', phone)
+          .inFilter('phone', variants)
           .order('created_at', ascending: false);
 
-      var list = response as List;
+      final list = response as List;
       ordersList.value = list.map((json) => OrderModel.fromJson(json)).toList();
     } catch (e) {
       Get.snackbar('خطأ', 'تعذر جلب الطلبات: $e',
@@ -89,32 +114,39 @@ class OrderController extends GetxController {
 
   Future<void> updateOrderStatus(String orderId, String newStatus) async {
     try {
+      final parsedId = int.tryParse(orderId.trim()) ?? orderId.trim();
       final updatedRow = await _supabase
           .from('orders')
-          .update({'status': newStatus})
-          .eq('id', orderId)
+          .update({
+            'status': newStatus,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', parsedId)
           .select('id, phone, assigned_courier')
           .maybeSingle();
 
       if (updatedRow != null) {
         final customerPhone = updatedRow['phone']?.toString().trim() ?? '';
-        if (customerPhone.isNotEmpty) {
+        final variants = _phoneVariants(customerPhone);
+        if (variants.isNotEmpty) {
           final customerRow = await _supabase
               .from('customers')
-              .select('onesignal_player_id')
-              .eq('phone', customerPhone)
+              .select('fcm_token')
+              .inFilter('phone', variants)
+              .not('fcm_token', 'is', null)
+              .limit(1)
               .maybeSingle();
-          final playerId =
-              customerRow?['onesignal_player_id']?.toString().trim() ?? '';
-          if (playerId.isNotEmpty) {
+          final fcmToken =
+              customerRow?['fcm_token']?.toString().trim() ?? '';
+          if (fcmToken.isNotEmpty) {
             await NotificationService.sendNotificationToUser(
-              targetPlayerId: playerId,
+              targetPlayerId: fcmToken,
               title: 'تحديث حالة الطلب #$orderId 🔔',
               body: 'تم تحديث حالة طلبك إلى: ${OrderStatuses.label(newStatus)}',
               orderId: orderId,
               eventType: 'order_status_updated',
               additionalData: {
-                'order_id': orderId,
+                'order_id': orderId.toString(),
                 'status': newStatus,
               },
             );
@@ -126,7 +158,10 @@ class OrderController extends GetxController {
           'تم تغيير حالة الطلب إلى ${OrderStatuses.label(newStatus)}',
           snackPosition: SnackPosition.BOTTOM);
 
-      fetchCustomerOrders(currentOrder.value?.customerPhone ?? '');
+      final currentPhone = currentOrder.value?.customerPhone ?? '';
+      if (currentPhone.trim().isNotEmpty) {
+        await fetchCustomerOrders(currentPhone);
+      }
     } catch (e) {
       Get.snackbar('خطأ', 'فشل تحديث الحالة: $e',
           snackPosition: SnackPosition.BOTTOM);
